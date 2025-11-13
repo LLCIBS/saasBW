@@ -1,0 +1,29 @@
+# Основные зависимости для call_analyzer
+
+# API клиенты
+requests==2.31.0
+tinkoff-voicekit-client>=1.0.0
+# Зависимости для tinkoff-voicekit-client (совместимость с Python 3.13)
+# Внимание: возможны предупреждения о конфликтах версий, но импорт работает
+boto3>=1.28.0
+botocore>=1.31.0
+aiobotocore>=2.0.0
+aioboto3>=11.0.0
+
+# Обработка аудио
+pydub>=0.25.1
+librosa>=0.10.0
+soundfile>=0.12.0
+numpy>=1.24.0
+
+# Конфигурация и парсинг
+PyYAML>=6.0.0
+watchdog>=3.0.0
+
+# TheB.ai / DeepSeek
+openai>=1.0.0
+
+# Логирование и утилиты
+tenacity>=9.0.0
+
+

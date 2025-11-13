@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Call Analyzer - Панель управления</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        .sidebar {
+            min-height: 100vh;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        .sidebar .nav-link {
+            color: rgba(255, 255, 255, 0.8);
+            padding: 12px 20px;
+            border-radius: 8px;
+            margin: 2px 0;
+            transition: all 0.3s;
+        }
+        .sidebar .nav-link:hover {
+            color: white;
+            background: rgba(255, 255, 255, 0.1);
+        }
+        .sidebar .nav-link.active {
+            color: white;
+            background: rgba(255, 255, 255, 0.2);
+        }
+        .main-content {
+            background-color: #f8f9fa;
+            min-height: 100vh;
+        }
+        .status-card {
+            border: none;
+            border-radius: 15px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        .status-running {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            color: white;
+        }
+        .status-stopped {
+            background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
+            color: white;
+        }
+        .metric-card {
+            background: white;
+            border-radius: 15px;
+            padding: 20px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            transition: transform 0.3s;
+        }
+        .metric-card:hover {
+            transform: translateY(-5px);
+        }
+        .metric-value {
+            font-size: 2.5rem;
+            font-weight: bold;
+            color: #667eea;
+        }
+        .metric-label {
+            color: #6c757d;
+            font-size: 0.9rem;
+        }
+        .log-entry {
+            border-left: 4px solid #dee2e6;
+            padding: 10px 15px;
+            margin: 5px 0;
+            background: white;
+            border-radius: 0 8px 8px 0;
+        }
+        .log-entry.info { border-left-color: #17a2b8; }
+        .log-entry.warning { border-left-color: #ffc107; }
+        .log-entry.error { border-left-color: #dc3545; }
+        .log-entry.success { border-left-color: #28a745; }
+        .leaderboard-card, .consultants-card {
+            background: white;
+            border-radius: 15px;
+            padding: 20px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+        .leaderboard-item { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #f1f3f5; }
+        .leaderboard-item:last-child { border-bottom: none; }
+        .percent { font-weight: 600; color: #198754; }
+        .consultant-row { cursor: pointer; }
+        .consultant-row:hover { background-color: #f8f9fa; }
+        .question-detail { margin: 5px 0; padding: 8px; background: #f8f9fa; border-radius: 5px; }
+        .question-detail .question-title { font-weight: 600; color: #495057; }
+        .question-detail .question-percent { color: #198754; font-weight: 600; }
+    </style>
+</head>
+<body>
+    <div class="container-fluid">
+        <div class="row">
+            <!-- Боковая панель -->
+                                                {% include 'partials/sidebar.html' %}
+
+            <!-- Основной контент -->
+            <main class="col-md-9 col-lg-10 main-content">
+                <div class="p-4">
+                    <div class="d-flex justify-content-between align-items-center mb-4">
+                        <h1 class="h3 mb-0">Панель управления</h1>
+                        <div class="btn-group" role="group">
+                            <button type="button" class="btn btn-success" onclick="startService()">
+                                <i class="fas fa-play me-1"></i> Запустить
+                            </button>
+                            <button type="button" class="btn btn-danger" onclick="stopService()">
+                                <i class="fas fa-stop me-1"></i> Остановить
+                            </button>
+                            <button type="button" class="btn btn-warning" onclick="restartService()">
+                                <i class="fas fa-redo me-1"></i> Перезапустить
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Статус сервиса -->
+                    <div class="row mb-4">
+                        <div class="col-12">
+                            <div class="card status-card" id="statusCard">
+                                <div class="card-body text-center">
+                                    <div class="row align-items-center">
+                                        <div class="col-md-8">
+                                            <h4 class="card-title mb-2">
+                                                <i class="fas fa-server me-2"></i>
+                                                Статус сервиса
+                                            </h4>
+                                            <p class="card-text mb-0" id="statusText">Проверка...</p>
+                                        </div>
+                                        <div class="col-md-4">
+                                            <div class="spinner-border text-light" id="statusSpinner" role="status">
+                                                <span class="visually-hidden">Загрузка...</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Метрики -->
+                    <div class="row mb-4">
+                        <div class="col-md-3">
+                            <div class="metric-card text-center">
+                                <div class="metric-value" id="totalCalls">-</div>
+                                <div class="metric-label">Всего звонков</div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="metric-card text-center">
+                                <div class="metric-value" id="activeTransfers">-</div>
+                                <div class="metric-label">Активные переводы</div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="metric-card text-center">
+                                <div class="metric-value" id="activeRecalls">-</div>
+                                <div class="metric-label">Активные перезвоны</div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="metric-card text-center">
+                                <div class="metric-value" id="stationsCount">-</div>
+                                <div class="metric-label">Станций</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Лидерборд и таблица консультантов -->
+                    <div class="row mb-4" id="realtimeBlocks" style="display:none;">
+                        <div class="col-md-5">
+                            <div class="leaderboard-card">
+                                <h5 class="mb-3">Лидерборд станций (Итог %)</h5>
+                                <div id="leaderboardContainer">
+                                    <div class="text-muted">Нет данных</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-7">
+                            <div class="consultants-card">
+                                <h5 class="mb-3">Показатели по консультантам</h5>
+                                <div class="table-responsive">
+                                    <table class="table table-sm table-hover align-middle" id="consultantsTable">
+                                        <thead>
+                                            <tr>
+                                                <th>Станция</th>
+                                                <th>Консультант</th>
+                                                <th>Звонков</th>
+                                                <th>Итог, %</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody></tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Последние логи -->
+                    <div class="row">
+                        <div class="col-12">
+                            <div class="card">
+                                <div class="card-header d-flex justify-content-between align-items-center">
+                                    <h5 class="mb-0">
+                                        <i class="fas fa-file-alt me-2"></i>
+                                        Последние логи
+                                    </h5>
+                                    <button class="btn btn-sm btn-outline-primary" onclick="refreshLogs()">
+                                        <i class="fas fa-sync-alt"></i>
+                                    </button>
+                                </div>
+                                <div class="card-body">
+                                    <div id="logsContainer">
+                                        <div class="text-center">
+                                            <div class="spinner-border" role="status">
+                                                <span class="visually-hidden">Загрузка логов...</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <!-- Модальное окно с детализацией консультанта -->
+    <div class="modal fade" id="consultantModal" tabindex="-1" aria-labelledby="consultantModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="consultantModalLabel">Детализация по консультанту</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <strong>Станция:</strong> <span id="modalStation"></span>
+                        </div>
+                        <div class="col-md-6">
+                            <strong>Консультант:</strong> <span id="modalConsultant"></span>
+                        </div>
+                    </div>
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <strong>Количество звонков:</strong> <span id="modalCalls"></span>
+                        </div>
+                        <div class="col-md-6">
+                            <strong>Общий итог:</strong> <span id="modalTotal" class="percent"></span>
+                        </div>
+                    </div>
+                    <hr>
+                    <h6>Детализация по вопросам чек-листа:</h6>
+                    <div id="modalQuestions"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Закрыть</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Обновление статуса каждые 5 секунд
+        setInterval(updateStatus, 5000);
+        
+        // Загрузка данных при старте
+        document.addEventListener('DOMContentLoaded', function() {
+            updateStatus();
+            loadLogs();
+        });
+
+        async function updateStatus() {
+            try {
+                const response = await fetch('/api/status');
+                const data = await response.json();
+                
+                updateServiceStatus(data.service);
+                updateMetrics(data);
+                updateLogs(data.recent_logs);
+                
+            } catch (error) {
+                console.error('Ошибка обновления статуса:', error);
+            }
+        }
+
+        function updateServiceStatus(service) {
+            const statusCard = document.getElementById('statusCard');
+            const statusText = document.getElementById('statusText');
+            const statusSpinner = document.getElementById('statusSpinner');
+            
+            statusSpinner.style.display = 'none';
+            
+            if (service.running) {
+                statusCard.className = 'card status-card status-running';
+                statusText.innerHTML = '<i class="fas fa-check-circle me-2"></i>Сервис работает';
+            } else {
+                statusCard.className = 'card status-card status-stopped';
+                statusText.innerHTML = '<i class="fas fa-times-circle me-2"></i>Сервис остановлен';
+            }
+        }
+
+        function updateMetrics(data) {
+            // Подгружаем онлайн-сводку за сегодня
+            fetch('/api/summary/realtime')
+                .then(r => r.json())
+                .then(summary => {
+                    if (!summary || summary.success === false) {
+                        document.getElementById('totalCalls').textContent = '-';
+                        document.getElementById('stationsCount').textContent = '-';
+                        document.getElementById('realtimeBlocks').style.display = 'none';
+                        return;
+                    }
+                    document.getElementById('totalCalls').textContent = summary.total_calls ?? '-';
+                    document.getElementById('stationsCount').textContent = summary.stations_count ?? '-';
+
+                    // Лидерборд
+                    const lb = (summary.ranking || []).slice(0, 10);
+                    const lbContainer = document.getElementById('leaderboardContainer');
+                    if (lb.length === 0) {
+                        lbContainer.innerHTML = '<div class="text-muted">Нет данных</div>';
+                    } else {
+                        lbContainer.innerHTML = lb.map(item => `
+                            <div class="leaderboard-item">
+                                <div>
+                                    <span class="badge bg-primary me-2">${item.rank}</span>
+                                    ${item.station}
+                                </div>
+                                <div class="percent">${(item.percent_total || 0).toFixed(1)}%</div>
+                            </div>
+                        `).join('');
+                    }
+
+                    // Таблица консультантов по всем станциям
+                    const tbody = document.querySelector('#consultantsTable tbody');
+                    const rows = [];
+                    (summary.stations || []).forEach(st => {
+                        (st.consultants || []).forEach(c => {
+                            // Создаем объект консультанта со всеми полями, включая q1-q15
+                            const consultantData = {
+                                station: st.station,
+                                name: c.name,
+                                calls: c.calls || 0,
+                                total: c.percent_total || 0
+                            };
+                            
+                            // Добавляем все поля q1-q15
+                            for (let i = 1; i <= 15; i++) {
+                                const questionKey = `q${i}`;
+                                if (c[questionKey] !== undefined) {
+                                    consultantData[questionKey] = c[questionKey];
+                                }
+                            }
+                            
+                            rows.push(consultantData);
+                        });
+                    });
+                    rows.sort((a,b)=>b.total - a.total);
+                    // Сохраняем данные консультантов в глобальную переменную
+                    consultantsData = rows;
+                    
+                    if (rows.length === 0) {
+                        tbody.innerHTML = '<tr><td colspan="4" class="text-muted">Нет данных</td></tr>';
+                        document.getElementById('realtimeBlocks').style.display = 'none';
+                    } else {
+                        tbody.innerHTML = rows.map((r, index) => `
+                            <tr class="consultant-row" onclick="showConsultantDetails(${index})" data-consultant='${JSON.stringify(r)}'>
+                                <td>${r.station}</td>
+                                <td>${r.name}</td>
+                                <td>${r.calls}</td>
+                                <td>${r.total.toFixed(1)}%</td>
+                            </tr>
+                        `).join('');
+                        document.getElementById('realtimeBlocks').style.display = 'flex';
+                    }
+                })
+                .catch(() => {
+                    document.getElementById('totalCalls').textContent = '-';
+                    document.getElementById('stationsCount').textContent = '-';
+                    document.getElementById('realtimeBlocks').style.display = 'none';
+                });
+            // Плейсхолдеры для будущих метрик
+            document.getElementById('activeTransfers').textContent = '-';
+            document.getElementById('activeRecalls').textContent = '-';
+        }
+
+        function updateLogs(logs) {
+            const container = document.getElementById('logsContainer');
+            
+            if (!logs || logs.length === 0) {
+                container.innerHTML = '<div class="text-muted text-center">Логи не найдены</div>';
+                return;
+            }
+            
+            const logsHtml = logs.map(log => `
+                <div class="log-entry ${log.level.toLowerCase()}">
+                    <div class="d-flex justify-content-between">
+                        <span class="fw-bold">${log.module || 'System'}</span>
+                        <small class="text-muted">${new Date(log.timestamp).toLocaleString()}</small>
+                    </div>
+                    <div class="mt-1">${log.message}</div>
+                </div>
+            `).join('');
+            
+            container.innerHTML = logsHtml;
+        }
+
+        async function loadLogs() {
+            try {
+                const response = await fetch('/api/logs');
+                const data = await response.json();
+                
+                if (data.logs) {
+                    updateLogs(data.logs);
+                }
+            } catch (error) {
+                console.error('Ошибка загрузки логов:', error);
+            }
+        }
+
+        function refreshLogs() {
+            loadLogs();
+        }
+
+        async function startService() {
+            try {
+                const response = await fetch('/service/start', { method: 'POST' });
+                const data = await response.json();
+                
+                if (data.success) {
+                    showAlert('Сервис запущен', 'success');
+                    setTimeout(updateStatus, 2000);
+                } else {
+                    showAlert(data.message, 'danger');
+                }
+            } catch (error) {
+                showAlert('Ошибка запуска сервиса', 'danger');
+            }
+        }
+
+        async function stopService() {
+            try {
+                const response = await fetch('/service/stop', { method: 'POST' });
+                const data = await response.json();
+                
+                if (data.success) {
+                    showAlert('Сервис остановлен', 'warning');
+                    setTimeout(updateStatus, 2000);
+                } else {
+                    showAlert(data.message, 'danger');
+                }
+            } catch (error) {
+                showAlert('Ошибка остановки сервиса', 'danger');
+            }
+        }
+
+        async function restartService() {
+            try {
+                const response = await fetch('/service/restart', { method: 'POST' });
+                const data = await response.json();
+                
+                if (data.success) {
+                    showAlert('Сервис перезапущен', 'info');
+                    setTimeout(updateStatus, 3000);
+                } else {
+                    showAlert(data.message, 'danger');
+                }
+            } catch (error) {
+                showAlert('Ошибка перезапуска сервиса', 'danger');
+            }
+        }
+
+        function showAlert(message, type) {
+            const alertDiv = document.createElement('div');
+            alertDiv.className = `alert alert-${type} alert-dismissible fade show position-fixed`;
+            alertDiv.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
+            alertDiv.innerHTML = `
+                ${message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            `;
+            
+            document.body.appendChild(alertDiv);
+            
+            setTimeout(() => {
+                if (alertDiv.parentNode) {
+                    alertDiv.parentNode.removeChild(alertDiv);
+                }
+            }, 5000);
+        }
+
+        // Глобальная переменная для хранения данных консультантов
+        let consultantsData = [];
+
+        function showConsultantDetails(index) {
+            const consultant = consultantsData[index];
+            if (!consultant) return;
+
+            // Заполняем основную информацию
+            document.getElementById('modalStation').textContent = consultant.station;
+            document.getElementById('modalConsultant').textContent = consultant.name;
+            document.getElementById('modalCalls').textContent = consultant.calls;
+            document.getElementById('modalTotal').textContent = consultant.total.toFixed(1) + '%';
+
+            // Заполняем детализацию по вопросам
+            const questionsContainer = document.getElementById('modalQuestions');
+            questionsContainer.innerHTML = '<div class="text-center"><div class="spinner-border spinner-border-sm" role="status"></div> Загрузка детализации...</div>';
+
+            // Получаем названия вопросов из чек-листа
+            fetch('/api/script-prompt')
+                .then(r => r.json())
+                .then(data => {
+                    const checklist = data.data?.checklist || [];
+                    const questionsHtml = [];
+                    
+                    // Проходим по всем вопросам (1-15)
+                    for (let i = 1; i <= 15; i++) {
+                        const questionKey = `q${i}`;
+                        if (consultant[questionKey] !== undefined) {
+                            // Берем название из чек-листа по индексу (i-1)
+                            const questionTitle = checklist[i-1]?.title || `Вопрос ${i}`;
+                            const percent = consultant[questionKey];
+                            
+                            // Определяем цвет в зависимости от процента
+                            let colorClass = 'text-danger'; // < 40% - красный
+                            if (percent >= 70) {
+                                colorClass = 'text-success'; // >= 70% - зеленый
+                            } else if (percent >= 40) {
+                                colorClass = 'text-warning'; // 40-69% - желтый
+                            }
+                            
+                            questionsHtml.push(`
+                                <div class="question-detail">
+                                    <div class="question-title">${i}. ${questionTitle}</div>
+                                    <div class="question-percent ${colorClass}">${percent.toFixed(1)}%</div>
+                                </div>
+                            `);
+                        }
+                    }
+                    
+                    // Если нет данных по вопросам, показываем сообщение
+                    if (questionsHtml.length === 0) {
+                        questionsContainer.innerHTML = '<div class="text-muted">Нет данных по вопросам чек-листа</div>';
+                    } else {
+                        questionsContainer.innerHTML = questionsHtml.join('');
+                    }
+                })
+                .catch(error => {
+                    console.error('Ошибка загрузки чек-листа:', error);
+                    questionsContainer.innerHTML = '<div class="text-danger">Ошибка загрузки детализации</div>';
+                });
+
+            // Показываем модальное окно
+            const modal = new bootstrap.Modal(document.getElementById('consultantModal'));
+            modal.show();
+        }
+    </script>
+</body>
+</html>
+
+

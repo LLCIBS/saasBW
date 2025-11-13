@@ -1,0 +1,632 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Станции - Call Analyzer</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        .sidebar {
+            min-height: 100vh;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        .sidebar .nav-link {
+            color: rgba(255, 255, 255, 0.8);
+            padding: 12px 20px;
+            border-radius: 8px;
+            margin: 2px 0;
+            transition: all 0.3s;
+        }
+        .sidebar .nav-link:hover {
+            color: white;
+            background: rgba(255, 255, 255, 0.1);
+        }
+        .sidebar .nav-link.active {
+            color: white;
+            background: rgba(255, 255, 255, 0.2);
+        }
+        .main-content {
+            background-color: #f8f9fa;
+            min-height: 100vh;
+        }
+        .station-card {
+            background: white;
+            border-radius: 15px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            transition: transform 0.3s;
+        }
+        .station-card:hover {
+            transform: translateY(-2px);
+        }
+        .station-header {
+            border-bottom: 2px solid #e9ecef;
+            padding-bottom: 15px;
+            margin-bottom: 20px;
+        }
+        .station-code {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-weight: bold;
+            font-size: 0.9rem;
+        }
+        .chat-id-tag {
+            background: #e3f2fd;
+            color: #1976d2;
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 0.8rem;
+            margin: 2px;
+            display: inline-block;
+        }
+        .sub-station-tag {
+            background: #f3e5f5;
+            color: #7b1fa2;
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 0.8rem;
+            margin: 2px;
+            display: inline-block;
+        }
+        .btn-add-station {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            color: white;
+            padding: 12px 30px;
+            border-radius: 25px;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+        .btn-add-station:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(102, 126, 234, 0.3);
+            color: white;
+        }
+        .modal-content {
+            border-radius: 15px;
+            border: none;
+        }
+        .modal-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 15px 15px 0 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container-fluid">
+        <div class="row">
+            <!-- Боковая панель -->
+                                                {% include 'partials/sidebar.html' %}
+
+            <!-- Основной контент -->
+            <main class="col-md-9 col-lg-10 main-content">
+                <div class="p-4">
+                    <div class="d-flex justify-content-between align-items-center mb-4">
+                        <h1 class="h3 mb-0">Управление станциями</h1>
+                        <button class="btn btn-add-station" data-bs-toggle="modal" data-bs-target="#addStationModal">
+                            <i class="fas fa-plus me-2"></i>Добавить станцию
+                        </button>
+                    </div>
+
+                    <!-- Список станций -->
+                    <div id="stationsContainer">
+                        <div class="text-center">
+                            <div class="spinner-border" role="status">
+                                <span class="visually-hidden">Загрузка станций...</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <!-- Модальное окно добавления станции -->
+    <div class="modal fade" id="addStationModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        <i class="fas fa-plus me-2"></i>Добавить новую станцию
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="addStationForm">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label class="form-label">Код станции</label>
+                                    <input type="text" class="form-control" id="stationCode" 
+                                           placeholder="Например: 9322" required>
+                                    <div class="form-text">Уникальный код станции (4 цифры)</div>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label class="form-label">Название станции</label>
+                                    <input type="text" class="form-control" id="stationName" 
+                                           placeholder="Например: Бринского" required>
+                                    <div class="form-text">Человекочитаемое название</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Telegram Chat IDs</label>
+                            <div class="input-group mb-2">
+                                <input type="text" class="form-control" id="newChatId" 
+                                       placeholder="Введите Chat ID">
+                                <button class="btn btn-outline-primary" type="button" onclick="addChatId()">
+                                    <i class="fas fa-plus"></i> Добавить
+                                </button>
+                            </div>
+                            <div id="chatIdsContainer"></div>
+                            <div class="form-text">ID чатов для отправки уведомлений</div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Подстанции (коды)</label>
+                            <div class="input-group mb-2">
+                                <input type="text" class="form-control" id="newSubStation" 
+                                       placeholder="Введите код подстанции">
+                                <button class="btn btn-outline-primary" type="button" onclick="addSubStation()">
+                                    <i class="fas fa-plus"></i> Добавить
+                                </button>
+                            </div>
+                            <div id="subStationsContainer"></div>
+                            <div class="form-text">Коды подстанций, привязанных к основной станции</div>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                    <button type="button" class="btn btn-primary" onclick="saveStation()">Сохранить</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Модальное окно редактирования станции -->
+    <div class="modal fade" id="editStationModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        <i class="fas fa-edit me-2"></i>Редактировать станцию
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="editStationForm">
+                        <input type="hidden" id="editStationCode">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label class="form-label">Код станции</label>
+                                    <input type="text" class="form-control" id="editStationCodeDisplay" readonly>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label class="form-label">Название станции</label>
+                                    <input type="text" class="form-control" id="editStationName" required>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Telegram Chat IDs</label>
+                            <div class="input-group mb-2">
+                                <input type="text" class="form-control" id="editNewChatId" 
+                                       placeholder="Введите Chat ID">
+                                <button class="btn btn-outline-primary" type="button" onclick="addEditChatId()">
+                                    <i class="fas fa-plus"></i> Добавить
+                                </button>
+                            </div>
+                            <div id="editChatIdsContainer"></div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Подстанции (коды)</label>
+                            <div class="input-group mb-2">
+                                <input type="text" class="form-control" id="editNewSubStation" 
+                                       placeholder="Введите код подстанции">
+                                <button class="btn btn-outline-primary" type="button" onclick="addEditSubStation()">
+                                    <i class="fas fa-plus"></i> Добавить
+                                </button>
+                            </div>
+                            <div id="editSubStationsContainer"></div>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                    <button type="button" class="btn btn-primary" onclick="updateStation()">Сохранить</button>
+                    <button type="button" class="btn btn-danger" onclick="deleteStation()">Удалить</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        let stationsData = [];
+        let currentEditStation = null;
+
+        // Загрузка станций при старте
+        document.addEventListener('DOMContentLoaded', function() {
+            loadStations();
+        });
+
+        async function loadStations() {
+            try {
+                const response = await fetch('/api/stations');
+                stationsData = await response.json();
+                renderStations();
+            } catch (error) {
+                console.error('Ошибка загрузки станций:', error);
+                showAlert('Ошибка загрузки станций', 'danger');
+            }
+        }
+
+        function renderStations() {
+            const container = document.getElementById('stationsContainer');
+            
+            if (stationsData.length === 0) {
+                container.innerHTML = '<div class="text-center text-muted">Станции не найдены</div>';
+                return;
+            }
+
+            const stationsHtml = stationsData.map(station => `
+                <div class="station-card">
+                    <div class="station-header d-flex justify-content-between align-items-center">
+                        <div>
+                            <span class="station-code">${station.code}</span>
+                            <h4 class="d-inline ms-3 mb-0">${station.name}</h4>
+                        </div>
+                        <button class="btn btn-outline-primary btn-sm" onclick="editStation('${station.code}')">
+                            <i class="fas fa-edit"></i> Редактировать
+                        </button>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h6 class="text-muted mb-2">
+                                <i class="fas fa-comments me-2"></i>Telegram Chat IDs
+                            </h6>
+                            <div>
+                                ${station.chat_ids.map(chatId => `
+                                    <span class="chat-id-tag">${chatId}</span>
+                                `).join('')}
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <h6 class="text-muted mb-2">
+                                <i class="fas fa-sitemap me-2"></i>Подстанции
+                            </h6>
+                            <div>
+                                ${station.sub_stations.map(subCode => `
+                                    <span class="sub-station-tag">${subCode}</span>
+                                `).join('')}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+
+            container.innerHTML = stationsHtml;
+        }
+
+        function addChatId() {
+            const input = document.getElementById('newChatId');
+            const chatId = input.value.trim();
+            
+            if (chatId) {
+                const container = document.getElementById('chatIdsContainer');
+                const tag = document.createElement('span');
+                tag.className = 'chat-id-tag';
+                tag.innerHTML = `
+                    ${chatId}
+                    <span class="remove-chat-id" onclick="removeChatId(this)" style="cursor: pointer; margin-left: 5px; color: #d32f2f;">×</span>
+                `;
+                container.appendChild(tag);
+                input.value = '';
+            }
+        }
+
+        function removeChatId(element) {
+            element.parentElement.remove();
+        }
+
+        function addSubStation() {
+            const input = document.getElementById('newSubStation');
+            const subStation = input.value.trim();
+            
+            if (subStation) {
+                const container = document.getElementById('subStationsContainer');
+                const tag = document.createElement('span');
+                tag.className = 'sub-station-tag';
+                tag.innerHTML = `
+                    ${subStation}
+                    <span class="remove-sub-station" onclick="removeSubStation(this)" style="cursor: pointer; margin-left: 5px; color: #d32f2f;">×</span>
+                `;
+                container.appendChild(tag);
+                input.value = '';
+            }
+        }
+
+        function removeSubStation(element) {
+            element.parentElement.remove();
+        }
+
+        function addEditChatId() {
+            const input = document.getElementById('editNewChatId');
+            const chatId = input.value.trim();
+            
+            if (chatId) {
+                const container = document.getElementById('editChatIdsContainer');
+                const tag = document.createElement('span');
+                tag.className = 'chat-id-tag';
+                tag.innerHTML = `
+                    ${chatId}
+                    <span class="remove-chat-id" onclick="removeChatId(this)" style="cursor: pointer; margin-left: 5px; color: #d32f2f;">×</span>
+                `;
+                container.appendChild(tag);
+                input.value = '';
+            }
+        }
+
+        function addEditSubStation() {
+            const input = document.getElementById('editNewSubStation');
+            const subStation = input.value.trim();
+            
+            if (subStation) {
+                const container = document.getElementById('editSubStationsContainer');
+                const tag = document.createElement('span');
+                tag.className = 'sub-station-tag';
+                tag.innerHTML = `
+                    ${subStation}
+                    <span class="remove-sub-station" onclick="removeSubStation(this)" style="cursor: pointer; margin-left: 5px; color: #d32f2f;">×</span>
+                `;
+                container.appendChild(tag);
+                input.value = '';
+            }
+        }
+
+        function editStation(stationCode) {
+            const station = stationsData.find(s => s.code === stationCode);
+            if (!station) return;
+
+            currentEditStation = station;
+            
+            document.getElementById('editStationCode').value = station.code;
+            document.getElementById('editStationCodeDisplay').value = station.code;
+            document.getElementById('editStationName').value = station.name;
+            
+            // Заполняем Chat IDs
+            const chatIdsContainer = document.getElementById('editChatIdsContainer');
+            chatIdsContainer.innerHTML = '';
+            station.chat_ids.forEach(chatId => {
+                const tag = document.createElement('span');
+                tag.className = 'chat-id-tag';
+                tag.innerHTML = `
+                    ${chatId}
+                    <span class="remove-chat-id" onclick="removeChatId(this)" style="cursor: pointer; margin-left: 5px; color: #d32f2f;">×</span>
+                `;
+                chatIdsContainer.appendChild(tag);
+            });
+            
+            // Заполняем подстанции
+            const subStationsContainer = document.getElementById('editSubStationsContainer');
+            subStationsContainer.innerHTML = '';
+            station.sub_stations.forEach(subCode => {
+                const tag = document.createElement('span');
+                tag.className = 'sub-station-tag';
+                tag.innerHTML = `
+                    ${subCode}
+                    <span class="remove-sub-station" onclick="removeSubStation(this)" style="cursor: pointer; margin-left: 5px; color: #d32f2f;">×</span>
+                `;
+                subStationsContainer.appendChild(tag);
+            });
+            
+            const modal = new bootstrap.Modal(document.getElementById('editStationModal'));
+            modal.show();
+        }
+
+        async function saveStation() {
+            const code = document.getElementById('stationCode').value.trim();
+            const name = document.getElementById('stationName').value.trim();
+            
+            if (!code || !name) {
+                showAlert('Заполните все обязательные поля', 'warning');
+                return;
+            }
+            
+            // Собираем Chat IDs
+            const chatIds = [];
+            document.querySelectorAll('#chatIdsContainer .chat-id-tag').forEach(tag => {
+                const text = tag.textContent.trim();
+                const chatId = text.replace('×', '').trim();
+                if (chatId) chatIds.push(chatId);
+            });
+            
+            // Собираем подстанции
+            const subStations = [];
+            document.querySelectorAll('#subStationsContainer .sub-station-tag').forEach(tag => {
+                const text = tag.textContent.trim();
+                const subCode = text.replace('×', '').trim();
+                if (subCode) subStations.push(subCode);
+            });
+            
+            const stationData = {
+                station_mapping: { 
+                    [code]: {
+                        name: name,
+                        chat_ids: chatIds,
+                        sub_stations: subStations
+                    }
+                }
+            };
+            
+            try {
+                const response = await fetch('/api/stations/save', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(stationData)
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    showAlert('Станция добавлена', 'success');
+                    
+                    // Закрываем модальное окно и очищаем форму
+                    const modal = bootstrap.Modal.getInstance(document.getElementById('addStationModal'));
+                    modal.hide();
+                    document.getElementById('addStationForm').reset();
+                    document.getElementById('chatIdsContainer').innerHTML = '';
+                    document.getElementById('subStationsContainer').innerHTML = '';
+                    
+                    // Перезагружаем список станций
+                    loadStations();
+                } else {
+                    showAlert('Ошибка при добавлении станции: ' + result.message, 'danger');
+                }
+            } catch (error) {
+                console.error('Ошибка при сохранении станции:', error);
+                showAlert('Ошибка при добавлении станции', 'danger');
+            }
+        }
+
+        async function updateStation() {
+            if (!currentEditStation) return;
+            
+            const name = document.getElementById('editStationName').value.trim();
+            
+            if (!name) {
+                showAlert('Заполните название станции', 'warning');
+                return;
+            }
+            
+            // Собираем Chat IDs
+            const chatIds = [];
+            document.querySelectorAll('#editChatIdsContainer .chat-id-tag').forEach(tag => {
+                const text = tag.textContent.trim();
+                const chatId = text.replace('×', '').trim();
+                if (chatId) chatIds.push(chatId);
+            });
+            
+            // Собираем подстанции
+            const subStations = [];
+            document.querySelectorAll('#editSubStationsContainer .sub-station-tag').forEach(tag => {
+                const text = tag.textContent.trim();
+                const subCode = text.replace('×', '').trim();
+                if (subCode) subStations.push(subCode);
+            });
+            
+            const stationData = {
+                code: currentEditStation.code,
+                name: name,
+                chat_ids: chatIds,
+                sub_stations: subStations
+            };
+            
+            try {
+                const response = await fetch('/api/stations/save', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        station_mapping: {
+                            [stationData.code]: {
+                                name: stationData.name,
+                                chat_ids: stationData.chat_ids,
+                                sub_stations: stationData.sub_stations
+                            }
+                        }
+                    })
+                });
+                
+                if (response.ok) {
+                    showAlert('Станция обновлена', 'success');
+                    
+                    // Закрываем модальное окно
+                    const modal = bootstrap.Modal.getInstance(document.getElementById('editStationModal'));
+                    modal.hide();
+                    
+                    // Обновляем список станций
+                    loadStations();
+                } else {
+                    const error = await response.json();
+                    showAlert(`Ошибка при обновлении станции: ${error.message}`, 'danger');
+                }
+            } catch (error) {
+                console.error('Ошибка при обновлении станции:', error);
+                showAlert('Ошибка при обновлении станции', 'danger');
+            }
+        }
+
+        async function deleteStation() {
+            if (!currentEditStation) return;
+            
+            if (confirm(`Вы уверены, что хотите удалить станцию "${currentEditStation.name}"?`)) {
+                try {
+                    const response = await fetch('/api/stations/save', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            station_mapping: {
+                                [currentEditStation.code]: null  // null означает удаление
+                            }
+                        })
+                    });
+                    
+                    if (response.ok) {
+                        showAlert('Станция удалена', 'success');
+                        
+                        // Закрываем модальное окно
+                        const modal = bootstrap.Modal.getInstance(document.getElementById('editStationModal'));
+                        modal.hide();
+                        
+                        // Перезагружаем список станций
+                        loadStations();
+                    } else {
+                        const error = await response.json();
+                        showAlert(`Ошибка при удалении станции: ${error.message}`, 'danger');
+                    }
+                } catch (error) {
+                    console.error('Ошибка при удалении станции:', error);
+                    showAlert('Ошибка при удалении станции', 'danger');
+                }
+            }
+        }
+
+        function showAlert(message, type) {
+            const alertDiv = document.createElement('div');
+            alertDiv.className = `alert alert-${type} alert-dismissible fade show position-fixed`;
+            alertDiv.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
+            alertDiv.innerHTML = `
+                ${message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            `;
+            
+            document.body.appendChild(alertDiv);
+            
+            setTimeout(() => {
+                if (alertDiv.parentNode) {
+                    alertDiv.parentNode.removeChild(alertDiv);
+                }
+            }, 5000);
+        }
+    </script>
+</body>
+</html>
+
+

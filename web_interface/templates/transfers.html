@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Переводы - Call Analyzer</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        .sidebar {
+            min-height: 100vh;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        .sidebar .nav-link {
+            color: rgba(255, 255, 255, 0.8);
+            padding: 12px 20px;
+            border-radius: 8px;
+            margin: 2px 0;
+            transition: all 0.3s;
+        }
+        .sidebar .nav-link:hover {
+            color: white;
+            background: rgba(255, 255, 255, 0.1);
+        }
+        .sidebar .nav-link.active {
+            color: white;
+            background: rgba(255, 255, 255, 0.2);
+        }
+        .main-content {
+            background-color: #f8f9fa;
+            min-height: 100vh;
+        }
+        .transfer-card {
+            background: white;
+            border-radius: 15px;
+            padding: 20px;
+            margin-bottom: 15px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            transition: transform 0.3s;
+        }
+        .transfer-card:hover {
+            transform: translateY(-2px);
+        }
+        .status-waiting {
+            background: #fff3cd;
+            color: #856404;
+            padding: 4px 12px;
+            border-radius: 15px;
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+        .status-completed {
+            background: #d1ecf1;
+            color: #0c5460;
+            padding: 4px 12px;
+            border-radius: 15px;
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+        .status-failed {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 4px 12px;
+            border-radius: 15px;
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+        .status-cycled {
+            background: #e2e3e5;
+            color: #383d41;
+            padding: 4px 12px;
+            border-radius: 15px;
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+        .phone-number {
+            font-weight: bold;
+            color: #667eea;
+        }
+        .station-name {
+            color: #6c757d;
+            font-size: 0.9rem;
+        }
+        .time-info {
+            color: #6c757d;
+            font-size: 0.8rem;
+        }
+        .filter-buttons {
+            margin-bottom: 20px;
+        }
+        .filter-btn {
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container-fluid">
+        <div class="row">
+            <!-- Боковая панель -->
+                                                {% include 'partials/sidebar.html' %}
+
+            <!-- Основной контент -->
+            <main class="col-md-9 col-lg-10 main-content">
+                <div class="p-4">
+                    <div class="d-flex justify-content-between align-items-center mb-4">
+                        <h1 class="h3 mb-0">Управление переводами</h1>
+                        <button class="btn btn-outline-primary" onclick="refreshTransfers()">
+                            <i class="fas fa-sync-alt me-2"></i>Обновить
+                        </button>
+                    </div>
+
+                    <!-- Фильтры -->
+                    <div class="filter-buttons">
+                        <button class="btn btn-outline-primary filter-btn active" onclick="filterTransfers('all')">
+                            Все (<span id="countAll">0</span>)
+                        </button>
+                        <button class="btn btn-outline-warning filter-btn" onclick="filterTransfers('waiting')">
+                            Ожидающие (<span id="countWaiting">0</span>)
+                        </button>
+                        <button class="btn btn-outline-success filter-btn" onclick="filterTransfers('completed')">
+                            Завершенные (<span id="countCompleted">0</span>)
+                        </button>
+                        <button class="btn btn-outline-danger filter-btn" onclick="filterTransfers('failed')">
+                            Не состоявшиеся (<span id="countFailed">0</span>)
+                        </button>
+                        <button class="btn btn-outline-secondary filter-btn" onclick="filterTransfers('cycled')">
+                            Цикличные (<span id="countCycled">0</span>)
+                        </button>
+                    </div>
+
+                    <!-- Список переводов -->
+                    <div id="transfersContainer">
+                        <div class="text-center">
+                            <div class="spinner-border" role="status">
+                                <span class="visually-hidden">Загрузка переводов...</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        let transfersData = [];
+        let currentFilter = 'all';
+
+        // Загрузка переводов при старте
+        document.addEventListener('DOMContentLoaded', function() {
+            loadTransfers();
+        });
+
+        async function loadTransfers() {
+            try {
+                const response = await fetch('/api/transfers');
+                transfersData = await response.json();
+                updateCounts();
+                renderTransfers();
+            } catch (error) {
+                console.error('Ошибка загрузки переводов:', error);
+                showAlert('Ошибка загрузки переводов', 'danger');
+            }
+        }
+
+        function updateCounts() {
+            const counts = {
+                all: transfersData.length,
+                waiting: transfersData.filter(t => t.status === 'waiting').length,
+                completed: transfersData.filter(t => t.status === 'completed').length,
+                failed: transfersData.filter(t => t.status === 'failed').length,
+                cycled: transfersData.filter(t => t.status === 'cycled').length
+            };
+
+            document.getElementById('countAll').textContent = counts.all;
+            document.getElementById('countWaiting').textContent = counts.waiting;
+            document.getElementById('countCompleted').textContent = counts.completed;
+            document.getElementById('countFailed').textContent = counts.failed;
+            document.getElementById('countCycled').textContent = counts.cycled;
+        }
+
+        function renderTransfers() {
+            const container = document.getElementById('transfersContainer');
+            
+            let filteredTransfers = transfersData;
+            if (currentFilter !== 'all') {
+                filteredTransfers = transfersData.filter(t => t.status === currentFilter);
+            }
+
+            if (filteredTransfers.length === 0) {
+                container.innerHTML = '<div class="text-center text-muted">Переводы не найдены</div>';
+                return;
+            }
+
+            const transfersHtml = filteredTransfers.map(transfer => `
+                <div class="transfer-card">
+                    <div class="d-flex justify-content-between align-items-start mb-3">
+                        <div>
+                            <div class="phone-number">${transfer.phone_number}</div>
+                            <div class="station-name">Станция: ${transfer.incoming_station}</div>
+                        </div>
+                        <span class="${getStatusClass(transfer.status)}">${getStatusText(transfer.status)}</span>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="time-info">
+                                <i class="fas fa-clock me-1"></i>
+                                Время звонка: ${formatDateTime(transfer.call_time)}
+                            </div>
+                            ${transfer.deadline ? `
+                                <div class="time-info">
+                                    <i class="fas fa-hourglass-end me-1"></i>
+                                    Дедлайн: ${formatDateTime(transfer.deadline)}
+                                </div>
+                            ` : ''}
+                        </div>
+                        <div class="col-md-6">
+                            ${transfer.transfer_station ? `
+                                <div class="time-info">
+                                    <i class="fas fa-exchange-alt me-1"></i>
+                                    Перевести на: ${transfer.transfer_station}
+                                </div>
+                            ` : ''}
+                            ${transfer.transfer_conditions ? `
+                                <div class="time-info">
+                                    <i class="fas fa-info-circle me-1"></i>
+                                    Условия: ${transfer.transfer_conditions}
+                                </div>
+                            ` : ''}
+                        </div>
+                    </div>
+                    
+                    ${transfer.analysis ? `
+                        <div class="mt-3">
+                            <small class="text-muted">Анализ:</small>
+                            <div class="mt-1 p-2 bg-light rounded">
+                                <small>${transfer.analysis.substring(0, 200)}${transfer.analysis.length > 200 ? '...' : ''}</small>
+                            </div>
+                        </div>
+                    ` : ''}
+                </div>
+            `).join('');
+
+            container.innerHTML = transfersHtml;
+        }
+
+        function filterTransfers(status) {
+            currentFilter = status;
+            
+            // Обновляем активную кнопку
+            document.querySelectorAll('.filter-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            event.target.classList.add('active');
+            
+            renderTransfers();
+        }
+
+        function getStatusClass(status) {
+            const statusMap = {
+                'waiting': 'status-waiting',
+                'completed': 'status-completed',
+                'failed': 'status-failed',
+                'cycled': 'status-cycled'
+            };
+            return statusMap[status] || 'status-waiting';
+        }
+
+        function getStatusText(status) {
+            const statusMap = {
+                'waiting': 'Ожидает',
+                'completed': 'Завершен',
+                'failed': 'Не состоялся',
+                'cycled': 'Цикличный'
+            };
+            return statusMap[status] || 'Неизвестно';
+        }
+
+        function formatDateTime(dateTimeStr) {
+            const date = new Date(dateTimeStr);
+            return date.toLocaleString('ru-RU');
+        }
+
+        function refreshTransfers() {
+            loadTransfers();
+        }
+
+        function showAlert(message, type) {
+            const alertDiv = document.createElement('div');
+            alertDiv.className = `alert alert-${type} alert-dismissible fade show position-fixed`;
+            alertDiv.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
+            alertDiv.innerHTML = `
+                ${message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            `;
+            
+            document.body.appendChild(alertDiv);
+            
+            setTimeout(() => {
+                if (alertDiv.parentNode) {
+                    alertDiv.parentNode.removeChild(alertDiv);
+                }
+            }, 5000);
+        }
+    </script>
+</body>
+</html>
+
+

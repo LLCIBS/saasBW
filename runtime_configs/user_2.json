@@ -1,0 +1,71 @@
+{
+  "api_keys": {
+    "speechmatics_api_key": "KIVJjrMXkscitztOMfnw8iKSWEJjwXX1",
+    "thebai_url": "https://api.deepseek.com/v1/chat/completions",
+    "thebai_model": "deepseek-reasoner",
+    "telegram_bot_token": "7990616547:AAG-4jvHgWhR6JtR6pk3wOxzeWmreHnzMyY"
+  },
+  "paths": {
+    "base_records_path": "D:\\calls\\users\\2",
+    "prompts_file": "D:\\ООО ИБС\\Бествей\\Система чек листов коммерция BW\\monv2_безRerTruck web5\\prompts.yaml",
+    "additional_vocab_file": "D:\\ООО ИБС\\Бествей\\Система чек листов коммерция BW\\monv2_безRerTruck web5\\additional_vocab.yaml",
+    "script_prompt_file": "D:\\ООО ИБС\\Бествей\\Система чек листов коммерция BW\\monv2_безRerTruck web5\\script_prompt_8.yaml"
+  },
+  "telegram": {
+    "alert_chat_id": "-1002413323859",
+    "legal_entity_chat_id": "-1002413323859",
+    "tg_channel_nizh": "-1002413323859",
+    "tg_channel_other": "-1002413323859"
+  },
+  "employee_by_extension": {
+    "301": "1",
+    "303": "2",
+    "311": "3",
+    "128801": "4",
+    "128802": "5",
+    "128804": "6"
+  },
+  "stations": {
+    "128801": "Фокус на Малышева",
+    "303": "Крауля 44"
+  },
+  "station_chat_ids": {
+    "128801": [
+      "-1002413323859"
+    ],
+    "303": [
+      "-1002413323859"
+    ]
+  },
+  "station_mapping": {
+    "128801": [
+      "128802",
+      "128804"
+    ],
+    "303": [
+      "311",
+      "301"
+    ]
+  },
+  "nizh_station_codes": [
+    "128801",
+    "303"
+  ],
+  "legal_entity_keywords": [
+    "компания",
+    "компании",
+    "компаний",
+    "организация",
+    "организации",
+    "организаций",
+    "ип",
+    "индивидуальный предприниматель",
+    "по счету",
+    "от юр лица",
+    "по расчетному счету"
+  ],
+  "transcription": {
+    "tbank_stereo_enabled": true
+  },
+  "allowed_stations": null
+}

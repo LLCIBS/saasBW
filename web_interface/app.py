@@ -1,0 +1,2343 @@
+﻿#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Веб-интерфейс для настройки Call Analyzer
+Позволяет управлять всеми настройками системы без редактирования кода
+"""
+
+import os
+import sys
+import json
+import shutil
+import yaml
+import logging
+import re
+import importlib
+import importlib.util
+from datetime import datetime, timedelta
+from pathlib import Path
+from collections import OrderedDict
+from flask import Flask, render_template, request, jsonify, redirect, url_for, flash
+from werkzeug.utils import secure_filename
+from dotenv import load_dotenv
+from flask_login import current_user, login_required
+from copy import deepcopy
+from contextlib import contextmanager
+import threading
+import subprocess
+import time
+from sqlalchemy import text
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(PROJECT_ROOT))
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'call_analyzer'))
+load_dotenv(PROJECT_ROOT / '.env')
+
+from common.user_settings import (
+    default_config_template,
+    default_prompts_template,
+    default_vocabulary_template,
+    default_logs_template,
+    default_script_prompt_template,
+    build_runtime_config
+)
+
+from config.settings import get_config
+from database.models import db, User, UserSettings
+from auth import login_manager
+from auth.routes import auth_bp
+try:
+    from call_analyzer.service_manager import request_reload
+except ImportError:
+    def request_reload(user_id: int):
+        pass
+
+
+# Legacy config loader (call_analyzer/config.py)
+LEGACY_CONFIG_MODULE_NAME = 'call_analyzer_legacy_config'
+LEGACY_CONFIG_PATH = PROJECT_ROOT / 'call_analyzer' / 'config.py'
+
+
+class MockConfig:
+    SPEECHMATICS_API_KEY = ''
+    THEBAI_API_KEY = ''
+    TELEGRAM_BOT_TOKEN = ''
+    ALERT_CHAT_ID = ''
+    LEGAL_ENTITY_CHAT_ID = ''
+    TG_CHANNEL_NIZH = ''
+    TG_CHANNEL_OTHER = ''
+    BASE_RECORDS_PATH = ''
+    PROMPTS_FILE = ''
+    ADDITIONAL_VOCAB_FILE = ''
+    STATION_NAMES = {}
+    STATION_CHAT_IDS = {}
+    STATION_MAPPING = {}
+    NIZH_STATION_CODES = []
+    LEGAL_ENTITY_KEYWORDS = []
+
+
+def load_legacy_project_config():
+    if not LEGACY_CONFIG_PATH.exists():
+        print('Ошибка: файл config.py в call_analyzer не найден')
+        return MockConfig()
+    try:
+        spec = importlib.util.spec_from_file_location(
+            LEGACY_CONFIG_MODULE_NAME,
+            str(LEGACY_CONFIG_PATH)
+        )
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[LEGACY_CONFIG_MODULE_NAME] = module
+        spec.loader.exec_module(module)
+        return module
+    except Exception as exc:
+        print(f'Ошибка: не удалось загрузить config.py из call_analyzer ({exc})')
+        return MockConfig()
+
+
+project_config = load_legacy_project_config()
+
+
+def get_user_settings_record(user=None, auto_create=True):
+    """Возвращает или создаёт запись с пользовательскими настройками."""
+    actual_user = user
+    if actual_user is None and hasattr(current_user, 'is_authenticated'):
+        if current_user.is_authenticated:
+            actual_user = current_user
+    if actual_user is None or not getattr(actual_user, 'id', None):
+        return None
+
+    settings = getattr(actual_user, 'settings', None)
+    if settings is None:
+        settings = UserSettings.query.filter_by(user_id=actual_user.id).first()
+
+    if not settings and auto_create:
+        settings = UserSettings(user_id=actual_user.id, data={})
+        db.session.add(settings)
+        db.session.commit()
+        actual_user.settings = settings
+
+    return settings
+
+
+def get_user_settings_section(section, default_factory, user=None):
+    """Возвращает копию секции настроек пользователя."""
+    settings = get_user_settings_record(user=user, auto_create=True)
+    if not settings:
+        return default_factory()
+
+    data = settings.data or {}
+    if section not in data or data[section] is None:
+        data[section] = default_factory()
+        settings.data = data
+        db.session.add(settings)
+        db.session.commit()
+
+    return deepcopy(data[section])
+
+
+def save_user_settings_section(section, value, user=None):
+    """��������� ������ �������� ������������."""
+    settings = get_user_settings_record(user=user, auto_create=True)
+    if not settings:
+        raise RuntimeError('��������� ������������ ����������.')
+
+    payload = json.dumps(value, ensure_ascii=False)
+    db.session.execute(
+        text(
+            "UPDATE user_settings "
+            "SET data = jsonb_set(COALESCE(data, '{}'::jsonb), CAST(:path AS text[]), CAST(:payload AS jsonb), true) "
+            "WHERE id = :sid"
+        ),
+        {
+            'path': '{%s}' % section,
+            'payload': payload,
+            'sid': settings.id
+        }
+    )
+    db.session.commit()
+    db.session.refresh(settings)
+
+    return deepcopy(value)
+
+
+def get_user_config_data(user=None):
+    return get_user_settings_section('config', default_config_template, user=user)
+
+
+def save_user_config_data(config_data, user=None):
+    return save_user_settings_section('config', config_data, user=user)
+
+
+def normalize_prompts_payload(data):
+    normalized = {
+        'default': '',
+        'anchors': {},
+        'stations': {}
+    }
+    if not isinstance(data, dict):
+        return normalized
+
+    normalized['default'] = data.get('default') or ''
+
+    anchors = data.get('anchors')
+    if isinstance(anchors, dict):
+        normalized['anchors'] = {
+            str(key): str(value) if value is not None else ''
+            for key, value in anchors.items()
+        }
+    else:
+        derived = {}
+        for key, value in data.items():
+            if key in ('default', 'stations', 'anchors'):
+                continue
+            if isinstance(value, str):
+                derived[str(key)] = value
+        normalized['anchors'] = derived
+
+    stations = data.get('stations')
+    if isinstance(stations, dict):
+        normalized['stations'] = {
+            str(key): str(value) if value is not None else ''
+            for key, value in stations.items()
+        }
+    else:
+        normalized['stations'] = {}
+
+    return normalized
+
+
+def get_user_prompts_data(user=None):
+    raw = get_user_settings_section('prompts', default_prompts_template, user=user)
+    return normalize_prompts_payload(raw)
+
+
+def save_user_prompts_data(prompts_data, user=None):
+    normalized = normalize_prompts_payload(prompts_data)
+    return save_user_settings_section('prompts', normalized, user=user)
+
+
+def get_user_vocabulary_data(user=None):
+    return get_user_settings_section('vocabulary', default_vocabulary_template, user=user)
+
+
+def save_user_vocabulary_data(vocab_data, user=None):
+    return save_user_settings_section('vocabulary', vocab_data, user=user)
+
+
+def get_user_logs(user=None):
+    return get_user_settings_section('logs', default_logs_template, user=user)
+
+
+def save_user_logs(logs, user=None):
+    return save_user_settings_section('logs', logs, user=user)
+
+
+def get_user_script_prompt(user=None):
+    return get_user_settings_section('script_prompt', default_script_prompt_template, user=user)
+
+
+def save_user_script_prompt(data, user=None):
+    return save_user_settings_section('script_prompt', data, user=user)
+
+
+def get_user_prompts_file_path(user=None):
+    """
+    Возвращает путь к prompts.yaml для пользователя (создаёт каталоги при необходимости).
+    """
+    runtime_cfg = build_user_runtime_config(user=user)
+    prompts_file = (runtime_cfg.get('paths') or {}).get('prompts_file')
+    if not prompts_file:
+        return None
+    path = Path(prompts_file)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def load_prompts_file(user=None):
+    """
+    Загружает anchors/default/stations из prompts.yaml текущего пользователя.
+    """
+    result = {
+        'anchors': {},
+        'stations': {},
+        'default': ''
+    }
+    path = get_user_prompts_file_path(user=user)
+    if not path or not path.exists():
+        return result
+
+    try:
+        with path.open('r', encoding='utf-8') as handler:
+            raw = yaml.safe_load(handler) or {}
+    except Exception as exc:
+        app.logger.warning("Не удалось прочитать prompts-файл %s: %s", path, exc)
+        return result
+
+    if isinstance(raw.get('default'), str):
+        result['default'] = raw.get('default') or ''
+
+    stations = raw.get('stations')
+    if isinstance(stations, dict):
+        result['stations'] = {
+            str(code): str(text) if text is not None else ''
+            for code, text in stations.items()
+        }
+
+    anchors_block = raw.get('anchors')
+    anchors = {}
+    if isinstance(anchors_block, dict):
+        anchors = {
+            str(name): str(text) if text is not None else ''
+            for name, text in anchors_block.items()
+        }
+    else:
+        for key, value in raw.items():
+            if key in ('default', 'stations', 'anchors'):
+                continue
+            if isinstance(value, str):
+                anchors[str(key)] = value
+    result['anchors'] = anchors
+    return result
+
+
+def write_prompts_file(prompts_data, user=None):
+    """
+    Сохраняет anchors/default/stations в пользовательский prompts.yaml.
+    """
+    path = get_user_prompts_file_path(user=user)
+    if not path:
+        return
+
+    normalized = normalize_prompts_payload(prompts_data)
+    payload = OrderedDict()
+    if normalized['default']:
+        payload['default'] = normalized['default']
+
+    for name in sorted((normalized['anchors'] or {}).keys()):
+        text = normalized['anchors'][name]
+        payload[name] = text or ''
+
+    payload['stations'] = normalized['stations'] or {}
+
+    try:
+        with path.open('w', encoding='utf-8') as handler:
+            yaml.safe_dump(payload, handler, allow_unicode=True, sort_keys=False)
+    except Exception as exc:
+        app.logger.error("Не удалось сохранить prompts-файл %s: %s", path, exc)
+
+
+def get_user_script_prompt_path(user=None):
+    runtime_cfg = build_user_runtime_config(user=user)
+    script_file = (runtime_cfg.get('paths') or {}).get('script_prompt_file')
+    if not script_file:
+        return None
+    path = Path(script_file)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def load_script_prompt_file(user=None):
+    path = get_user_script_prompt_path(user=user)
+    if not path or not path.exists():
+        return default_script_prompt_template()
+    try:
+        with path.open('r', encoding='utf-8') as handler:
+            raw = yaml.safe_load(handler) or {}
+    except Exception as exc:
+        app.logger.warning("Не удалось прочитать script prompt файл %s: %s", path, exc)
+        return default_script_prompt_template()
+
+    data = default_script_prompt_template()
+    if isinstance(raw, dict):
+        checklist = raw.get('checklist')
+        if isinstance(checklist, list):
+            normalized = []
+            for item in checklist:
+                if not isinstance(item, dict):
+                    continue
+                normalized.append({
+                    'title': str(item.get('title') or ''),
+                    'prompt': str(item.get('prompt') or '')
+                })
+            data['checklist'] = normalized
+        if isinstance(raw.get('prompt'), str):
+            data['prompt'] = raw.get('prompt')
+    return data
+
+
+def write_script_prompt_file(data, user=None):
+    path = get_user_script_prompt_path(user=user)
+    if not path:
+        return
+    payload = default_script_prompt_template()
+    checklist = []
+    for item in data.get('checklist') or []:
+        if not isinstance(item, dict):
+            continue
+        checklist.append({
+            'title': str(item.get('title') or ''),
+            'prompt': str(item.get('prompt') or '')
+        })
+    payload['checklist'] = checklist
+    payload['prompt'] = str(data.get('prompt') or '')
+    try:
+        with path.open('w', encoding='utf-8') as handler:
+            yaml.safe_dump(payload, handler, allow_unicode=True, sort_keys=False)
+    except Exception as exc:
+        app.logger.error("Не удалось сохранить script prompt файл %s: %s", path, exc)
+
+
+def _resolve_current_user(user=None):
+    """Возвращает фактического пользователя (текущий, если не передан явно)."""
+    if user:
+        return user
+    if hasattr(current_user, 'is_authenticated') and current_user.is_authenticated:
+        return current_user
+    return None
+
+
+def build_user_runtime_config(user=None, persist_defaults=True):
+    """
+    Собирает конфигурацию профиля с учётом дефолтов и legacy-config.
+    Возвращает словарь с ключевыми секциями (api_keys, paths и др.).
+    """
+    actual_user = _resolve_current_user(user)
+    config_data = get_user_config_data(user=actual_user)
+    runtime, updated_config, changed = build_runtime_config(
+        project_config,
+        config_data,
+        user_id=getattr(actual_user, 'id', None)
+    )
+
+    if changed and persist_defaults and actual_user:
+        save_user_config_data(updated_config, user=actual_user)
+
+    runtime['config_data'] = updated_config
+    return runtime
+
+
+def get_runtime_context(user=None):
+    """
+    Возвращает пару (runtime_config, runtime_dir) для текущего пользователя.
+    runtime_dir указывает на подкаталог runtime внутри пользовательского BASE_RECORDS_PATH.
+    """
+    runtime_cfg = build_user_runtime_config(user=user)
+    base_records_path = Path(runtime_cfg['paths']['base_records_path'])
+    runtime_dir = base_records_path / 'runtime'
+    runtime_dir.mkdir(parents=True, exist_ok=True)
+    return runtime_cfg, runtime_dir
+
+
+@contextmanager
+def legacy_config_override(runtime_cfg):
+    """
+    Временное применение пользовательских настроек к legacy-модулю call_analyzer.config.
+    Позволяет запускать отчёты в контексте конкретного профиля.
+    """
+    try:
+        from call_analyzer import config as legacy_config
+    except ImportError:
+        yield None
+        return
+
+    sentinel = object()
+    overrides = {}
+
+    def _set_attr(attr, value):
+        overrides[attr] = getattr(legacy_config, attr, sentinel)
+        setattr(legacy_config, attr, value)
+
+    def _restore():
+        for attr, prev in overrides.items():
+            if prev is sentinel:
+                delattr(legacy_config, attr)
+            else:
+                setattr(legacy_config, attr, prev)
+
+    try:
+        paths_cfg = runtime_cfg.get('paths', {})
+        base_path = paths_cfg.get('base_records_path')
+        prompts_file = paths_cfg.get('prompts_file')
+        vocab_file = paths_cfg.get('additional_vocab_file')
+        script_prompt_file = paths_cfg.get('script_prompt_file')
+
+        if base_path:
+            _set_attr('BASE_RECORDS_PATH', Path(base_path))
+        if prompts_file:
+            _set_attr('PROMPTS_FILE', Path(prompts_file))
+        if vocab_file:
+            _set_attr('ADDITIONAL_VOCAB_FILE', Path(vocab_file))
+        if script_prompt_file:
+            _set_attr('SCRIPT_PROMPT_8_PATH', Path(script_prompt_file))
+
+        api_keys = runtime_cfg.get('api_keys', {})
+        _set_attr('SPEECHMATICS_API_KEY', api_keys.get('speechmatics_api_key', ''))
+        _set_attr('THEBAI_API_KEY', api_keys.get('thebai_api_key', ''))
+        _set_attr('THEBAI_URL', api_keys.get('thebai_url', 'https://api.deepseek.com/v1/chat/completions'))
+        _set_attr('THEBAI_MODEL', api_keys.get('thebai_model', 'deepseek-reasoner'))
+        _set_attr('TELEGRAM_BOT_TOKEN', api_keys.get('telegram_bot_token', ''))
+
+        telegram_cfg = runtime_cfg.get('telegram') or {}
+        _set_attr('ALERT_CHAT_ID', telegram_cfg.get('alert_chat_id', ''))
+        _set_attr('LEGAL_ENTITY_CHAT_ID', telegram_cfg.get('legal_entity_chat_id', ''))
+        _set_attr('TG_CHANNEL_NIZH', telegram_cfg.get('tg_channel_nizh', ''))
+        _set_attr('TG_CHANNEL_OTHER', telegram_cfg.get('tg_channel_other', ''))
+
+        transcription_cfg = runtime_cfg.get('transcription') or {}
+        _set_attr('TBANK_STEREO_ENABLED', bool(transcription_cfg.get('tbank_stereo_enabled', False)))
+
+        _set_attr('EMPLOYEE_BY_EXTENSION', deepcopy(runtime_cfg.get('employee_by_extension') or {}))
+        _set_attr('STATION_NAMES', deepcopy(runtime_cfg.get('stations') or {}))
+        _set_attr('STATION_CHAT_IDS', deepcopy(runtime_cfg.get('station_chat_ids') or {}))
+        _set_attr('STATION_MAPPING', deepcopy(runtime_cfg.get('station_mapping') or {}))
+        _set_attr('NIZH_STATION_CODES', list(runtime_cfg.get('nizh_station_codes') or []))
+        _set_attr('LEGAL_ENTITY_KEYWORDS', list(runtime_cfg.get('legal_entity_keywords') or []))
+
+        yield legacy_config
+    finally:
+        _restore()
+
+
+def append_user_log(message, level='INFO', module='system', user=None):
+    """Добавляет запись в персональные логи пользователя."""
+    logs = get_user_logs(user=user)
+    logs.append({
+        'timestamp': datetime.utcnow().isoformat(),
+        'level': level,
+        'module': module,
+        'message': message
+    })
+    # ограничиваем размер списка
+    logs = logs[-500:]
+    save_user_logs(logs, user=user)
+def reload_project_config():
+    """Перезагружает конфигурацию проекта"""
+    global project_config
+    try:
+        if isinstance(project_config, MockConfig):
+            project_config = load_legacy_project_config()
+        else:
+            project_config = importlib.reload(project_config)
+        logging.info("Конфигурация проекта перезагружена")
+    except Exception as e:
+        project_config = load_legacy_project_config()
+        logging.error(f"Ошибка перезагрузки конфигурации: {e}")
+app = Flask(__name__)
+app.config.from_object(get_config())
+app.config.setdefault('SECRET_KEY', 'call_analyzer_web_interface_2025')
+db.init_app(app)
+login_manager.init_app(app)
+app.register_blueprint(auth_bp)
+
+AUTH_EXEMPT_ENDPOINTS = {'static'}
+
+
+@app.before_request
+def require_login():
+    """�?�?�?�?�?�? �������?�?�?�? �������?�� �?� Flask-Login."""
+    if app.config.get('LOGIN_DISABLED'):
+        return
+    endpoint = request.endpoint
+    if not endpoint or endpoint in AUTH_EXEMPT_ENDPOINTS:
+        return
+    if endpoint.startswith('auth.'):
+        return
+    if current_user.is_authenticated:
+        return
+    return redirect(url_for('auth.login', next=request.url))
+
+
+# Автоматическая синхронизация при запуске
+def initialize_app():
+    """Инициализация приложения"""
+    try:
+        # Во время debug Flask запускает перезагрузчик и выполняет код дважды (родитель и дочерний процесс).
+        # Выполняем инициализацию и автозапуск только в основном процессе перезагрузчика.
+        if (
+            app.debug
+            and os.environ.get('FLASK_RUN_FROM_CLI') == 'true'
+            and os.environ.get('WERKZEUG_RUN_MAIN') != 'true'
+        ):
+            return
+        with app.app_context():
+            db.create_all()
+            ensure_default_admin()
+        app.logger.info("Автоматическая синхронизация промптов выполнена")
+        # Автозапуск сервиса анализа при старте веб-интерфейса
+        ensure_service_running()
+    except Exception as e:
+        app.logger.error(f"Ошибка автоматической синхронизации: {e}")
+
+# Глобальные переменные для статуса сервиса
+service_status = {
+    'running': False,
+    'pid': None,
+    'last_start': None,
+    'last_stop': None
+}
+
+def ensure_default_admin():
+    """??????????? ??????? ???? ?? ?????? ?????????????? ??? ???????????."""
+    try:
+        if User.query.count() > 0:
+            return
+
+        username = os.getenv('DEFAULT_ADMIN_USERNAME', 'admin').strip()
+        password = os.getenv('DEFAULT_ADMIN_PASSWORD', 'admin123').strip()
+        email = os.getenv('DEFAULT_ADMIN_EMAIL', 'admin@example.com').strip()
+
+        if not username or not password:
+            app.logger.warning('?? ??????? ??????? ?????????????? ?? ?????????: ?????? ??????? ??????')
+            return
+
+        admin = User(username=username, email=email, role='admin')
+        admin.set_password(password)
+        db.session.add(admin)
+        db.session.flush()
+        db.session.add(UserSettings(user_id=admin.id, data={}))
+        db.session.commit()
+
+        app.logger.warning('?????? ????????????? ?? ?????????. ??????? ?????? ????? ??????? ?????.')
+    except Exception as e:
+        db.session.rollback()
+        app.logger.error(f'?????? ??? ???????? ?????????????? ?? ?????????: {e}')
+
+
+def get_project_root():
+    """Возвращает корневую папку проекта"""
+    return PROJECT_ROOT
+
+def run_script(script_filename, wait=False):
+    """Запускает bat-скрипт из корня проекта.
+
+    Возвращает (success: bool, message: str).
+    """
+    try:
+        project_root = get_project_root()
+        script_path = project_root / script_filename
+        if not script_path.exists():
+            return False, f"Файл {script_filename} не найден"
+
+        if wait:
+            subprocess.run([str(script_path)], cwd=str(project_root))
+        else:
+            subprocess.Popen([str(script_path)], cwd=str(project_root))
+        return True, f"Скрипт {script_filename} выполнен"
+    except Exception as e:
+        return False, str(e)
+
+def ensure_service_running():
+    """Проверяет и запускает сервис, если он не запущен."""
+    try:
+        status = get_service_status()
+        if not status.get('running'):
+            ok, msg = run_script('start_service.bat', wait=False)
+            if ok:
+                service_status['running'] = True
+                service_status['last_start'] = datetime.now()
+                app.logger.info('Сервис запущен при старте веб-интерфейса')
+            else:
+                app.logger.error(f'Автозапуск сервиса не удался: {msg}')
+    except Exception as e:
+        app.logger.error(f'Ошибка автозапуска сервиса: {e}')
+
+def load_yaml_config(file_path):
+    """Загружает YAML конфигурацию"""
+    try:
+        if not file_path.exists():
+            return {}
+        with open(file_path, 'r', encoding='utf-8') as f:
+            return yaml.safe_load(f)
+    except Exception as e:
+        logging.error(f"Ошибка загрузки {file_path}: {e}")
+        return {}
+
+def save_yaml_config(file_path, data):
+    """Сохраняет YAML конфигурацию"""
+    try:
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(file_path, 'w', encoding='utf-8') as f:
+            yaml.dump(data, f, default_flow_style=False, allow_unicode=True)
+        return True
+    except Exception as e:
+        logging.error(f"Ошибка сохранения {file_path}: {e}")
+        return False
+
+def sync_prompts_from_config(user=None):
+    """?????????????? ???????????????? ??????? ? ??? ?????????."""
+    try:
+        config_data = get_user_config_data(user=user)
+        prompts_data = get_user_prompts_data(user=user)
+        stations = config_data.get('stations') or {}
+        if not isinstance(stations, dict):
+            stations = {}
+        prompts_data.setdefault('stations', {})
+        default_prompt = prompts_data.get('default') or '?????? ?? ?????????'
+        changed = False
+
+        for station_code in stations.keys():
+            if station_code not in prompts_data['stations']:
+                prompts_data['stations'][station_code] = default_prompt
+                changed = True
+
+        for station_code in list(prompts_data['stations'].keys()):
+            if station_code not in stations:
+                prompts_data['stations'].pop(station_code)
+                changed = True
+
+        if changed:
+            save_user_prompts_data(prompts_data, user=user)
+            try:
+                write_prompts_file(prompts_data, user=user)
+            except Exception as file_error:
+                app.logger.error("Не удалось обновить prompts-файл: %s", file_error)
+        return changed
+    except Exception as e:
+        app.logger.error(f"?????? ????????????? ????????: {e}")
+        return False
+
+
+def get_service_status():
+    """Проверяет статус сервиса Call Analyzer (ищем процесс python/py с main.py)."""
+    try:
+        running = False
+        pid = None
+
+        # 1) Пытаемся через WMIC (доступно на большинстве win-систем)
+        try:
+            cmd = [
+                'wmic', 'process', 'where', "(name='python.exe' or name='py.exe')", 'get', 'ProcessId,CommandLine', '/FORMAT:LIST'
+            ]
+            res = subprocess.run(cmd, capture_output=True, text=True, encoding='cp1251', errors='ignore')
+            out = res.stdout or ''
+            for block in out.split('\n\n'):
+                # Ищем процесс с main.py (не app.py)
+                if 'main.py' in block and 'app.py' not in block:
+                    running = True
+                    # Ищем PID
+                    for line in block.splitlines():
+                        if line.strip().startswith('ProcessId='):
+                            try:
+                                pid = int(line.split('=', 1)[1].strip())
+                            except Exception:
+                                pid = None
+                    break
+        except Exception:
+            pass
+
+        # 2) Фолбэк через PowerShell Get-Process с выводом командной строки
+        if not running:
+            ps_script = (
+                "Get-CimInstance Win32_Process | Where-Object { ($_.Name -eq 'python.exe' -or $_.Name -eq 'py.exe') -and "
+                "$_.CommandLine -match 'main.py' -and $_.CommandLine -notmatch 'app.py' } | Select-Object ProcessId, CommandLine"
+            )
+            try:
+                res = subprocess.run(['powershell', '-NoProfile', '-Command', ps_script], capture_output=True, text=True)
+                out = res.stdout or ''
+                if out.strip():
+                    running = True
+                    # Пытаемся извлечь PID как первое число в выводе
+                    for token in out.replace('\r', ' ').replace('\n', ' ').split():
+                        if token.isdigit():
+                            pid = int(token)
+                            break
+            except Exception:
+                pass
+
+        service_status['running'] = running
+        service_status['pid'] = pid
+    except Exception as e:
+        logging.error(f"Ошибка проверки статуса сервиса: {e}")
+        service_status['running'] = False
+        service_status['pid'] = None
+
+    return service_status
+
+@app.route('/')
+@login_required
+def index():
+    """Главная страница"""
+    status = get_service_status()
+    return render_template('index.html', status=status, active_page='dashboard')
+
+@app.route('/api/status')
+@login_required
+def api_status():
+    """API для получения статуса системы"""
+    status = get_service_status()
+    
+    return jsonify({
+        'service': status,
+        'timestamp': datetime.now().isoformat()
+    })
+
+@app.route('/api/summary/realtime')
+@login_required
+def api_summary_realtime():
+    """Онлайн-сводка (как вкладка Сводный отчет) за указанный интервал или за сегодня.
+    Параметры: start_date=YYYY-MM-DD, end_date=YYYY-MM-DD (необязательные).
+    """
+    try:
+        # Ленивая загрузка, чтобы не тянуть зависимости раньше времени
+        from reports.week_full import compute_realtime_summary
+
+        start_date_str = request.args.get('start_date')
+        end_date_str = request.args.get('end_date')
+
+        if start_date_str:
+            try:
+                start_dt = datetime.strptime(start_date_str, '%Y-%m-%d')
+            except ValueError:
+                return jsonify({'success': False, 'message': 'Некорректный start_date'}), 400
+        else:
+            today = datetime.now()
+            start_dt = datetime(today.year, today.month, today.day)
+
+        if end_date_str:
+            try:
+                end_dt = datetime.strptime(end_date_str, '%Y-%m-%d')
+            except ValueError:
+                return jsonify({'success': False, 'message': 'Некорректный end_date'}), 400
+        else:
+            # До конца текущего дня
+            end_dt = datetime.now()
+
+        # Профильный конфиг: пути и разрешённые станции читаем из настроек пользователя
+        runtime_cfg = build_user_runtime_config()
+        allowed_stations = runtime_cfg.get('allowed_stations')
+        if not allowed_stations:
+            allowed_stations = None
+        base_records_path = runtime_cfg['paths']['base_records_path']
+
+        # Админам всегда показываем весь набор станций
+        user = current_user if hasattr(current_user, 'is_authenticated') and current_user.is_authenticated else None
+        if user and user.role == 'admin':
+            allowed_stations = None
+
+        station_names = runtime_cfg.get('stations') or {}
+        station_mapping = runtime_cfg.get('station_mapping') or {}
+        employee_by_extension = runtime_cfg.get('employee_by_extension') or {}
+        script_prompt_path = runtime_cfg['paths'].get('script_prompt_file')
+
+        summary = compute_realtime_summary(
+            start_dt,
+            end_dt,
+            allowed_stations=allowed_stations,
+            base_folder=base_records_path,
+            station_names=station_names,
+            station_mapping=station_mapping,
+            employee_by_extension=employee_by_extension,
+            script_prompt_path=script_prompt_path
+        )
+
+        # Считаем агрегаты для быстрых метрик на карточках
+        total_calls = 0
+        stations_count = 0
+        if summary and summary.get('stations'):
+            stations_count = len(summary['stations'])
+            for st in summary['stations']:
+                for c in st.get('consultants', []):
+                    total_calls += int(c.get('calls', 0))
+
+        return jsonify({
+            'success': True,
+            'generated_at': summary.get('generated_at'),
+            'total_calls': total_calls,
+            'stations_count': stations_count,
+            'ranking': summary.get('ranking', []),
+            'stations': summary.get('stations', []),
+            'total_questions': summary.get('total_questions', 0)
+        })
+    except Exception as e:
+        app.logger.error(f"Ошибка realtime summary: {e}")
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+@app.route('/config')
+@login_required
+def config_page():
+    """Страница конфигурации"""
+    return render_template('config.html', active_page='config')
+
+@app.route('/api/config/load')
+@login_required
+def api_config_load():
+    """API для получения персональных настроек пользователя."""
+    config_data = get_user_config_data()
+    return jsonify(config_data)
+
+@app.route('/stations')
+@login_required
+def stations_page():
+    """Страница управления станциями"""
+    return render_template('stations.html', active_page='stations')
+
+@app.route('/api/stations')
+@login_required
+def api_stations():
+    """API ??? ????????? ?????? ??????? ????????????."""
+    config_data = get_user_config_data()
+    stations = config_data.get('stations', {})
+    station_chat_ids = config_data.get('station_chat_ids', {})
+    station_mapping = config_data.get('station_mapping', {})
+
+    result = []
+    for code, name in stations.items():
+        result.append({
+            'code': code,
+            'name': name,
+            'chat_ids': station_chat_ids.get(code, []),
+            'sub_stations': station_mapping.get(code, [])
+        })
+
+    return jsonify(result)
+
+@app.route('/api/stations/save', methods=['POST'])
+@login_required
+def api_stations_save():
+    """API ??? ?????????? ??????? ????????????."""
+    try:
+        data = request.get_json() or {}
+        config_data = get_user_config_data()
+
+        stations = dict(config_data.get('stations') or {})
+        station_chat_ids = dict(config_data.get('station_chat_ids') or {})
+        station_mapping = dict(config_data.get('station_mapping') or {})
+
+        stations_payload = data.get('stations')
+        if stations_payload is not None:
+            stations = {
+                item['code']: item['name']
+                for item in stations_payload
+                if item.get('code')
+            }
+
+        chat_ids_payload = data.get('station_chat_ids')
+        if chat_ids_payload is not None:
+            station_chat_ids = {k: v or [] for k, v in chat_ids_payload.items()}
+
+        mapping_payload = data.get('station_mapping')
+        if mapping_payload is not None:
+            for code, payload in mapping_payload.items():
+                if payload is None:
+                    stations.pop(code, None)
+                    station_chat_ids.pop(code, None)
+                    station_mapping.pop(code, None)
+                    continue
+
+                name = (payload.get('name') or '').strip()
+                if name:
+                    stations[code] = name
+                elif code not in stations:
+                    stations[code] = code
+
+                if 'chat_ids' in payload:
+                    station_chat_ids[code] = payload.get('chat_ids') or []
+
+                if 'sub_stations' in payload:
+                    station_mapping[code] = payload.get('sub_stations') or []
+
+        if 'nizh_station_codes' in data:
+            config_data['nizh_station_codes'] = data.get('nizh_station_codes') or []
+
+        if 'legal_entity_keywords' in data:
+            config_data['legal_entity_keywords'] = data.get('legal_entity_keywords') or []
+
+        config_data['stations'] = stations
+        config_data['station_chat_ids'] = station_chat_ids
+        config_data['station_mapping'] = station_mapping
+
+        save_user_config_data(config_data)
+        sync_prompts_from_config()
+        append_user_log('????????? ??????? ?????????', module='stations')
+        return jsonify({'success': True, 'message': '??????? ?????????'})
+    except Exception as e:
+        app.logger.error(f"?????? ?????????? ???????: {e}")
+        return jsonify({'success': False, 'message': str(e)})
+
+@app.route('/prompts')
+@login_required
+def prompts_page():
+    """Страница управления промптами"""
+    return render_template('prompts.html', active_page='prompts')
+
+@app.route('/api/prompts')
+@login_required
+def api_prompts():
+    """Возвращает промпты пользователя (с учётом файла в профиле)."""
+    sync_prompts_from_config()
+    prompts_data = get_user_prompts_data()
+    file_data = load_prompts_file()
+    changed = False
+
+    if file_data.get('anchors'):
+        if prompts_data.get('anchors') != file_data.get('anchors'):
+            prompts_data['anchors'] = file_data['anchors']
+            changed = True
+
+    if file_data.get('stations'):
+        if prompts_data.get('stations') != file_data.get('stations'):
+            prompts_data['stations'] = file_data['stations']
+            changed = True
+
+    if file_data.get('default') and prompts_data.get('default') != file_data.get('default'):
+        prompts_data['default'] = file_data['default']
+        changed = True
+
+    if changed:
+        save_user_prompts_data(prompts_data)
+
+    return jsonify(prompts_data)
+
+@app.route('/api/prompts/save', methods=['POST'])
+@login_required
+def api_prompts_save():
+    """Сохраняет промпты (якоря + станции) и обновляет файл пользователя."""
+    try:
+        data = request.get_json() or {}
+        normalized = normalize_prompts_payload(data)
+        save_user_prompts_data(normalized)
+        write_prompts_file(normalized)
+        append_user_log('Промпты обновлены', module='prompts')
+        return jsonify({'success': True, 'message': 'Промпты сохранены'})
+    except Exception as e:
+        app.logger.error(f"Ошибка сохранения промптов: {e}")
+        return jsonify({'success': False, 'message': str(e)})
+
+@app.route('/api/prompts/sync', methods=['POST'])
+@login_required
+def api_prompts_sync():
+    """Синхронизирует промпты со списком станций и обновляет файл."""
+    try:
+        if sync_prompts_from_config():
+            current_data = get_user_prompts_data()
+            try:
+                write_prompts_file(current_data)
+            except Exception as file_error:
+                app.logger.error("Не удалось обновить файл промптов: %s", file_error)
+            return jsonify({'success': True, 'message': 'Промпты синхронизированы'})
+        return jsonify({'success': True, 'message': 'Изменений не обнаружено'})
+    except Exception as e:
+        app.logger.error(f"Ошибка синхронизации промптов: {e}")
+        return jsonify({'success': False, 'message': str(e)})
+
+@app.route('/api/script-prompt', methods=['GET'])
+@login_required
+def api_script_prompt_get():
+    """?????????? ???????????????? ???-???? ? ??????? JSON."""
+    try:
+        data = get_user_script_prompt()
+        file_data = load_script_prompt_file()
+        changed = False
+
+        if file_data.get('checklist') and data.get('checklist') != file_data.get('checklist'):
+            data['checklist'] = file_data['checklist']
+            changed = True
+        if isinstance(file_data.get('prompt'), str) and data.get('prompt') != file_data.get('prompt'):
+            data['prompt'] = file_data['prompt']
+            changed = True
+
+        if changed:
+            save_user_script_prompt(data)
+
+        return jsonify({'success': True, 'data': data})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+@app.route('/api/script-prompt/save', methods=['POST'])
+@login_required
+def api_script_prompt_save():
+    """????????? ???????????????? ???-????."""
+    try:
+        payload = request.get_json() or {}
+        data = payload.get('data', {})
+        save_user_script_prompt(data)
+        write_script_prompt_file(data)
+        append_user_log('???-???? ????????', module='prompts')
+        return jsonify({'success': True, 'message': '???-???? ????????'})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+@app.route('/api/generate-prompt', methods=['POST'])
+@login_required
+def api_generate_prompt():
+    """API для автогенерации промпта через DeepSeek"""
+    try:
+        data = request.get_json()
+        title = (data.get('title') or '').strip()
+        existing_prompt = (data.get('existingPrompt') or '').strip()
+
+        if not title:
+            return jsonify({'success': False, 'message': 'Название пункта не может быть пустым'})
+
+        # Используем простой и конкретный промпт
+        context = f"Сгенерируй ключевую суть для пункта чек листа {title}, чтобы использовать это как описание для поиска в диалоге признаков выполнения этого пункта. не пиши ничего лишнего верни только суть"
+
+        import requests
+        runtime_cfg = build_user_runtime_config()
+        api_keys = runtime_cfg.get('api_keys', {})
+        thebai_api_key = api_keys.get('thebai_api_key')
+        thebai_url = api_keys.get('thebai_url') or 'https://api.deepseek.com/v1/chat/completions'
+        thebai_model = api_keys.get('thebai_model') or 'deepseek-reasoner'
+
+        if not thebai_api_key:
+            return jsonify({'success': False, 'message': 'Укажите TheB.ai API key в настройках профиля'}), 400
+
+        prompt_request = {
+            "model": thebai_model,
+            "messages": [
+                {
+                    "role": "system",
+                    "content": "���< ���?�?�?�%�?��� �?�>�? �?�?���?���?��? ��?���'���: �?����?���?��� ���?�?��'�?�? �ؐ��-�>��?�'��. �?�'�?��ؐ��� �'�?�>�?��? �?�?�'�?, �+��� �>��?�?��: �?�>�?�?.",
+                },
+                {
+                    "role": "user",
+                    "content": context
+                },
+            ],
+            "temperature": 0.3,
+            "max_tokens": 200,
+        }
+
+        response = requests.post(
+            thebai_url,
+            headers={
+                'Authorization': f'Bearer {thebai_api_key}',
+                'Content-Type': 'application/json',
+            },
+            json=prompt_request,
+            timeout=30,
+        )
+        if response.status_code == 200:
+            result = response.json()
+            app.logger.info(f"Ответ API: {result}")
+            
+            # Проверяем структуру ответа
+            if not result.get('choices') or len(result['choices']) == 0:
+                app.logger.error("Пустой ответ от API")
+                return jsonify({'success': False, 'message': 'Пустой ответ от API'})
+            
+            generated_prompt = (result.get('choices', [{}])[0]
+                                    .get('message', {})
+                                    .get('content', '')).strip()
+            
+            if not generated_prompt:
+                app.logger.error("Пустой промпт в ответе")
+                return jsonify({'success': False, 'message': 'Пустой промпт в ответе'})
+            
+            generated_prompt = generated_prompt.replace('"', '').replace("'", '').strip()
+            
+            app.logger.info(f"Сгенерирован промпт для '{title}': {generated_prompt}")
+            return jsonify({'success': True, 'prompt': generated_prompt})
+
+        app.logger.error(f"Ошибка DeepSeek API: {response.status_code} - {response.text}")
+        return jsonify({'success': False, 'message': f'Ошибка API: {response.status_code}'}), 502
+
+    except Exception as e:
+        app.logger.error(f"Ошибка генерации промпта: {e}")
+        return jsonify({'success': False, 'message': f'Ошибка генерации: {str(e)}'}), 500
+
+@app.route('/vocabulary')
+@login_required
+def vocabulary_page():
+    """Страница управления словарем"""
+    return render_template('vocabulary.html', active_page='vocabulary')
+
+@app.route('/api/vocabulary')
+@login_required
+def api_vocabulary():
+    """API ??? ????????? ??????????????? ??????? ????????????."""
+    vocab_data = get_user_vocabulary_data()
+    return jsonify(vocab_data)
+
+@app.route('/api/vocabulary/save', methods=['POST'])
+@login_required
+def api_vocabulary_save():
+    """API ??? ?????????? ????????????????? ???????."""
+    try:
+        data = request.get_json() or {}
+        save_user_vocabulary_data(data)
+        append_user_log('??????? ????????', module='vocabulary')
+        return jsonify({'success': True, 'message': '??????? ????????'})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)})
+
+@app.route('/reports')
+@login_required
+def reports_page():
+    """Страница отчетов"""
+    return render_template('reports.html', active_page='reports')
+
+# Глобальная переменная для отслеживания статуса генерации отчетов
+report_generation_status = {}
+
+# Глобальная переменная для отслеживания прогресса генерации отчетов
+report_generation_progress = {}
+
+@app.route('/api/reports/generate', methods=['POST'])
+@login_required
+def api_reports_generate():
+    """API для генерации отчетов"""
+    try:
+        data = request.get_json()
+        report_type = data.get('type', 'week_full')
+        # Параметры интервала из UI
+        start_date_str = data.get('start_date')
+        end_date_str = data.get('end_date')
+        
+        # Логируем полученные даты для отладки
+        app.logger.info(f"Генерация отчета {report_type}: start_date={start_date_str}, end_date={end_date_str}")
+        
+        # Проверяем доступность модулей отчетов
+        try:
+            if report_type == 'week_full':
+                from reports.week_full import run_week_full
+            elif report_type == 'rr_3':
+                from reports.rr_3 import run_rr_3
+            elif report_type == 'rr_bad':
+                from reports.rr_bad import run_rr_bad
+            elif report_type == 'skolko_52':
+                from reports.skolko_52 import run_skolko_52
+            else:
+                return jsonify({'success': False, 'message': f'Неизвестный тип отчета: {report_type}'})
+        except ImportError as e:
+            return jsonify({'success': False, 'message': f'Модуль отчета не найден: {str(e)}'})
+        
+        # Инициализируем статус и прогресс генерации
+        report_generation_status[report_type] = {
+            'status': 'running',
+            'started_at': datetime.now().isoformat(),
+            'message': 'Генерация отчета запущена',
+            'progress': 0,
+            'current_step': 'Инициализация...'
+        }
+        
+        report_generation_progress[report_type] = {
+            'progress': 0,
+            'current_step': 'Инициализация...',
+            'total_steps': 5,
+            'completed_steps': 0
+        }
+        
+        runtime_cfg = build_user_runtime_config()
+
+        # Запускаем генерацию отчета в отдельном потоке
+        def generate_report():
+            try:
+                # Обновляем прогресс
+                report_generation_progress[report_type]['current_step'] = 'Загрузка модуля отчета...'
+                report_generation_progress[report_type]['progress'] = 10
+                report_generation_status[report_type]['progress'] = 10
+                report_generation_status[report_type]['current_step'] = 'Загрузка модуля отчета...'
+                
+                if report_type == 'week_full':
+                    report_generation_progress[report_type]['current_step'] = 'Анализ данных за неделю...'
+                    report_generation_progress[report_type]['progress'] = 30
+                    report_generation_status[report_type]['progress'] = 30
+                    report_generation_status[report_type]['current_step'] = 'Анализ данных за неделю...'
+                    # Подготовим даты
+                    start_dt = None
+                    end_dt = None
+                    if start_date_str:
+                        try:
+                            start_dt = datetime.strptime(start_date_str, '%Y-%m-%d')
+                        except ValueError as e:
+                            app.logger.error(f"Ошибка парсинга start_date '{start_date_str}': {e}")
+                    if end_date_str:
+                        try:
+                            end_dt = datetime.strptime(end_date_str, '%Y-%m-%d')
+                        except ValueError as e:
+                            app.logger.error(f"Ошибка парсинга end_date '{end_date_str}': {e}")
+                    
+                    app.logger.info(f"Запуск week_full с датами: start_dt={start_dt}, end_dt={end_dt}")
+                    
+                    # Получаем base_folder из runtime_cfg
+                    base_folder = runtime_cfg['paths']['base_records_path']
+                    app.logger.info(f"Используем base_folder: {base_folder}")
+                    
+                    # Запуск с интервалом
+                    try:
+                        with legacy_config_override(runtime_cfg):
+                            result_path = run_week_full(start_date=start_dt, end_date=end_dt, base_folder=base_folder)
+                    except TypeError:
+                        with legacy_config_override(runtime_cfg):
+                            result_path = run_week_full(base_folder=base_folder)
+                    
+                elif report_type == 'rr_3':
+                    report_generation_progress[report_type]['current_step'] = 'Анализ станций Ретрак...'
+                    report_generation_progress[report_type]['progress'] = 30
+                    report_generation_status[report_type]['progress'] = 30
+                    report_generation_status[report_type]['current_step'] = 'Анализ станций Ретрак...'
+                    # Подготовим даты
+                    date_from = datetime.strptime(start_date_str, '%Y-%m-%d') if start_date_str else None
+                    date_to = datetime.strptime(end_date_str, '%Y-%m-%d') if end_date_str else None
+                    try:
+                        with legacy_config_override(runtime_cfg):
+                            run_rr_3(date_from=date_from, date_to=date_to)
+                    except TypeError:
+                        with legacy_config_override(runtime_cfg):
+                            run_rr_3()
+                    
+                elif report_type == 'rr_bad':
+                    report_generation_progress[report_type]['current_step'] = 'Анализ плохих звонков...'
+                    report_generation_progress[report_type]['progress'] = 30
+                    report_generation_status[report_type]['progress'] = 30
+                    report_generation_status[report_type]['current_step'] = 'Анализ плохих звонков...'
+                    # Подготовим даты
+                    date_from = datetime.strptime(start_date_str, '%Y-%m-%d') if start_date_str else None
+                    date_to = datetime.strptime(end_date_str, '%Y-%m-%d') if end_date_str else None
+                    try:
+                        with legacy_config_override(runtime_cfg):
+                            run_rr_bad(date_from=date_from, date_to=date_to)
+                    except TypeError:
+                        with legacy_config_override(runtime_cfg):
+                            run_rr_bad()
+                    
+                elif report_type == 'skolko_52':
+                    report_generation_progress[report_type]['current_step'] = 'Анализ данных за год...'
+                    report_generation_progress[report_type]['progress'] = 30
+                    report_generation_status[report_type]['progress'] = 30
+                    report_generation_status[report_type]['current_step'] = 'Анализ данных за год...'
+                    # Подготовим даты
+                    date_from = datetime.strptime(start_date_str, '%Y-%m-%d') if start_date_str else None
+                    date_to = datetime.strptime(end_date_str, '%Y-%m-%d') if end_date_str else None
+                    try:
+                        with legacy_config_override(runtime_cfg):
+                            run_skolko_52(date_from=date_from, date_to=date_to)
+                    except TypeError:
+                        with legacy_config_override(runtime_cfg):
+                            run_skolko_52()
+                
+                # Обновляем прогресс на завершение
+                report_generation_progress[report_type]['current_step'] = 'Создание Excel файла...'
+                report_generation_progress[report_type]['progress'] = 80
+                report_generation_status[report_type]['progress'] = 80
+                report_generation_status[report_type]['current_step'] = 'Создание Excel файла...'
+                
+                # Проверяем результат для week_full
+                if report_type == 'week_full':
+                    if not result_path or not os.path.exists(result_path):
+                        report_generation_status[report_type] = {
+                            'status': 'error',
+                            'started_at': report_generation_status[report_type]['started_at'],
+                            'completed_at': datetime.now().isoformat(),
+                            'message': 'Не удалось создать отчет week_full. Проверьте наличие аудио и прав записи.',
+                            'progress': 0,
+                            'current_step': 'Ошибка'
+                        }
+                        report_generation_progress[report_type] = {
+                            'progress': 0,
+                            'current_step': 'Ошибка',
+                            'total_steps': 5,
+                            'completed_steps': 0
+                        }
+                        return
+                
+                # Финальное обновление
+                report_generation_progress[report_type]['current_step'] = 'Отправка в Telegram...'
+                report_generation_progress[report_type]['progress'] = 95
+                report_generation_status[report_type]['progress'] = 95
+                report_generation_status[report_type]['current_step'] = 'Отправка в Telegram...'
+                
+                time.sleep(1)
+                
+                # Обновляем статус на успешное завершение
+                report_generation_status[report_type] = {
+                    'status': 'completed',
+                    'started_at': report_generation_status[report_type]['started_at'],
+                    'completed_at': datetime.now().isoformat(),
+                    'message': f'Отчет {report_type} успешно сгенерирован',
+                    'progress': 100,
+                    'current_step': 'Завершено'
+                }
+                
+                report_generation_progress[report_type] = {
+                    'progress': 100,
+                    'current_step': 'Завершено',
+                    'total_steps': 5,
+                    'completed_steps': 5
+                }
+                
+                logging.info(f"Отчет {report_type} успешно сгенерирован")
+                
+            except Exception as e:
+                # Обновляем статус на ошибку
+                report_generation_status[report_type] = {
+                    'status': 'error',
+                    'started_at': report_generation_status[report_type]['started_at'],
+                    'completed_at': datetime.now().isoformat(),
+                    'message': f'Ошибка генерации отчета {report_type}: {str(e)}',
+                    'progress': 0,
+                    'current_step': 'Ошибка'
+                }
+                
+                report_generation_progress[report_type] = {
+                    'progress': 0,
+                    'current_step': 'Ошибка',
+                    'total_steps': 5,
+                    'completed_steps': 0
+                }
+                
+                logging.error(f"Ошибка генерации отчета {report_type}: {e}")
+        
+        thread = threading.Thread(target=generate_report)
+        thread.daemon = True
+        thread.start()
+        
+        return jsonify({'success': True, 'message': f'Генерация отчета {report_type} запущена'})
+        
+    except Exception as e:
+        logging.error(f"Ошибка запуска генерации отчета: {e}")
+        return jsonify({'success': False, 'message': str(e)})
+
+@app.route('/api/reports/status')
+@login_required
+def api_reports_status():
+    """API для получения статуса генерации отчетов"""
+    return jsonify(report_generation_status)
+
+@app.route('/api/reports/progress')
+@login_required
+def api_reports_progress():
+    """API для получения прогресса генерации отчетов"""
+    return jsonify(report_generation_progress)
+
+@app.route('/api/check-excel')
+@login_required
+def api_check_excel():
+    """API для проверки содержимого Excel файла отчета"""
+    try:
+        import openpyxl
+        from pathlib import Path
+        
+        # Ищем последний созданный отчет
+        runtime_cfg = build_user_runtime_config()
+        base_path_str = runtime_cfg['paths']['base_records_path']
+        if not base_path_str:
+            return jsonify({'error': 'Не задан путь к каталогу со звонками в настройках профиля'})
+        base_path = Path(str(base_path_str))
+        excel_files = list(base_path.rglob('Отчет_по_скрипту_*.xlsx'))
+        
+        if not excel_files:
+            return jsonify({'error': 'Файлы отчетов не найдены'})
+        
+        # Берем самый новый файл
+        latest_file = max(excel_files, key=lambda x: x.stat().st_mtime)
+        
+        wb = openpyxl.load_workbook(latest_file)
+        
+        result = {
+            'file_path': str(latest_file),
+            'sheets': wb.sheetnames,
+            'sheet_count': len(wb.sheetnames),
+            'sheet_details': {}
+        }
+        
+        for sheet_name in wb.sheetnames:
+            sheet = wb[sheet_name]
+            result['sheet_details'][sheet_name] = {
+                'rows': sheet.max_row,
+                'columns': sheet.max_column,
+                'headers': []
+            }
+            
+            # Получаем заголовки первой строки
+            if sheet.max_row > 0:
+                for col in range(1, min(sheet.max_column + 1, 6)):  # первые 5 столбцов
+                    cell_value = sheet.cell(row=1, column=col).value
+                    result['sheet_details'][sheet_name]['headers'].append(str(cell_value) if cell_value else '')
+        
+        return jsonify(result)
+        
+    except Exception as e:
+        return jsonify({'error': f'Ошибка при проверке Excel файла: {str(e)}'})
+
+@app.route('/test-reports')
+@login_required
+def test_reports_page():
+    """Страница тестирования отчетов"""
+    return '''
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Тест отчетов - Call Analyzer</title>
+        <meta charset="utf-8">
+        <style>
+            body { font-family: Arial, sans-serif; margin: 40px; }
+            .header { background: #2c3e50; color: white; padding: 20px; border-radius: 5px; }
+            .content { margin: 20px 0; }
+            .test-section { background: #ecf0f1; padding: 15px; margin: 10px 0; border-radius: 5px; }
+            .test-button { background: #3498db; color: white; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; margin: 5px; }
+            .test-button:hover { background: #2980b9; }
+            .result { margin: 10px 0; padding: 10px; border-radius: 5px; }
+            .success { background: #d5f4e6; border: 1px solid #27ae60; }
+            .error { background: #fadbd8; border: 1px solid #e74c3c; }
+            .info { background: #d6eaf8; border: 1px solid #3498db; }
+            
+            .progress-bar {
+                width: 100%;
+                height: 20px;
+                background-color: #ecf0f1;
+                border-radius: 10px;
+                overflow: hidden;
+                margin: 10px 0;
+            }
+            
+            .progress-fill {
+                height: 100%;
+                background: linear-gradient(90deg, #3498db, #2ecc71);
+                width: 0%;
+                transition: width 0.3s ease;
+                border-radius: 10px;
+            }
+            
+            .progress-text {
+                text-align: center;
+                font-weight: bold;
+                color: #2c3e50;
+                margin: 5px 0;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="header">
+            <h1>🧪 Тест отчетов Call Analyzer</h1>
+            <p>Проверка функционала генерации отчетов</p>
+        </div>
+        
+        <div class="content">
+            <div class="test-section">
+                <h2>📊 Тест системы отчетов</h2>
+                <button class="test-button" onclick="testReportsSystem()">Проверить систему отчетов</button>
+                <div id="reports-test-result"></div>
+            </div>
+            
+            <div class="test-section">
+                <h2>🔑 Тест API ключей</h2>
+                <button class="test-button" onclick="testApiKeys()">Проверить API ключи</button>
+                <div id="api-test-result"></div>
+            </div>
+            
+            <div class="test-section">
+                <h2>📈 Тест генерации отчетов</h2>
+                <button class="test-button" onclick="testReportGeneration()">Запустить тестовый отчет</button>
+                <div id="generation-test-result"></div>
+            </div>
+            
+            <div class="test-section">
+                <h2>📋 Статус генерации</h2>
+                <button class="test-button" onclick="checkGenerationStatus()">Проверить статус</button>
+                <div id="status-result"></div>
+            </div>
+            
+            <div class="test-section">
+                <h2>📊 Прогресс генерации</h2>
+                <button class="test-button" onclick="checkGenerationProgress()">Проверить прогресс</button>
+                <div id="progress-result"></div>
+                <div id="progress-bar-container" style="display: none;">
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="progress-fill"></div>
+                    </div>
+                    <div class="progress-text" id="progress-text"></div>
+                </div>
+            </div>
+        </div>
+        
+        <script>
+            function showResult(elementId, message, type) {
+                const element = document.getElementById(elementId);
+                element.innerHTML = `<div class="result ${type}">${message}</div>`;
+            }
+            
+            async function testReportsSystem() {
+                showResult('reports-test-result', '⏳ Проверка системы отчетов...', 'info');
+                
+                try {
+                    const response = await fetch('/api/reports/test');
+                    const data = await response.json();
+                    
+                    if (data.dependencies && data.dependencies.all_installed) {
+                        showResult('reports-test-result', 
+                            '✅ Система отчетов работает корректно<br>' +
+                            '📦 Все зависимости установлены<br>' +
+                            '📁 Тестовый файл: ' + (data.test_result.test_file || 'N/A'), 
+                            'success');
+                    } else {
+                        showResult('reports-test-result', 
+                            '❌ Проблемы с системой отчетов<br>' +
+                            '📦 Недостающие зависимости: ' + (data.dependencies.missing.join(', ') || 'N/A'), 
+                            'error');
+                    }
+                } catch (error) {
+                    showResult('reports-test-result', '❌ Ошибка: ' + error.message, 'error');
+                }
+            }
+            
+            async function testApiKeys() {
+                showResult('api-test-result', '⏳ Проверка API ключей...', 'info');
+                
+                try {
+                    const response = await fetch('/api/config/test');
+                    const data = await response.json();
+                    
+                    let result = '🔑 Результаты тестирования API:<br>';
+                    
+                    if (data.test_results) {
+                        for (const [api, result_data] of Object.entries(data.test_results)) {
+                            const status = result_data.status === 'success' ? '✅' : '❌';
+                            result += `${status} ${api}: ${result_data.message}<br>`;
+                        }
+                    }
+                    
+                    const type = data.summary && data.summary.working_apis > 0 ? 'success' : 'error';
+                    showResult('api-test-result', result, type);
+                } catch (error) {
+                    showResult('api-test-result', '❌ Ошибка: ' + error.message, 'error');
+                }
+            }
+            
+            async function testReportGeneration() {
+                showResult('generation-test-result', '⏳ Запуск тестового отчета...', 'info');
+                
+                try {
+                    const response = await fetch('/api/reports/generate', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({type: 'week_full'})
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        showResult('generation-test-result', 
+                            '✅ Генерация отчета запущена<br>' +
+                            '📝 ' + data.message, 
+                            'success');
+                    } else {
+                        showResult('generation-test-result', 
+                            '❌ Ошибка запуска генерации<br>' +
+                            '📝 ' + data.message, 
+                            'error');
+                    }
+                } catch (error) {
+                    showResult('generation-test-result', '❌ Ошибка: ' + error.message, 'error');
+                }
+            }
+            
+            async function checkGenerationStatus() {
+                showResult('status-result', '⏳ Проверка статуса генерации...', 'info');
+                
+                try {
+                    const response = await fetch('/api/reports/status');
+                    const data = await response.json();
+                    
+                    if (Object.keys(data).length === 0) {
+                        showResult('status-result', '📊 Нет активных генераций отчетов', 'info');
+                    } else {
+                        let result = '📊 Статус генерации отчетов:<br>';
+                        for (const [reportType, status] of Object.entries(data)) {
+                            result += `📋 ${reportType}: ${status.status}<br>`;
+                            result += `📅 Начато: ${status.started_at}<br>`;
+                            if (status.completed_at) {
+                                result += `✅ Завершено: ${status.completed_at}<br>`;
+                            }
+                            if (status.progress !== undefined) {
+                                result += `📊 Прогресс: ${status.progress}%<br>`;
+                            }
+                            if (status.current_step) {
+                                result += `🔄 Текущий шаг: ${status.current_step}<br>`;
+                            }
+                            result += `📝 ${status.message}<br><br>`;
+                        }
+                        showResult('status-result', result, 'success');
+                    }
+                } catch (error) {
+                    showResult('status-result', '❌ Ошибка: ' + error.message, 'error');
+                }
+            }
+            
+            async function checkGenerationProgress() {
+                showResult('progress-result', '⏳ Проверка прогресса генерации...', 'info');
+                
+                try {
+                    const response = await fetch('/api/reports/progress');
+                    const data = await response.json();
+                    
+                    if (Object.keys(data).length === 0) {
+                        showResult('progress-result', '📊 Нет активных генераций отчетов', 'info');
+                        document.getElementById('progress-bar-container').style.display = 'none';
+                    } else {
+                        let result = '📊 Прогресс генерации отчетов:<br>';
+                        let hasActiveGeneration = false;
+                        
+                        for (const [reportType, progress] of Object.entries(data)) {
+                            if (progress.progress > 0 && progress.progress < 100) {
+                                hasActiveGeneration = true;
+                                result += `📋 ${reportType}: ${progress.progress}%<br>`;
+                                result += `🔄 ${progress.current_step}<br>`;
+                                result += `📊 Шагов: ${progress.completed_steps}/${progress.total_steps}<br><br>`;
+                                
+                                // Обновляем прогресс-бар
+                                updateProgressBar(progress.progress, progress.current_step);
+                            } else if (progress.progress === 100) {
+                                result += `✅ ${reportType}: Завершено<br>`;
+                            }
+                        }
+                        
+                        if (hasActiveGeneration) {
+                            document.getElementById('progress-bar-container').style.display = 'block';
+                            // Автоматически обновляем прогресс каждые 2 секунды
+                            setTimeout(checkGenerationProgress, 2000);
+                        } else {
+                            document.getElementById('progress-bar-container').style.display = 'none';
+                        }
+                        
+                        showResult('progress-result', result, 'success');
+                    }
+                } catch (error) {
+                    showResult('progress-result', '❌ Ошибка: ' + error.message, 'error');
+                }
+            }
+            
+            function updateProgressBar(progress, currentStep) {
+                const progressFill = document.getElementById('progress-fill');
+                const progressText = document.getElementById('progress-text');
+                
+                if (progressFill && progressText) {
+                    progressFill.style.width = progress + '%';
+                    progressText.textContent = `${progress}% - ${currentStep}`;
+                }
+            }
+        </script>
+    </body>
+    </html>
+    '''
+
+@app.route('/api/reports/test')
+@login_required
+def api_reports_test():
+    """API для тестирования системы отчетов"""
+    try:
+        # Проверяем зависимости
+        dependencies = ['pandas', 'openpyxl', 'requests', 'yaml', 'watchdog', 'APScheduler']
+        missing_deps = []
+        
+        for dep in dependencies:
+            try:
+                __import__(dep)
+            except ImportError:
+                missing_deps.append(dep)
+        
+        # Тестируем создание простого отчета
+        test_result = {'success': False, 'message': ''}
+        
+        if not missing_deps:
+            try:
+                import pandas as pd
+                
+                # Создаем тестовые данные
+                data = {
+                    'Дата': ['2024-01-01', '2024-01-02', '2024-01-03'],
+                    'Станция': ['NN01', 'NN02', 'NN01'],
+                    'Звонков': [10, 15, 12],
+                    'Качество': [8.5, 7.8, 9.2]
+                }
+                
+                df = pd.DataFrame(data)
+                
+                # Сохраняем тестовый файл
+                test_file = get_project_root() / 'test_report.xlsx'
+                df.to_excel(test_file, index=False)
+                
+                test_result = {
+                    'success': True,
+                    'message': 'Система отчетов работает корректно',
+                    'test_file': str(test_file)
+                }
+                
+            except Exception as e:
+                test_result = {
+                    'success': False,
+                    'message': f'Ошибка создания тестового отчета: {str(e)}'
+                }
+        else:
+            test_result = {
+                'success': False,
+                'message': f'Недостающие зависимости: {", ".join(missing_deps)}'
+            }
+        
+        return jsonify({
+            'dependencies': {
+                'missing': missing_deps,
+                'all_installed': len(missing_deps) == 0
+            },
+            'test_result': test_result
+        })
+        
+    except Exception as e:
+        return jsonify({'error': str(e)})
+
+@app.route('/transfers')
+@login_required
+def transfers_page():
+    """Страница управления переводами"""
+    return render_template('transfers.html', active_page='transfers')
+
+@app.route('/api/transfers')
+@login_required
+def api_transfers():
+    """API для получения списка переводов"""
+    try:
+        _, runtime_dir = get_runtime_context()
+        transfers_file = runtime_dir / 'transfer_cases.json'
+        if transfers_file.exists():
+            with open(transfers_file, 'r', encoding='utf-8') as f:
+                transfers = json.load(f)
+        else:
+            transfers = []
+        
+        return jsonify(transfers)
+        
+    except Exception as e:
+        return jsonify({'error': str(e)})
+
+@app.route('/recalls')
+@login_required
+def recalls_page():
+    """Страница управления перезвонами"""
+    return render_template('recalls.html', active_page='recalls')
+
+@app.route('/api/recalls')
+@login_required
+def api_recalls():
+    """API для получения списка перезвонов"""
+    try:
+        _, runtime_dir = get_runtime_context()
+        recalls_file = runtime_dir / 'recall_cases.json'
+        if recalls_file.exists():
+            with open(recalls_file, 'r', encoding='utf-8') as f:
+                recalls = json.load(f)
+        else:
+            recalls = []
+        
+        return jsonify(recalls)
+        
+    except Exception as e:
+        return jsonify({'error': str(e)})
+
+@app.route('/service/start', methods=['POST'])
+@login_required
+def service_start():
+    """Запуск сервиса"""
+    try:
+        ok, msg = run_script('start_service.bat', wait=False)
+        if ok:
+            service_status['running'] = True
+            service_status['last_start'] = datetime.now()
+            return jsonify({'success': True, 'message': 'Сервис запущен'})
+        return jsonify({'success': False, 'message': msg})
+            
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)})
+
+@app.route('/service/stop', methods=['POST'])
+@login_required
+def service_stop():
+    """Остановка сервиса"""
+    try:
+        ok, msg = run_script('stop_service.bat', wait=True)
+        if ok:
+            service_status['running'] = False
+            service_status['last_stop'] = datetime.now()
+            return jsonify({'success': True, 'message': 'Сервис остановлен'})
+        return jsonify({'success': False, 'message': msg})
+            
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)})
+
+@app.route('/service/restart', methods=['POST'])
+@login_required
+def service_restart():
+    """Перезапуск сервиса"""
+    try:
+        ok, msg = run_script('restart_service.bat', wait=False)
+        if ok:
+            return jsonify({'success': True, 'message': 'Сервис перезапущен'})
+        return jsonify({'success': False, 'message': msg})
+            
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)})
+
+@app.route('/logs')
+@login_required
+def logs_page():
+    """Страница логов"""
+    return render_template('logs.html', active_page='logs')
+
+@app.route('/api/logs')
+@login_required
+def api_logs():
+    """API ??? ????????? ???????????? ?????."""
+    try:
+        logs = get_user_logs()
+        return jsonify({
+            'logs': logs,
+            'total': len(logs)
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)})
+
+@app.route('/api/config/test')
+@login_required
+def api_config_test():
+    """API ??? ???????? ???????????? ?????? ? ??????????."""
+    try:
+        runtime_cfg = build_user_runtime_config()
+        api_keys = runtime_cfg.get('api_keys', {})
+        telegram_cfg = runtime_cfg.get('telegram', {})
+        test_results = {}
+
+        # TheB.ai
+        try:
+            import requests
+            headers = {
+                'Authorization': f"Bearer {api_keys.get('thebai_api_key', '')}",
+                'Content-Type': 'application/json'
+            }
+            payload = {
+                'model': api_keys.get('thebai_model', 'deepseek-reasoner'),
+                'messages': [{'role': 'user', 'content': 'ping'}],
+                'max_tokens': 10
+            }
+            url = api_keys.get('thebai_url') or 'https://api.deepseek.com/v1/chat/completions'
+            response = requests.post(url, headers=headers, json=payload, timeout=10)
+            if response.status_code == 200:
+                test_results['thebai'] = {'status': 'success', 'message': 'API ????????'}
+            else:
+                test_results['thebai'] = {'status': 'error', 'message': f'HTTP {response.status_code}'}
+        except Exception as e:
+            test_results['thebai'] = {'status': 'error', 'message': str(e)}
+
+        # Telegram
+        try:
+            import requests
+            bot_token = api_keys.get('telegram_bot_token', '')
+            if not bot_token:
+                raise ValueError('?? ?????? ????? ????')
+            url = f"https://api.telegram.org/bot{bot_token}/getMe"
+            response = requests.get(url, timeout=10)
+            if response.status_code == 200:
+                test_results['telegram'] = {'status': 'success', 'message': '??? ????????'}
+            else:
+                test_results['telegram'] = {'status': 'error', 'message': f'HTTP {response.status_code}'}
+        except Exception as e:
+            test_results['telegram'] = {'status': 'error', 'message': str(e)}
+
+        # Speechmatics
+        try:
+            import requests
+            speech_key = api_keys.get('speechmatics_api_key', '')
+            if not speech_key:
+                raise ValueError('?? ?????? Speechmatics API key')
+            url = 'https://asr.api.speechmatics.com/v2/jobs'
+            headers = {'Authorization': f'Bearer {speech_key}'}
+            response = requests.get(url, headers=headers, timeout=10)
+            if response.status_code == 200:
+                test_results['speechmatics'] = {'status': 'success', 'message': 'Speechmatics ????????'}
+            else:
+                test_results['speechmatics'] = {'status': 'error', 'message': f'HTTP {response.status_code}'}
+        except Exception as e:
+            test_results['speechmatics'] = {'status': 'error', 'message': str(e)}
+
+        working_apis = sum(1 for result in test_results.values() if result['status'] == 'success')
+        total_apis = len(test_results)
+
+        return jsonify({
+            'test_results': test_results,
+            'summary': {
+                'working_apis': working_apis,
+                'total_apis': total_apis,
+                'all_working': working_apis == total_apis
+            }
+        })
+    except Exception as e:
+        logging.error(f'?????? ???????? ????????????: {e}')
+        return jsonify({'error': str(e)})
+
+@app.route('/api/config/save', methods=['POST'])
+@login_required
+def api_config_save():
+    """API ??? ?????????? ????????? ?????? ???????????????? ????????."""
+    try:
+        data = request.get_json() or {}
+        config_type = data.get('type')
+        config_payload = data.get('data') or {}
+
+        if not config_type:
+            return jsonify({'success': False, 'message': '?? ?????? ??? ????????????'}), 400
+
+        config_data = get_user_config_data()
+
+        if config_type == 'api_keys':
+            config_data['api_keys'] = config_payload
+        elif config_type == 'paths':
+            config_data['paths'] = config_payload
+        elif config_type == 'telegram':
+            config_data['telegram'] = config_payload
+        elif config_type == 'employee_by_extension':
+            config_data['employee_by_extension'] = config_payload
+        elif config_type == 'transcription':
+            config_data['transcription'] = config_payload
+        elif config_type == 'stations':
+            config_data['stations'] = {item['code']: item['name'] for item in config_payload.get('stations', []) if item.get('code')}
+            config_data['station_chat_ids'] = config_payload.get('station_chat_ids', {})
+            config_data['station_mapping'] = config_payload.get('station_mapping', {})
+            config_data['nizh_station_codes'] = config_payload.get('nizh_station_codes', [])
+            config_data['legal_entity_keywords'] = config_payload.get('legal_entity_keywords', [])
+        else:
+            return jsonify({'success': False, 'message': f'??????????? ??? ????????????: {config_type}'}), 400
+
+        save_user_config_data(config_data)
+        if config_type == 'paths':
+            try:
+                request_reload(current_user.id)
+            except Exception as exc:
+                app.logger.warning(f"Не удалось запросить перезапуск воркера: {exc}")
+        if config_type == 'stations':
+            sync_prompts_from_config()
+        append_user_log(f'????????? ?????? ????????: {config_type}', module='config')
+        return jsonify({'success': True, 'message': '????????? ?????????'})
+    except Exception as e:
+        app.logger.error(f'?????? ?????????? ????????: {e}')
+        return jsonify({'success': False, 'message': str(e)})
+
+def update_api_keys(content, data):
+    """Обновляет API ключи в конфигурации"""
+    # TheB.ai
+    if 'thebai_api_key' in data:
+        content = re.sub(
+            r'THEBAI_API_KEY = "[^"]*"',
+            f'THEBAI_API_KEY = "{data["thebai_api_key"]}"',
+            content
+        )
+    if 'thebai_url' in data:
+        content = re.sub(
+            r'THEBAI_URL = "[^"]*"',
+            f'THEBAI_URL = "{data["thebai_url"]}"',
+            content
+        )
+    if 'thebai_model' in data:
+        content = re.sub(
+            r'THEBAI_MODEL = "[^"]*"',
+            f'THEBAI_MODEL = "{data["thebai_model"]}"',
+            content
+        )
+    
+    # Speechmatics
+    if 'speechmatics_api_key' in data:
+        content = re.sub(
+            r'SPEECHMATICS_API_KEY = "[^"]*"',
+            f'SPEECHMATICS_API_KEY = "{data["speechmatics_api_key"]}"',
+            content
+        )
+    
+    # Telegram Bot Token (отправляется как часть api_keys)
+    if 'telegram_bot_token' in data:
+        content = re.sub(
+            r'TELEGRAM_BOT_TOKEN = "[^"]*"',
+            f'TELEGRAM_BOT_TOKEN = "{data["telegram_bot_token"]}"',
+            content
+        )
+    
+    return content
+
+def update_paths(content, data):
+    """Обновляет пути в конфигурации"""
+    if 'base_records_path' in data:
+        # Экранируем обратные слеши для регулярного выражения
+        escaped_path = data["base_records_path"].replace("\\", "\\\\")
+        content = re.sub(
+            r'BASE_RECORDS_PATH = Path\("[^"]*"\)',
+            f'BASE_RECORDS_PATH = Path("{escaped_path}")',
+            content
+        )
+    if 'prompts_file' in data:
+        # Экранируем обратные слеши для регулярного выражения
+        escaped_path = data["prompts_file"].replace("\\", "\\\\")
+        content = re.sub(
+            r'PROMPTS_FILE = Path\("[^"]*"\)',
+            f'PROMPTS_FILE = Path("{escaped_path}")',
+            content
+        )
+    if 'additional_vocab_file' in data:
+        # Экранируем обратные слеши для регулярного выражения
+        escaped_path = data["additional_vocab_file"].replace("\\", "\\\\")
+        content = re.sub(
+            r'ADDITIONAL_VOCAB_FILE = Path\("[^"]*"\)',
+            f'ADDITIONAL_VOCAB_FILE = Path("{escaped_path}")',
+            content
+        )
+    
+    return content
+
+def update_telegram(content, data):
+    """Обновляет Telegram настройки в конфигурации"""
+    if 'telegram_bot_token' in data:
+        content = re.sub(
+            r'TELEGRAM_BOT_TOKEN = "[^"]*"',
+            f'TELEGRAM_BOT_TOKEN = "{data["telegram_bot_token"]}"',
+            content
+        )
+    if 'alert_chat_id' in data:
+        content = re.sub(
+            r'ALERT_CHAT_ID = "[^"]*"',
+            f'ALERT_CHAT_ID = "{data["alert_chat_id"]}"',
+            content
+        )
+    if 'legal_entity_chat_id' in data:
+        content = re.sub(
+            r'LEGAL_ENTITY_CHAT_ID = "[^"]*"',
+            f'LEGAL_ENTITY_CHAT_ID = "{data["legal_entity_chat_id"]}"',
+            content
+        )
+    if 'tg_channel_nizh' in data:
+        content = re.sub(
+            r"TG_CHANNEL_NIZH = '[^']*'",
+            f"TG_CHANNEL_NIZH = '{data['tg_channel_nizh']}'",
+            content
+        )
+    if 'tg_channel_other' in data:
+        content = re.sub(
+            r"TG_CHANNEL_OTHER = '[^']*'",
+            f"TG_CHANNEL_OTHER = '{data['tg_channel_other']}'",
+            content
+        )
+    
+    return content
+
+def update_employee_by_extension(content, data):
+    """Обновляет EMPLOYEE_BY_EXTENSION в конфигурации"""
+    employees = data if isinstance(data, dict) else data.get('employee_by_extension', {})
+    # Формируем словарь в виде Python-кода
+    lines = ["EMPLOYEE_BY_EXTENSION = {"]
+    for ext, name in employees.items():
+        safe_ext = str(ext).replace("'", "\'")
+        safe_name = str(name).replace("'", "\'")
+        lines.append(f"    '{safe_ext}': '{safe_name}',")
+    lines.append("}")
+    block = "\n".join(lines)
+
+    if 'EMPLOYEE_BY_EXTENSION' in content:
+        content = re.sub(r'EMPLOYEE_BY_EXTENSION\s*=\s*\{[\s\S]*?\}', block, content)
+    else:
+        content = content.rstrip() + "\n\n" + block + "\n"
+    return content
+
+def update_transcription(content, data):
+    """Обновляет настройки транскрипции (TBANK_STEREO_ENABLED)."""
+    stereo = bool(data.get('tbank_stereo_enabled', False))
+    pattern = r'TBANK_STEREO_ENABLED\s*=\s*(True|False)'
+    repl = f'TBANK_STEREO_ENABLED = {str(stereo)}'
+    if 'TBANK_STEREO_ENABLED' in content:
+        content = re.sub(pattern, repl, content)
+    else:
+        content = content.rstrip() + f"\n\n{repl}\n"
+    return content
+
+def update_stations(content, data):
+    """Обновляет станции в конфигурации"""
+    app.logger.info(f"update_stations called with data: {data}")
+    
+    if 'station_mapping' in data:
+        # Получаем существующие станции из конфигурации
+        existing_stations = {}
+        existing_names = {}
+        existing_mapping = {}
+        
+        # Извлекаем существующие STATION_CHAT_IDS
+        chat_ids_match = re.search(r'STATION_CHAT_IDS = \{([^}]*)\}', content, re.DOTALL)
+        if chat_ids_match:
+            chat_ids_content = chat_ids_match.group(1)
+            for line in chat_ids_content.split('\n'):
+                if "':" in line and "[" in line:
+                    station_id = line.split("':")[0].strip().strip("'\"")
+                    if station_id:
+                        existing_stations[station_id] = True
+        
+        # Извлекаем существующие STATION_NAMES
+        names_match = re.search(r'STATION_NAMES = \{([^}]*)\}', content, re.DOTALL)
+        if names_match:
+            names_content = names_match.group(1)
+            for line in names_content.split('\n'):
+                if '":' in line:
+                    station_id = line.split('":')[0].strip().strip('"')
+                    if station_id:
+                        existing_names[station_id] = True
+        
+        # Извлекаем существующие STATION_MAPPING
+        mapping_match = re.search(r'STATION_MAPPING = \{([^}]*)\}', content, re.DOTALL)
+        if mapping_match:
+            mapping_content = mapping_match.group(1)
+            for line in mapping_content.split('\n'):
+                if "':" in line and "[" in line:
+                    station_id = line.split("':")[0].strip().strip("'\"")
+                    if station_id:
+                        existing_mapping[station_id] = True
+        
+        # Обновляем словари, добавляя новые станции к существующим
+        mapping_dict = data['station_mapping']
+        
+        # Формируем STATION_CHAT_IDS (сохраняем существующие + добавляем новые)
+        stations_str = "STATION_CHAT_IDS = {\n"
+        
+        # Добавляем существующие станции (исключая удаляемые и обновляемые)
+        if chat_ids_match:
+            chat_ids_content = chat_ids_match.group(1)
+            for line in chat_ids_content.split('\n'):
+                if "':" in line and "[" in line:
+                    # Извлекаем ID станции из строки
+                    station_id = line.split("':")[0].strip().strip("'\"")
+                    # Проверяем, не удаляется ли эта станция и не обновляется ли
+                    if station_id not in mapping_dict:
+                        stations_str += line.strip() + "\n"
+        
+        # Добавляем новые/обновленные станции
+        for station_id, station_data in mapping_dict.items():
+            if station_data is None:
+                # Удаляем станцию - пропускаем её
+                continue
+            if isinstance(station_data, dict) and 'chat_ids' in station_data:
+                chat_ids = station_data['chat_ids']
+                chat_ids_str = "', '".join(chat_ids)
+                stations_str += f"    '{station_id}': ['{chat_ids_str}'],\n"
+        
+        stations_str += "}"
+        
+        content = re.sub(
+            r'STATION_CHAT_IDS = \{.*?\}',
+            stations_str,
+            content,
+            flags=re.DOTALL
+        )
+        
+        # Формируем STATION_NAMES (сохраняем существующие + добавляем новые)
+        names_str = "STATION_NAMES = {\n"
+        
+        # Добавляем существующие имена станций (исключая удаляемые и обновляемые)
+        if names_match:
+            names_content = names_match.group(1)
+            for line in names_content.split('\n'):
+                if '":' in line:
+                    # Извлекаем ID станции из строки
+                    station_id = line.split('":')[0].strip().strip('"')
+                    # Проверяем, не удаляется ли эта станция и не обновляется ли
+                    if station_id not in mapping_dict:
+                        names_str += line.strip() + "\n"
+        
+        # Добавляем новые/обновленные имена станций
+        for station_id, station_data in mapping_dict.items():
+            if station_data is None:
+                # Удаляем станцию - пропускаем её
+                continue
+            if isinstance(station_data, dict) and 'name' in station_data:
+                station_name = station_data['name']
+                names_str += f'    "{station_id}": "{station_name}",\n'
+        
+        names_str += "}"
+        
+        content = re.sub(
+            r'STATION_NAMES = \{.*?\}',
+            names_str,
+            content,
+            flags=re.DOTALL
+        )
+        
+        # Формируем STATION_MAPPING (сохраняем существующие + добавляем новые)
+        mapping_str = "STATION_MAPPING = {\n"
+        
+        # Добавляем существующие маппинги (исключая удаляемые и обновляемые)
+        if mapping_match:
+            mapping_content = mapping_match.group(1)
+            for line in mapping_content.split('\n'):
+                if "':" in line and "[" in line:
+                    # Извлекаем ID станции из строки
+                    station_id = line.split("':")[0].strip().strip("'\"")
+                    # Проверяем, не удаляется ли эта станция и не обновляется ли
+                    if station_id not in mapping_dict:
+                        mapping_str += line.strip() + "\n"
+        
+        # Добавляем новые/обновленные маппинги
+        for station_id, station_data in mapping_dict.items():
+            if station_data is None:
+                # Удаляем станцию - пропускаем её
+                continue
+            if isinstance(station_data, dict) and 'sub_stations' in station_data:
+                sub_stations = station_data['sub_stations']
+                sub_stations_str = "', '".join(sub_stations)
+                mapping_str += f"    '{station_id}': ['{sub_stations_str}'],\n"
+        
+        mapping_str += "}"
+        
+        content = re.sub(
+            r'STATION_MAPPING = \{.*?\}',
+            mapping_str,
+            content,
+            flags=re.DOTALL
+        )
+    
+    if 'legal_entity_keywords' in data:
+        # Формируем новый список ключевых слов
+        keywords = data['legal_entity_keywords']
+        keywords_str = "LEGAL_ENTITY_KEYWORDS = [\n"
+        for keyword in keywords:
+            keywords_str += f'    "{keyword}",\n'
+        keywords_str += "]"
+        
+        # Заменяем старый список
+        content = re.sub(
+            r'LEGAL_ENTITY_KEYWORDS = \[.*?\]',
+            keywords_str,
+            content,
+            flags=re.DOTALL
+        )
+    
+    if 'nizh_station_codes' in data:
+        # Формируем новый список кодов станций
+        codes = data['nizh_station_codes']
+        codes_str = "NIZH_STATION_CODES = [\n"
+        for code in codes:
+            codes_str += f"    '{code}',\n"
+        codes_str += "]"
+        
+        # Заменяем старый список (включая закомментированные)
+        content = re.sub(
+            r'#?NIZH_STATION_CODES = \[.*?\]',
+            codes_str,
+            content,
+            flags=re.DOTALL
+        )
+    
+    return content
+
+if __name__ == '__main__':
+    # Настраиваем логирование
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s [%(levelname)s] %(name)s - %(message)s',
+        handlers=[
+            logging.FileHandler('web_interface.log', encoding='utf-8'),
+            logging.StreamHandler()
+        ]
+    )
+    
+    print("Запуск веб-интерфейса Call Analyzer...")
+    print("Откройте браузер и перейдите по адресу: http://localhost:5000")
+    
+    # Выполняем инициализацию перед запуском
+    initialize_app()
+
+    host = os.getenv('FLASK_HOST', '0.0.0.0')
+    port = int(os.getenv('FLASK_PORT', 5000))
+    debug = app.config.get('DEBUG', False)
+
+    app.run(host=host, port=port, debug=debug, use_reloader=False)
+

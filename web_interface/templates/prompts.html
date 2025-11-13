@@ -1,0 +1,798 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Промпты - Call Analyzer</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        .sidebar {
+            min-height: 100vh;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        .sidebar .nav-link {
+            color: rgba(255, 255, 255, 0.8);
+            padding: 12px 20px;
+            border-radius: 8px;
+            margin: 2px 0;
+            transition: all 0.3s;
+        }
+        .sidebar .nav-link:hover {
+            color: white;
+            background: rgba(255, 255, 255, 0.1);
+        }
+        .sidebar .nav-link.active {
+            color: white;
+            background: rgba(255, 255, 255, 0.2);
+        }
+        .main-content {
+            background-color: #f8f9fa;
+            min-height: 100vh;
+        }
+        .prompt-section {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+        .prompt-title {
+            color: #667eea;
+            border-bottom: 2px solid #e9ecef;
+            padding-bottom: 10px;
+            margin-bottom: 20px;
+        }
+        .btn-save {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            color: white;
+            padding: 12px 30px;
+            border-radius: 25px;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+        .btn-save:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(102, 126, 234, 0.3);
+            color: white;
+        }
+        .form-control:focus {
+            border-color: #667eea;
+            box-shadow: 0 0 0 0.2rem rgba(102, 126, 234, 0.25);
+        }
+        .prompt-textarea {
+            min-height: 200px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9rem;
+        }
+        .anchor-section {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+            border-left: 4px solid #667eea;
+        }
+        .station-item {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 10px;
+            border-left: 3px solid #28a745;
+        }
+        .station-code {
+            font-weight: bold;
+            color: #667eea;
+        }
+        .station-comment {
+            color: #6c757d;
+            font-style: italic;
+        }
+        .anchor-select {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ced4da;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container-fluid">
+        <div class="row">
+            <!-- Боковая панель -->
+                                                {% include 'partials/sidebar.html' %}
+
+            <!-- Основной контент -->
+            <main class="col-md-9 col-lg-10 main-content">
+                <div class="p-4">
+                    <div class="d-flex justify-content-between align-items-center mb-4">
+                        <h1 class="h3 mb-0">Управление промптами</h1>
+                        <div>
+                            <button class="btn btn-outline-primary me-2" onclick="syncPrompts()">
+                                <i class="fas fa-sync me-2"></i>Синхронизировать с конфигом
+                            </button>
+                            <button class="btn btn-save" onclick="savePrompts()">
+                                <i class="fas fa-save me-2"></i>Сохранить промпты
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Якоря промптов -->
+                    <div class="prompt-section">
+                        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+                            <h3 class="prompt-title mb-0 flex-grow-1">
+                                <i class="fas fa-anchor me-2"></i>Шаблоны промптов (якоря)
+                            </h3>
+                            <button class="btn btn-outline-primary btn-sm" data-bs-toggle="modal" data-bs-target="#anchorModal" onclick="resetAnchorModal()">
+                                <i class="fas fa-plus me-1"></i>Добавить якорь
+                            </button>
+                        </div>
+                        <div id="anchorsContainer">
+                            <div class="text-center">
+                                <div class="spinner-border" role="status">
+                                    <span class="visually-hidden">Загрузка промптов...</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Промпты для станций -->
+                    <div class="prompt-section">
+                        <h3 class="prompt-title">
+                            <i class="fas fa-comments me-2"></i>Промпты для анализа звонков по станциям
+                        </h3>
+                        <div id="stationPromptsContainer">
+                            <div class="text-center">
+                                <div class="spinner-border" role="status">
+                                    <span class="visually-hidden">Загрузка промптов...</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Промпт по умолчанию -->
+                    <div class="prompt-section">
+                        <h3 class="prompt-title">
+                            <i class="fas fa-cog me-2"></i>Промпт по умолчанию
+                        </h3>
+                        <div class="mb-3">
+                            <label class="form-label">Промпт для станций без специального промпта</label>
+                            <textarea class="form-control prompt-textarea" id="defaultPrompt" 
+                                      placeholder="Введите промпт по умолчанию..."></textarea>
+                        </div>
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <!-- Модалка для добавления якоря -->
+    <div class="modal fade" id="anchorModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-centered">
+            <div class="modal-content">
+                <form id="anchorForm" onsubmit="createAnchor(event)">
+                    <div class="modal-header">
+                        <h5 class="modal-title"><i class="fas fa-anchor me-2"></i>Новый якорь промпта</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="mb-3">
+                            <label for="newAnchorName" class="form-label">Название якоря</label>
+                            <input type="text" class="form-control" id="newAnchorName" placeholder="Например, Общий скрипт" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="newAnchorPrompt" class="form-label">Текст промпта</label>
+                            <textarea class="form-control prompt-textarea" id="newAnchorPrompt" placeholder="Введите текст промпта..." required></textarea>
+                        </div>
+                        <div class="text-muted small">
+                            Якорь можно будет выбрать для любой станции или использовать как шаблон для кастомного текста.
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Отмена</button>
+                        <button type="submit" class="btn btn-save">Создать</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        let promptsData = { anchors: {}, stations: {}, default: '' };
+        let scriptPromptData = { checklist: [], prompt: '' };
+
+        function ensurePromptsStructure() {
+            if (!promptsData || typeof promptsData !== 'object') {
+                promptsData = { anchors: {}, stations: {}, default: '' };
+                return;
+            }
+            if (!promptsData.anchors || typeof promptsData.anchors !== 'object') {
+                promptsData.anchors = {};
+            }
+            if (!promptsData.stations || typeof promptsData.stations !== 'object') {
+                promptsData.stations = {};
+            }
+            if (typeof promptsData.default !== 'string') {
+                promptsData.default = promptsData.default ? String(promptsData.default) : '';
+            }
+        }
+
+        function escapeHtml(str = '') {
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
+        function decodeKey(value) {
+            try {
+                return decodeURIComponent(value);
+            } catch {
+                return value;
+            }
+        }
+
+        // Загрузка промптов при старте
+        document.addEventListener('DOMContentLoaded', function() {
+            loadPrompts();
+            loadScriptPrompt();
+        });
+
+        async function loadPrompts() {
+            try {
+                const response = await fetch('/api/prompts');
+                const data = await response.json();
+                promptsData = data || { anchors: {}, stations: {}, default: '' };
+                ensurePromptsStructure();
+                renderPrompts();
+            } catch (error) {
+                console.error('Ошибка загрузки промптов:', error);
+                showAlert('Ошибка загрузки промптов', 'danger');
+            }
+        }
+
+        async function loadScriptPrompt() {
+            try {
+                const response = await fetch('/api/script-prompt');
+                const result = await response.json();
+                if (result.success) {
+                    scriptPromptData = result.data || { checklist: [], prompt: '' };
+                    renderChecklist();
+                } else {
+                    showAlert(result.message || 'Ошибка загрузки чек-листа', 'danger');
+                }
+            } catch (e) {
+                showAlert('Ошибка загрузки чек-листа: ' + e.message, 'danger');
+            }
+        }
+
+        async function syncPrompts() {
+            try {
+                const response = await fetch('/api/prompts/sync', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    }
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    showAlert('Промпты успешно синхронизированы с конфигом!', 'success');
+                    loadPrompts(); // Перезагружаем список
+                } else {
+                    showAlert('Ошибка синхронизации: ' + result.message, 'danger');
+                }
+            } catch (error) {
+                showAlert('Ошибка синхронизации: ' + error.message, 'danger');
+            }
+        }
+
+        function renderPrompts() {
+            ensurePromptsStructure();
+            // Заполняем промпт по умолчанию
+            document.getElementById('defaultPrompt').value = promptsData.default || '';
+            
+            // Рендерим якоря
+            renderAnchors();
+            
+            // Рендерим станции
+            renderStations();
+            // после загрузки промптов не перерисовываем чек-лист — он рендерится из loadScriptPrompt
+        }
+
+        function renderAnchors() {
+            ensurePromptsStructure();
+            const container = document.getElementById('anchorsContainer');
+            if (!container) {
+                return;
+            }
+            const anchors = promptsData.anchors || {};
+            const anchorNames = Object.keys(anchors);
+
+            if (anchorNames.length === 0) {
+                container.innerHTML = '<div class="text-center text-muted py-3">Якоря пока не созданы</div>';
+                return;
+            }
+
+            const anchorsHtml = anchorNames.map(anchorName => {
+                const encodedName = encodeURIComponent(anchorName);
+                const anchorPrompt = anchors[anchorName] || '';
+                return `
+                    <div class="anchor-section" data-anchor="${encodedName}">
+                        <div class="d-flex flex-column flex-md-row gap-3 mb-3">
+                            <div class="flex-grow-1">
+                                <label class="form-label text-muted small mb-1">Название якоря</label>
+                                <input type="text"
+                                       class="form-control"
+                                       value="${escapeHtml(anchorName)}"
+                                       onchange="renameAnchor('${encodedName}', this.value.trim())"
+                                       placeholder="Название якоря">
+                            </div>
+                            <div class="text-end">
+                                <label class="form-label text-muted small mb-1 d-block">Действие</label>
+                                <button type="button" class="btn btn-outline-danger btn-sm"
+                                        onclick="removeAnchor('${encodedName}')">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <label class="form-label text-muted small mb-1">Текст промпта</label>
+                        <textarea class="form-control prompt-textarea"
+                                  oninput="updateAnchorPrompt('${encodedName}', this.value)"
+                                  placeholder="Введите промпт для якоря...">${escapeHtml(anchorPrompt)}</textarea>
+                    </div>
+                `;
+            }).join('');
+
+            container.innerHTML = anchorsHtml;
+        }
+
+        function resetAnchorModal() {
+            const form = document.getElementById('anchorForm');
+            if (form) {
+                form.reset();
+            }
+        }
+
+        function createAnchor(event) {
+            event.preventDefault();
+            ensurePromptsStructure();
+            const form = event.target;
+            const nameInput = document.getElementById('newAnchorName');
+            const promptInput = document.getElementById('newAnchorPrompt');
+            const name = (nameInput?.value || '').trim();
+            const prompt = promptInput?.value || '';
+
+            if (!name) {
+                showAlert('Введите название якоря', 'warning');
+                return;
+            }
+            if (promptsData.anchors[name]) {
+                showAlert('Якорь с таким названием уже существует', 'warning');
+                return;
+            }
+
+            promptsData.anchors[name] = prompt;
+
+            const modalElement = document.getElementById('anchorModal');
+            const modal = modalElement ? bootstrap.Modal.getInstance(modalElement) : null;
+            if (modal) {
+                modal.hide();
+            }
+            if (form) {
+                form.reset();
+            }
+
+            renderAnchors();
+            renderStations();
+            showAlert('Якорь добавлен', 'success');
+        }
+
+        function renameAnchor(encodedOldName, newName) {
+            const oldName = decodeKey(encodedOldName);
+            ensurePromptsStructure();
+            if (!oldName) {
+                return;
+            }
+            const cleaned = (newName || '').trim();
+            if (!cleaned) {
+                renderAnchors();
+                return;
+            }
+            if (cleaned === oldName) {
+                return;
+            }
+            if (promptsData.anchors[cleaned]) {
+                showAlert('Якорь с таким названием уже существует', 'warning');
+                renderAnchors();
+                return;
+            }
+            const value = promptsData.anchors[oldName] || '';
+            delete promptsData.anchors[oldName];
+            promptsData.anchors[cleaned] = value;
+            renderAnchors();
+            renderStations();
+        }
+
+        function updateAnchorPrompt(encodedName, value) {
+            const name = decodeKey(encodedName);
+            ensurePromptsStructure();
+            if (!name) {
+                return;
+            }
+            const previousValue = promptsData.anchors[name] || '';
+            promptsData.anchors[name] = value;
+
+            if (previousValue === value) {
+                return;
+            }
+
+            Object.keys(promptsData.stations || {}).forEach(code => {
+                if (promptsData.stations[code] === previousValue) {
+                    promptsData.stations[code] = value;
+                }
+            });
+
+            renderStations();
+        }
+
+        function removeAnchor(encodedName) {
+            const name = decodeKey(encodedName);
+            ensurePromptsStructure();
+            if (!name || !promptsData.anchors[name]) {
+                return;
+            }
+            if (!confirm(`Удалить якорь "${name}"? Тексты станций останутся без изменений.`)) {
+                return;
+            }
+            delete promptsData.anchors[name];
+            renderAnchors();
+            renderStations();
+        }
+
+        function renderStations() {
+            ensurePromptsStructure();
+            const container = document.getElementById('stationPromptsContainer');
+            if (!container) {
+                return;
+            }
+
+            const stations = promptsData.stations || {};
+            const stationCodes = Object.keys(stations);
+
+            if (stationCodes.length === 0) {
+                container.innerHTML = '<div class="text-center text-muted">Станции пока не настроены</div>';
+                return;
+            }
+
+            const anchors = promptsData.anchors || {};
+            const anchorNames = Object.keys(anchors);
+            stationCodes.sort();
+
+            const promptsHtml = stationCodes.map(stationCode => {
+                const currentPrompt = stations[stationCode] || '';
+                let usedAnchor = null;
+                for (const name of anchorNames) {
+                    if ((anchors[name] || '') === currentPrompt) {
+                        usedAnchor = name;
+                        break;
+                    }
+                }
+                const isCustomPrompt = !usedAnchor;
+                const safeStationCode = escapeHtml(stationCode);
+                const previewSource = usedAnchor ? (anchors[usedAnchor] || '') : currentPrompt;
+                const previewText = previewSource
+                    ? escapeHtml(previewSource.length > 220 ? `${previewSource.slice(0, 220)}…` : previewSource)
+                    : '—';
+
+                const anchorOptions = anchorNames.map(name => `
+                    <option value="${escapeHtml(name)}" ${usedAnchor === name ? 'selected' : ''}>${escapeHtml(name)}</option>
+                `).join('');
+
+                return `
+                    <div class="station-item">
+                        <div class="row align-items-center">
+                            <div class="col-md-8">
+                                <h6 class="station-code mb-2">
+                                    <i class="fas fa-building me-2"></i>Станция ${safeStationCode}
+                                </h6>
+                                <div class="station-comment">
+                                    ${usedAnchor ? `Используется якорь: ${escapeHtml(usedAnchor)}` : 'Пользовательский текст'}
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label text-muted small mb-1">Связанный якорь</label>
+                                <select class="anchor-select"
+                                        data-station-select="true"
+                                        data-station-code="${safeStationCode}"
+                                        onchange="updateStationPrompt(this)">
+                                    <option value="">Выберите якорь</option>
+                                    ${anchorOptions}
+                                    <option value="custom" ${isCustomPrompt ? 'selected' : ''}>Свой текст</option>
+                                </select>
+                            </div>
+                        </div>
+                        ${isCustomPrompt ? `
+                            <div class="mt-3">
+                                <textarea class="form-control prompt-textarea"
+                                          data-station-text="true"
+                                          data-station-code="${safeStationCode}"
+                                          placeholder="Введите промпт для станции ${safeStationCode}..."
+                                          oninput="handleStationPromptInput(this)">${escapeHtml(currentPrompt)}</textarea>
+                            </div>
+                        ` : `
+                            <div class="text-muted small mt-2">
+                                <strong>Фрагмент текста:</strong> ${previewText}
+                            </div>
+                        `}
+                    </div>
+                `;
+            }).join('');
+
+            container.innerHTML = promptsHtml;
+        }
+
+        function updateStationPrompt(selectEl) {
+            if (!selectEl) return;
+            const stationCode = selectEl.dataset.stationCode;
+            if (!stationCode) return;
+            ensurePromptsStructure();
+            const selectedValue = selectEl.value;
+
+            if (selectedValue === 'custom') {
+                promptsData.stations[stationCode] = promptsData.stations[stationCode] || '';
+            } else if (!selectedValue) {
+                promptsData.stations[stationCode] = promptsData.default || '';
+            } else {
+                const anchorText = (promptsData.anchors || {})[selectedValue];
+                promptsData.stations[stationCode] = anchorText || promptsData.stations[stationCode] || '';
+            }
+
+            renderStations();
+        }
+
+        function handleStationPromptInput(textareaEl) {
+            if (!textareaEl) return;
+            const stationCode = textareaEl.dataset.stationCode;
+            if (!stationCode) return;
+            ensurePromptsStructure();
+            promptsData.stations[stationCode] = textareaEl.value;
+        }
+
+        async function savePrompts() {
+            try {
+                ensurePromptsStructure();
+                const anchors = { ...(promptsData.anchors || {}) };
+                const stations = {};
+                const stationSelects = document.querySelectorAll('[data-station-select="true"]');
+                stationSelects.forEach(select => {
+                    const stationCode = select.dataset.stationCode;
+                    if (!stationCode) {
+                        return;
+                    }
+                    stations[stationCode] = promptsData.stations?.[stationCode] || '';
+                });
+
+                const defaultPrompt = document.getElementById('defaultPrompt').value || '';
+
+                const payload = {
+                    anchors,
+                    stations,
+                    default: defaultPrompt
+                };
+
+                const response = await fetch('/api/prompts/save', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(payload)
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    promptsData.default = defaultPrompt;
+                    showAlert('Промпты сохранены успешно', 'success');
+                } else {
+                    showAlert(result.message || 'Ошибка при сохранении промптов', 'danger');
+                }
+            } catch (error) {
+                console.error('Ошибка сохранения промптов:', error);
+                showAlert('Ошибка сохранения промптов', 'danger');
+            }
+        }
+
+        // === Чек-лист ===
+        function renderChecklist() {
+            const container = document.createElement('div');
+            container.className = 'prompt-section';
+            container.innerHTML = `
+                <h3 class="prompt-title">
+                    <i class="fas fa-list-check me-2"></i>Чек-лист
+                </h3>
+                <div id="checklistItems"></div>
+                <button class="btn btn-outline-success mt-3" onclick="addChecklistItem()">
+                    <i class="fas fa-plus me-2"></i>Добавить пункт
+                </button>
+                <div class="mt-4">
+                    <label class="form-label">Собранный промпт (опционально)</label>
+                    <textarea class="form-control prompt-textarea" id="assembledPrompt" placeholder="Итоговый промпт...">${(scriptPromptData.prompt||'')}</textarea>
+                </div>
+                <div class="mt-3">
+                    <button class="btn btn-save" onclick="saveScriptPrompt()">
+                        <i class="fas fa-save me-2"></i>Сохранить чек-лист
+                    </button>
+                </div>
+            `;
+
+            // Вставляем перед секцией "Промпт по умолчанию"
+            const defaultSection = document.getElementById('defaultPrompt')?.closest('.prompt-section');
+            const main = document.querySelector('main .p-4');
+            if (defaultSection && main) {
+                main.insertBefore(container, defaultSection);
+            } else if (main) {
+                main.appendChild(container);
+            }
+
+            renderChecklistItems();
+        }
+
+        function renderChecklistItems() {
+            const holder = document.getElementById('checklistItems');
+            if (!holder) return;
+            const items = Array.isArray(scriptPromptData.checklist) ? scriptPromptData.checklist : [];
+            holder.innerHTML = items.map((item, idx) => `
+                <div class="anchor-section" data-index="${idx}">
+                    <div class="row g-3">
+                        <div class="col-md-4">
+                            <label class="form-label">Название пункта</label>
+                            <input type="text" class="form-control" value="${(item.title||'')}" onchange="updateChecklistTitle(${idx}, this.value)">
+                        </div>
+                        <div class="col-md-5">
+                            <label class="form-label">Промпт для пункта</label>
+                            <input type="text" class="form-control" id="prompt_${idx}" value="${(item.prompt||'')}" onchange="updateChecklistPrompt(${idx}, this.value)">
+                        </div>
+                        <div class="col-md-2 d-flex align-items-end">
+                            <button class="btn btn-outline-primary w-100" onclick="generatePrompt(${idx})" title="Автогенерация промпта">
+                                <i class="fas fa-magic"></i>
+                            </button>
+                        </div>
+                        <div class="col-md-1 d-flex align-items-end">
+                            <button class="btn btn-outline-danger w-100" onclick="removeChecklistItem(${idx})" title="Удалить пункт">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function addChecklistItem() {
+            if (!Array.isArray(scriptPromptData.checklist)) scriptPromptData.checklist = [];
+            scriptPromptData.checklist.push({ title: '', prompt: '' });
+            renderChecklistItems();
+        }
+
+        function removeChecklistItem(index) {
+            if (!Array.isArray(scriptPromptData.checklist)) return;
+            scriptPromptData.checklist.splice(index, 1);
+            renderChecklistItems();
+        }
+
+        function updateChecklistTitle(index, value) {
+            if (!Array.isArray(scriptPromptData.checklist)) return;
+            scriptPromptData.checklist[index].title = value;
+        }
+
+        function updateChecklistPrompt(index, value) {
+            if (!Array.isArray(scriptPromptData.checklist)) return;
+            scriptPromptData.checklist[index].prompt = value;
+        }
+
+        async function generatePrompt(index) {
+            if (!Array.isArray(scriptPromptData.checklist)) return;
+            
+            const item = scriptPromptData.checklist[index];
+            const title = item.title || '';
+            const existingPrompt = item.prompt || '';
+            
+            if (!title.trim()) {
+                showAlert('Сначала заполните название пункта', 'warning');
+                return;
+            }
+            
+            // Показываем индикатор загрузки
+            const button = event.target.closest('button');
+            const originalContent = button.innerHTML;
+            button.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+            button.disabled = true;
+            
+            try {
+                const response = await fetch('/api/generate-prompt', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        title: title,
+                        existingPrompt: existingPrompt
+                    })
+                });
+                
+                const result = await response.json();
+                console.log('Ответ API:', result);
+                
+                if (result.success) {
+                    // Обновляем промпт в данных
+                    scriptPromptData.checklist[index].prompt = result.prompt;
+                    
+                    // Обновляем поле ввода
+                    const promptInput = document.getElementById(`prompt_${index}`);
+                    if (promptInput) {
+                        promptInput.value = result.prompt;
+                        console.log('Обновлено поле ввода:', promptInput.value);
+                    }
+                    
+                    showAlert('Промпт успешно сгенерирован!', 'success');
+                } else {
+                    showAlert('Ошибка генерации промпта: ' + (result.message || 'Неизвестная ошибка'), 'danger');
+                }
+            } catch (error) {
+                console.error('Ошибка генерации промпта:', error);
+                showAlert('Ошибка генерации промпта: ' + error.message, 'danger');
+            } finally {
+                // Восстанавливаем кнопку
+                button.innerHTML = originalContent;
+                button.disabled = false;
+            }
+        }
+
+        async function saveScriptPrompt() {
+            try {
+                const payload = {
+                    data: {
+                        checklist: scriptPromptData.checklist || [],
+                        prompt: document.getElementById('assembledPrompt')?.value || ''
+                    }
+                };
+                const resp = await fetch('/api/script-prompt/save', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(payload)
+                });
+                const result = await resp.json();
+                if (result.success) {
+                    showAlert('Чек-лист сохранен', 'success');
+                } else {
+                    showAlert(result.message || 'Ошибка сохранения', 'danger');
+                }
+            } catch (e) {
+                showAlert('Ошибка сохранения: ' + e.message, 'danger');
+            }
+        }
+
+        function showAlert(message, type) {
+            const alertDiv = document.createElement('div');
+            alertDiv.className = `alert alert-${type} alert-dismissible fade show position-fixed`;
+            alertDiv.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
+            alertDiv.innerHTML = `
+                ${message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            `;
+            
+            document.body.appendChild(alertDiv);
+            
+            setTimeout(() => {
+                if (alertDiv.parentNode) {
+                    alertDiv.parentNode.removeChild(alertDiv);
+                }
+            }, 5000);
+        }
+    </script>
+</body>
+</html>

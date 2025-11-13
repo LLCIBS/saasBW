@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Логи - Call Analyzer</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        .sidebar {
+            min-height: 100vh;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        .sidebar .nav-link {
+            color: rgba(255, 255, 255, 0.8);
+            padding: 12px 20px;
+            border-radius: 8px;
+            margin: 2px 0;
+            transition: all 0.3s;
+        }
+        .sidebar .nav-link:hover {
+            color: white;
+            background: rgba(255, 255, 255, 0.1);
+        }
+        .sidebar .nav-link.active {
+            color: white;
+            background: rgba(255, 255, 255, 0.2);
+        }
+        .main-content {
+            background-color: #f8f9fa;
+            min-height: 100vh;
+        }
+        .log-entry {
+            background: white;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 10px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+            border-left: 4px solid #dee2e6;
+        }
+        .log-entry.info { border-left-color: #17a2b8; }
+        .log-entry.warning { border-left-color: #ffc107; }
+        .log-entry.error { border-left-color: #dc3545; }
+        .log-entry.success { border-left-color: #28a745; }
+        .log-entry.debug { border-left-color: #6c757d; }
+        
+        .log-level {
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 0.7rem;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        .level-info { background: #d1ecf1; color: #0c5460; }
+        .level-warning { background: #fff3cd; color: #856404; }
+        .level-error { background: #f8d7da; color: #721c24; }
+        .level-success { background: #d4edda; color: #155724; }
+        .level-debug { background: #e2e3e5; color: #383d41; }
+        
+        .log-timestamp {
+            color: #6c757d;
+            font-size: 0.8rem;
+        }
+        .log-module {
+            color: #667eea;
+            font-weight: 600;
+            font-size: 0.9rem;
+        }
+        .log-message {
+            margin-top: 8px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9rem;
+            white-space: pre-wrap;
+        }
+        .filter-buttons {
+            margin-bottom: 20px;
+        }
+        .filter-btn {
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+        .pagination-container {
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container-fluid">
+        <div class="row">
+            <!-- Боковая панель -->
+                                                {% include 'partials/sidebar.html' %}
+
+            <!-- Основной контент -->
+            <main class="col-md-9 col-lg-10 main-content">
+                <div class="p-4">
+                    <div class="d-flex justify-content-between align-items-center mb-4">
+                        <h1 class="h3 mb-0">Системные логи</h1>
+                        <button class="btn btn-outline-primary" onclick="refreshLogs()">
+                            <i class="fas fa-sync-alt me-2"></i>Обновить
+                        </button>
+                    </div>
+
+                    <!-- Фильтры -->
+                    <div class="filter-buttons">
+                        <button class="btn btn-outline-primary filter-btn active" onclick="filterLogs('all')">
+                            Все (<span id="countAll">0</span>)
+                        </button>
+                        <button class="btn btn-outline-info filter-btn" onclick="filterLogs('info')">
+                            Info (<span id="countInfo">0</span>)
+                        </button>
+                        <button class="btn btn-outline-warning filter-btn" onclick="filterLogs('warning')">
+                            Warning (<span id="countWarning">0</span>)
+                        </button>
+                        <button class="btn btn-outline-danger filter-btn" onclick="filterLogs('error')">
+                            Error (<span id="countError">0</span>)
+                        </button>
+                        <button class="btn btn-outline-success filter-btn" onclick="filterLogs('success')">
+                            Success (<span id="countSuccess">0</span>)
+                        </button>
+                        <button class="btn btn-outline-secondary filter-btn" onclick="filterLogs('debug')">
+                            Debug (<span id="countDebug">0</span>)
+                        </button>
+                    </div>
+
+                    <!-- Список логов -->
+                    <div id="logsContainer">
+                        <div class="text-center">
+                            <div class="spinner-border" role="status">
+                                <span class="visually-hidden">Загрузка логов...</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Пагинация -->
+                    <div class="pagination-container">
+                        <nav aria-label="Навигация по логам">
+                            <ul class="pagination justify-content-center" id="pagination">
+                                <!-- Пагинация будет добавлена динамически -->
+                            </ul>
+                        </nav>
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        let logsData = [];
+        let currentFilter = 'all';
+        let currentPage = 1;
+        const logsPerPage = 50;
+
+        // Загрузка логов при старте
+        document.addEventListener('DOMContentLoaded', function() {
+            loadLogs();
+        });
+
+        async function loadLogs(page = 1) {
+            try {
+                const response = await fetch(`/api/logs?page=${page}&per_page=${logsPerPage}`);
+                const data = await response.json();
+                
+                logsData = data.logs || [];
+                updateCounts();
+                renderLogs();
+                renderPagination(data);
+                
+            } catch (error) {
+                console.error('Ошибка загрузки логов:', error);
+                showAlert('Ошибка загрузки логов', 'danger');
+            }
+        }
+
+        function updateCounts() {
+            const counts = {
+                all: logsData.length,
+                info: logsData.filter(l => l.level === 'info').length,
+                warning: logsData.filter(l => l.level === 'warning').length,
+                error: logsData.filter(l => l.level === 'error').length,
+                success: logsData.filter(l => l.level === 'success').length,
+                debug: logsData.filter(l => l.level === 'debug').length
+            };
+
+            document.getElementById('countAll').textContent = counts.all;
+            document.getElementById('countInfo').textContent = counts.info;
+            document.getElementById('countWarning').textContent = counts.warning;
+            document.getElementById('countError').textContent = counts.error;
+            document.getElementById('countSuccess').textContent = counts.success;
+            document.getElementById('countDebug').textContent = counts.debug;
+        }
+
+        function renderLogs() {
+            const container = document.getElementById('logsContainer');
+            
+            let filteredLogs = logsData;
+            if (currentFilter !== 'all') {
+                filteredLogs = logsData.filter(l => l.level === currentFilter);
+            }
+
+            if (filteredLogs.length === 0) {
+                container.innerHTML = '<div class="text-center text-muted">Логи не найдены</div>';
+                return;
+            }
+
+            const logsHtml = filteredLogs.map(log => `
+                <div class="log-entry ${log.level}">
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        <div>
+                            <span class="log-level level-${log.level}">${log.level}</span>
+                            <span class="log-module ms-2">${log.module || 'System'}</span>
+                        </div>
+                        <span class="log-timestamp">${formatDateTime(log.timestamp)}</span>
+                    </div>
+                    <div class="log-message">${escapeHtml(log.message)}</div>
+                </div>
+            `).join('');
+
+            container.innerHTML = logsHtml;
+        }
+
+        function renderPagination(data) {
+            const pagination = document.getElementById('pagination');
+            
+            if (!data.pages || data.pages <= 1) {
+                pagination.innerHTML = '';
+                return;
+            }
+
+            let paginationHtml = '';
+            
+            // Предыдущая страница
+            if (data.current_page > 1) {
+                paginationHtml += `
+                    <li class="page-item">
+                        <a class="page-link" href="#" onclick="loadLogs(${data.current_page - 1})">Предыдущая</a>
+                    </li>
+                `;
+            }
+            
+            // Номера страниц
+            const startPage = Math.max(1, data.current_page - 2);
+            const endPage = Math.min(data.pages, data.current_page + 2);
+            
+            for (let i = startPage; i <= endPage; i++) {
+                paginationHtml += `
+                    <li class="page-item ${i === data.current_page ? 'active' : ''}">
+                        <a class="page-link" href="#" onclick="loadLogs(${i})">${i}</a>
+                    </li>
+                `;
+            }
+            
+            // Следующая страница
+            if (data.current_page < data.pages) {
+                paginationHtml += `
+                    <li class="page-item">
+                        <a class="page-link" href="#" onclick="loadLogs(${data.current_page + 1})">Следующая</a>
+                    </li>
+                `;
+            }
+            
+            pagination.innerHTML = paginationHtml;
+        }
+
+        function filterLogs(level) {
+            currentFilter = level;
+            
+            // Обновляем активную кнопку
+            document.querySelectorAll('.filter-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            event.target.classList.add('active');
+            
+            renderLogs();
+        }
+
+        function formatDateTime(timestamp) {
+            const date = new Date(timestamp);
+            return date.toLocaleString('ru-RU');
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function refreshLogs() {
+            loadLogs(currentPage);
+        }
+
+        function showAlert(message, type) {
+            const alertDiv = document.createElement('div');
+            alertDiv.className = `alert alert-${type} alert-dismissible fade show position-fixed`;
+            alertDiv.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
+            alertDiv.innerHTML = `
+                ${message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            `;
+            
+            document.body.appendChild(alertDiv);
+            
+            setTimeout(() => {
+                if (alertDiv.parentNode) {
+                    alertDiv.parentNode.removeChild(alertDiv);
+                }
+            }, 5000);
+        }
+    </script>
+</body>
+</html>
+
+

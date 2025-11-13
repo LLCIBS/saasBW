@@ -1,0 +1,21 @@
+[Unit]
+Description=Call Analyzer Web Interface
+After=network.target postgresql.service
+Requires=postgresql.service
+
+[Service]
+Type=simple
+User=callanalyzer
+Group=callanalyzer
+WorkingDirectory=/opt/call-analyzer
+Environment="PATH=/opt/call-analyzer/venv/bin"
+EnvironmentFile=/opt/call-analyzer/.env
+ExecStart=/opt/call-analyzer/venv/bin/python /opt/call-analyzer/web_interface/app.py
+Restart=always
+RestartSec=10
+StandardOutput=append:/var/log/call-analyzer/web.log
+StandardError=append:/var/log/call-analyzer/web.error.log
+
+[Install]
+WantedBy=multi-user.target
+

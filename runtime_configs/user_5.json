@@ -1,0 +1,53 @@
+{
+  "api_keys": {
+    "speechmatics_api_key": "KIVJjrMXkscitztOMfnw8iKSWEJjwXX1",
+    "thebai_url": "https://api.deepseek.com/v1/chat/completions",
+    "thebai_model": "deepseek-reasoner",
+    "telegram_bot_token": "7990616547:AAG-4jvHgWhR6JtR6pk3wOxzeWmreHnzMyY"
+  },
+  "paths": {
+    "base_records_path": "D:\\calls\\users\\5",
+    "prompts_file": "D:\\calls\\users\\5\\config\\prompts.yaml",
+    "additional_vocab_file": "D:\\calls\\users\\5\\config\\additional_vocab.yaml",
+    "script_prompt_file": "D:\\calls\\users\\5\\config\\script_prompt_8.yaml"
+  },
+  "telegram": {
+    "alert_chat_id": "",
+    "tg_channel_nizh": "",
+    "tg_channel_other": "",
+    "legal_entity_chat_id": ""
+  },
+  "employee_by_extension": {
+    "202": "Тестовый Сотрудник"
+  },
+  "stations": {
+    "202": "Тестовая станция"
+  },
+  "station_chat_ids": {
+    "202": []
+  },
+  "station_mapping": {
+    "202": []
+  },
+  "nizh_station_codes": [
+    "128801",
+    "303"
+  ],
+  "legal_entity_keywords": [
+    "компания",
+    "компании",
+    "компаний",
+    "организация",
+    "организации",
+    "организаций",
+    "ип",
+    "индивидуальный предприниматель",
+    "по счету",
+    "от юр лица",
+    "по расчетному счету"
+  ],
+  "transcription": {
+    "tbank_stereo_enabled": false
+  },
+  "allowed_stations": []
+}
