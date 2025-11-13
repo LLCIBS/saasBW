@@ -107,8 +107,11 @@ def login():
                 return render_template('auth/login.html')
             
             # Включаем постоянную сессию
-            from flask import session
-            session.permanent = True
+            try:
+                from flask import session
+                session.permanent = True
+            except Exception as e:
+                current_app.logger.warning(f"Не удалось установить постоянную сессию: {e}")
             
             login_user(user, remember=remember)
             user.last_login = datetime.utcnow()
@@ -117,9 +120,12 @@ def login():
             db.session.commit()
             
             # Проверяем, что пользователь действительно залогинен
-            from flask_login import current_user
-            current_app.logger.info(f"Пользователь {user.username} (ID: {user.id}) успешно вошел в систему")
-            current_app.logger.info(f"current_user.is_authenticated: {current_user.is_authenticated}")
+            try:
+                from flask_login import current_user
+                current_app.logger.info(f"Пользователь {user.username} (ID: {user.id}) успешно вошел в систему")
+                current_app.logger.info(f"current_user.is_authenticated: {current_user.is_authenticated}")
+            except Exception as e:
+                current_app.logger.error(f"Ошибка при логировании входа: {e}")
             
             next_page = request.args.get('next')
             if next_page:

@@ -532,8 +532,12 @@ if not app.config.get('SECRET_KEY') or app.config.get('SECRET_KEY') == 'dev-secr
     logging.warning("SECRET_KEY был сгенерирован автоматически. Установите его в .env файле!")
 
 # Настройки сессии для production
-app.config['SESSION_PERMANENT'] = True
-app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=1)
+try:
+    app.config['SESSION_PERMANENT'] = True
+    # PERMANENT_SESSION_LIFETIME должен быть числом (секунды), а не timedelta
+    app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=1).total_seconds()
+except Exception as e:
+    logging.error(f"Ошибка настройки сессии: {e}")
 
 db.init_app(app)
 login_manager.init_app(app)
