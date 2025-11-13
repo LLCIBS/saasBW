@@ -121,9 +121,11 @@ def login():
             
             # Проверяем, что пользователь действительно залогинен
             try:
-                from flask_login import current_user
+                # current_user уже импортирован в начале файла
                 current_app.logger.info(f"Пользователь {user.username} (ID: {user.id}) успешно вошел в систему")
-                current_app.logger.info(f"current_user.is_authenticated: {current_user.is_authenticated}")
+                # После login_user нужно использовать current_user из flask_login
+                # Но здесь current_user еще может быть не обновлен, поэтому используем user
+                current_app.logger.info(f"Пользователь залогинен: {user.username}")
             except Exception as e:
                 current_app.logger.error(f"Ошибка при логировании входа: {e}")
             
