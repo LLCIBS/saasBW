@@ -524,7 +524,17 @@ def reload_project_config():
         logging.error(f"Ошибка перезагрузки конфигурации: {e}")
 app = Flask(__name__)
 app.config.from_object(get_config())
-app.config.setdefault('SECRET_KEY', 'call_analyzer_web_interface_2025')
+
+# ВАЖНО: Убеждаемся, что SECRET_KEY установлен
+if not app.config.get('SECRET_KEY') or app.config.get('SECRET_KEY') == 'dev-secret-key-change-in-production':
+    import secrets
+    app.config['SECRET_KEY'] = secrets.token_hex(32)
+    logging.warning("SECRET_KEY был сгенерирован автоматически. Установите его в .env файле!")
+
+# Настройки сессии для production
+app.config['SESSION_PERMANENT'] = True
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=1)
+
 db.init_app(app)
 login_manager.init_app(app)
 app.register_blueprint(auth_bp)

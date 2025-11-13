@@ -106,11 +106,20 @@ def login():
                 flash('Ваш аккаунт деактивирован', 'error')
                 return render_template('auth/login.html')
             
+            # Включаем постоянную сессию
+            from flask import session
+            session.permanent = True
+            
             login_user(user, remember=remember)
             user.last_login = datetime.utcnow()
             if not user.settings:
                 db.session.add(UserSettings(user_id=user.id, data={}))
             db.session.commit()
+            
+            # Проверяем, что пользователь действительно залогинен
+            from flask_login import current_user
+            current_app.logger.info(f"Пользователь {user.username} (ID: {user.id}) успешно вошел в систему")
+            current_app.logger.info(f"current_user.is_authenticated: {current_user.is_authenticated}")
             
             next_page = request.args.get('next')
             if next_page:
