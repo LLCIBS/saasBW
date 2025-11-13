@@ -556,8 +556,20 @@ def require_login():
         return
     if endpoint.startswith('auth.'):
         return
-    if current_user.is_authenticated:
-        return
+    
+    # Логируем информацию о текущем пользователе для отладки
+    try:
+        if hasattr(current_user, 'is_authenticated'):
+            if current_user.is_authenticated:
+                logging.debug(f"Пользователь {current_user.username} (ID: {current_user.id}) авторизован для {endpoint}")
+                return
+            else:
+                logging.debug(f"Пользователь не авторизован, редирект на логин для {endpoint}")
+        else:
+            logging.debug(f"current_user не имеет is_authenticated для {endpoint}")
+    except Exception as e:
+        logging.debug(f"Ошибка проверки авторизации для {endpoint}: {e}")
+    
     return redirect(url_for('auth.login', next=request.url))
 
 

@@ -106,32 +106,44 @@ def login():
                 flash('Ваш аккаунт деактивирован', 'error')
                 return render_template('auth/login.html')
             
-            # Включаем постоянную сессию
+            # ВАЖНО: Сохраняем сессию перед login_user
+            from flask import session
             try:
-                from flask import session
                 session.permanent = True
             except Exception as e:
                 current_app.logger.warning(f"Не удалось установить постоянную сессию: {e}")
             
-            login_user(user, remember=remember)
+            # Логируем перед логином
+            current_app.logger.info(f"Попытка входа пользователя {user.username} (ID: {user.id})")
+            
+            # Выполняем логин
+            result = login_user(user, remember=remember)
+            current_app.logger.info(f"login_user вернул: {result}")
+            
             user.last_login = datetime.utcnow()
             if not user.settings:
                 db.session.add(UserSettings(user_id=user.id, data={}))
             db.session.commit()
             
+            # Проверяем сессию
+            current_app.logger.info(f"Session ID: {session.get('_id', 'не установлен')}")
+            current_app.logger.info(f"Session permanent: {session.permanent}")
+            
             # Проверяем, что пользователь действительно залогинен
             try:
-                # current_user уже импортирован в начале файла
+                # После login_user current_user должен быть обновлен
                 current_app.logger.info(f"Пользователь {user.username} (ID: {user.id}) успешно вошел в систему")
-                # После login_user нужно использовать current_user из flask_login
-                # Но здесь current_user еще может быть не обновлен, поэтому используем user
-                current_app.logger.info(f"Пользователь залогинен: {user.username}")
+                # Проверяем через current_user
+                if hasattr(current_user, 'is_authenticated'):
+                    current_app.logger.info(f"current_user.is_authenticated: {current_user.is_authenticated}")
             except Exception as e:
                 current_app.logger.error(f"Ошибка при логировании входа: {e}")
             
             next_page = request.args.get('next')
             if next_page:
+                current_app.logger.info(f"Редирект на: {next_page}")
                 return redirect(next_page)
+            current_app.logger.info("Редирект на главную страницу")
             return redirect(url_for('index'))
         else:
             flash('Неверное имя пользователя или пароль', 'error')
