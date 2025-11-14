@@ -659,15 +659,24 @@ def run_systemd_command(action):
         
         # Выполняем команду через sudo
         # ВАЖНО: Требуется настройка sudo без пароля для callanalyzer
-        # Выполните на сервере: echo "callanalyzer ALL=(ALL) NOPASSWD: /bin/systemctl start call-analyzer, /bin/systemctl stop call-analyzer, /bin/systemctl restart call-analyzer" | sudo tee /etc/sudoers.d/callanalyzer-systemctl
+        # Используем полный путь к systemctl, так как он может быть не в PATH
+        systemctl_path = '/usr/bin/systemctl'
+        if not os.path.exists(systemctl_path):
+            # Пробуем найти systemctl
+            result = subprocess.run(['which', 'systemctl'], capture_output=True, text=True, timeout=2)
+            if result.returncode == 0:
+                systemctl_path = result.stdout.strip()
+            else:
+                return False, "systemctl не найден в системе"
+        
         if action == 'start':
-            cmd = ['sudo', 'systemctl', 'start', service_name]
+            cmd = ['sudo', systemctl_path, 'start', service_name]
         elif action == 'stop':
-            cmd = ['sudo', 'systemctl', 'stop', service_name]
+            cmd = ['sudo', systemctl_path, 'stop', service_name]
         elif action == 'restart':
-            cmd = ['sudo', 'systemctl', 'restart', service_name]
+            cmd = ['sudo', systemctl_path, 'restart', service_name]
         elif action == 'status':
-            cmd = ['systemctl', 'is-active', service_name]
+            cmd = [systemctl_path, 'is-active', service_name]
         else:
             return False, f"Неизвестная команда: {action}"
         
@@ -720,14 +729,23 @@ def run_script(script_filename, wait=False):
 def ensure_service_running():
     """Проверяет и запускает сервис, если он не запущен."""
     try:
+        import platform
+        # На Linux сервере сервис управляется через systemd, не нужно автозапускать
+        # Автозапуск нужен только на Windows для разработки
+        if platform.system() == 'Linux':
+            # Просто проверяем статус, но не запускаем автоматически
+            # На сервере сервис должен быть настроен через systemd
+            status = get_service_status()
+            if status.get('running'):
+                app.logger.info('Сервис Call Analyzer уже запущен через systemd')
+            else:
+                app.logger.info('Сервис Call Analyzer не запущен. Используйте systemctl для управления или кнопку в веб-интерфейсе')
+            return
+        
+        # На Windows запускаем через .bat файл
         status = get_service_status()
         if not status.get('running'):
-            # Используем systemd на Linux, .bat на Windows
-            import platform
-            if platform.system() == 'Linux':
-                ok, msg = run_systemd_command('start')
-            else:
-                ok, msg = run_script('start_service.bat', wait=False)
+            ok, msg = run_script('start_service.bat', wait=False)
             if ok:
                 service_status['running'] = True
                 service_status['last_start'] = datetime.now()
@@ -803,10 +821,19 @@ def get_service_status():
         if platform.system() == 'Linux':
             # Проверка через systemd на Linux
             try:
+                # Используем полный путь к systemctl
+                systemctl_path = '/usr/bin/systemctl'
+                if not os.path.exists(systemctl_path):
+                    result = subprocess.run(['which', 'systemctl'], capture_output=True, text=True, timeout=2)
+                    if result.returncode == 0:
+                        systemctl_path = result.stdout.strip()
+                    else:
+                        systemctl_path = 'systemctl'  # Фолбэк
+                
                 # Определяем имя сервиса
                 service_name = 'call-analyzer-service'
                 result = subprocess.run(
-                    ['systemctl', 'list-units', '--type=service', '--state=active'],
+                    [systemctl_path, 'list-units', '--type=service', '--state=active'],
                     capture_output=True,
                     text=True,
                     timeout=5
@@ -819,7 +846,7 @@ def get_service_status():
                 
                 # Проверяем статус
                 result = subprocess.run(
-                    ['systemctl', 'is-active', service_name],
+                    [systemctl_path, 'is-active', service_name],
                     capture_output=True,
                     text=True,
                     timeout=5
@@ -830,7 +857,7 @@ def get_service_status():
                     # Получаем PID главного процесса
                     try:
                         result = subprocess.run(
-                            ['systemctl', 'show', '--property=MainPID', '--value', service_name],
+                            [systemctl_path, 'show', '--property=MainPID', '--value', service_name],
                             capture_output=True,
                             text=True,
                             timeout=5
