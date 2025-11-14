@@ -21,7 +21,9 @@ def default_config_template():
             'base_records_path': '',
             'prompts_file': '',
             'additional_vocab_file': '',
-            'script_prompt_file': ''
+            'script_prompt_file': '',
+            'source_type': 'local',  # 'local' или 'ftp'
+            'ftp_connection_id': None  # ID FTP подключения, если source_type = 'ftp'
         },
         'employee_by_extension': {},
         'stations': {},

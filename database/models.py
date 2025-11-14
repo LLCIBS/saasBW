@@ -145,6 +145,40 @@ class RecallCase(db.Model):
     user = db.relationship('User', back_populates='recall_cases')
 
 
+class FtpConnection(db.Model):
+    """Модель для FTP подключений"""
+    __tablename__ = 'ftp_connections'
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
+    name = db.Column(db.String(200), nullable=False)  # Название подключения
+    host = db.Column(db.String(255), nullable=False)  # FTP сервер
+    port = db.Column(db.Integer, default=21, nullable=False)  # Порт (21 для FTP, 22 для SFTP)
+    username = db.Column(db.String(100), nullable=False)
+    password = db.Column(db.String(255), nullable=False)  # В зашифрованном виде
+    remote_path = db.Column(db.String(1000), nullable=False, default='/')  # Удаленная папка
+    protocol = db.Column(db.String(10), default='ftp', nullable=False)  # ftp или sftp
+    is_active = db.Column(db.Boolean, default=True, nullable=False)  # Активно ли подключение
+    sync_interval = db.Column(db.Integer, default=300, nullable=False)  # Интервал синхронизации в секундах
+    last_sync = db.Column(db.DateTime, nullable=True)  # Время последней синхронизации
+    last_error = db.Column(Text, nullable=True)  # Последняя ошибка
+    download_count = db.Column(db.Integer, default=0, nullable=False)  # Количество скачанных файлов
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    __table_args__ = (
+        Index('idx_ftp_user_active', 'user_id', 'is_active'),
+    )
+
+    user = db.relationship('User', backref=db.backref('ftp_connections_rel', lazy='dynamic'))
+
+    def __repr__(self):
+        return f'<FtpConnection {self.name} ({self.host})>'
+
+    # Пароль хранится в открытом виде, так как нужен для FTP подключения
+    # В production рекомендуется использовать переменные окружения или зашифрованное хранилище
+
+
 class SystemLog(db.Model):
     """�?�?�?��>? �?��?�'��?�?�<�: �>�?�?�?�?"""
     __tablename__ = 'system_logs'

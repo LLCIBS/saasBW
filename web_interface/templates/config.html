@@ -207,6 +207,22 @@
                             <i class="fas fa-folder me-2"></i>Пути к файлам
                         </h3>
                         <div class="row">
+                            <div class="col-md-12 mb-3">
+                                <label class="form-label">Источник звонков</label>
+                                <div class="btn-group" role="group" id="sourceTypeGroup">
+                                    <input type="radio" class="btn-check" name="sourceType" id="sourceTypeLocal" value="local" checked>
+                                    <label class="btn btn-outline-primary" for="sourceTypeLocal">
+                                        <i class="fas fa-folder me-1"></i> Локальная папка
+                                    </label>
+                                    <input type="radio" class="btn-check" name="sourceType" id="sourceTypeFtp" value="ftp">
+                                    <label class="btn btn-outline-primary" for="sourceTypeFtp">
+                                        <i class="fas fa-server me-1"></i> FTP подключение
+                                    </label>
+                                </div>
+                                <div class="form-text">Выберите откуда брать файлы звонков для обработки</div>
+                            </div>
+                        </div>
+                        <div class="row" id="localPathRow">
                             <div class="col-md-6">
                                 <div class="mb-3">
                                     <label class="form-label">Базовая папка записей</label>
@@ -215,6 +231,28 @@
                                     <div class="form-text">Основная папка для хранения записей звонков</div>
                                 </div>
                             </div>
+                        </div>
+                        <div class="row" id="ftpConnectionRow" style="display: none;">
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label class="form-label">FTP подключение</label>
+                                    <select class="form-select" id="ftpConnectionId">
+                                        <option value="">-- Выберите подключение --</option>
+                                    </select>
+                                    <div class="form-text">Выберите FTP подключение для синхронизации файлов</div>
+                                    <small class="text-muted">Файлы будут скачиваться в локальную папку и обрабатываться автоматически</small>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label class="form-label">Локальная папка для сохранения</label>
+                                    <input type="text" class="form-control" id="baseRecordsPathFtp" 
+                                           placeholder="E:/CallRecords">
+                                    <div class="form-text">Папка, куда будут скачиваться файлы с FTP</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="row">
                             <div class="col-md-6">
                                 <div class="mb-3">
                                     <label class="form-label">Файл промптов</label>
@@ -332,7 +370,55 @@
         // Загрузка конфигурации при старте
         document.addEventListener('DOMContentLoaded', function() {
             loadConfig();
+            
+            // Обработчики переключения типа источника
+            document.querySelectorAll('input[name="sourceType"]').forEach(radio => {
+                radio.addEventListener('change', function() {
+                    updateSourceTypeUI(this.value);
+                });
+            });
         });
+        
+        // Функция переключения UI между локальной папкой и FTP
+        function updateSourceTypeUI(sourceType) {
+            const localRow = document.getElementById('localPathRow');
+            const ftpRow = document.getElementById('ftpConnectionRow');
+            
+            if (sourceType === 'local') {
+                localRow.style.display = 'flex';
+                ftpRow.style.display = 'none';
+            } else {
+                localRow.style.display = 'none';
+                ftpRow.style.display = 'flex';
+            }
+        }
+        
+        // Загрузка списка FTP подключений
+        async function loadFtpConnections() {
+            try {
+                const response = await fetch('/api/ftp/connections');
+                const connections = await response.json();
+                
+                const select = document.getElementById('ftpConnectionId');
+                // Сохраняем текущее значение
+                const currentValue = select.value;
+                
+                // Очищаем и заполняем список
+                select.innerHTML = '<option value="">-- Выберите подключение --</option>';
+                
+                connections.forEach(conn => {
+                    const option = document.createElement('option');
+                    option.value = conn.id;
+                    option.textContent = `${conn.name} (${conn.host})`;
+                    if (conn.id == currentValue) {
+                        option.selected = true;
+                    }
+                    select.appendChild(option);
+                });
+            } catch (error) {
+                console.error('Ошибка загрузки FTP подключений:', error);
+            }
+        }
 
         async function loadConfig() {
             try {
@@ -349,7 +435,25 @@
                 document.getElementById('tgChannelNizh').value = configData.telegram?.tg_channel_nizh || '';
                 document.getElementById('tgChannelOther').value = configData.telegram?.tg_channel_other || '';
                 
+                // Источник звонков
+                const sourceType = configData.paths?.source_type || 'local';
+                document.getElementById('sourceTypeLocal').checked = (sourceType === 'local');
+                document.getElementById('sourceTypeFtp').checked = (sourceType === 'ftp');
+                
+                // Загружаем FTP подключения для выпадающего списка
+                await loadFtpConnections();
+                
+                // Устанавливаем выбранное FTP подключение
+                const ftpConnectionId = configData.paths?.ftp_connection_id;
+                if (ftpConnectionId) {
+                    document.getElementById('ftpConnectionId').value = ftpConnectionId;
+                }
+                
+                // Обновляем UI после загрузки подключений
+                updateSourceTypeUI(sourceType);
+                
                 document.getElementById('baseRecordsPath').value = configData.paths?.base_records_path || '';
+                document.getElementById('baseRecordsPathFtp').value = configData.paths?.base_records_path || '';
                 document.getElementById('promptsFile').value = configData.paths?.prompts_file || '';
                 document.getElementById('additionalVocabFile').value = configData.paths?.additional_vocab_file || '';
                 document.getElementById('scriptPromptFile').value = configData.paths?.script_prompt_file || '';
@@ -507,11 +611,18 @@
                 }
                 
                 // Сохраняем пути
+                const sourceType = document.querySelector('input[name="sourceType"]:checked').value;
+                const basePath = sourceType === 'ftp' 
+                    ? document.getElementById('baseRecordsPathFtp').value 
+                    : document.getElementById('baseRecordsPath').value;
+                
                 const pathsData = {
-                    base_records_path: document.getElementById('baseRecordsPath').value,
+                    base_records_path: basePath,
                     prompts_file: document.getElementById('promptsFile').value,
                     additional_vocab_file: document.getElementById('additionalVocabFile').value,
-                    script_prompt_file: document.getElementById('scriptPromptFile').value
+                    script_prompt_file: document.getElementById('scriptPromptFile').value,
+                    source_type: sourceType,
+                    ftp_connection_id: sourceType === 'ftp' ? parseInt(document.getElementById('ftpConnectionId').value) || null : null
                 };
 
                 if (Object.values(pathsData).some(value => value.trim())) {

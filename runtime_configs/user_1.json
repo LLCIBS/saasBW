@@ -8,8 +8,8 @@
   "paths": {
     "base_records_path": "D:\\3",
     "prompts_file": "D:\\calls\\users\\1\\config\\prompts.yaml",
-    "additional_vocab_file": "D:\\calls\\users\\1\\config\\additional_vocab.yaml",
-    "script_prompt_file": "D:\\calls\\users\\1\\config\\script_prompt_8.yaml"
+    "additional_vocab_file": "D:\\ООО ИБС\\Бествей\\Система чек листов коммерция BW\\monv2_безRerTruck web5\\additional_vocab.yaml",
+    "script_prompt_file": "D:\\ООО ИБС\\Бествей\\Система чек листов коммерция BW\\monv2_безRerTruck web5\\script_prompt_8.yaml"
   },
   "telegram": {
     "alert_chat_id": "-1002413323859",
@@ -18,7 +18,7 @@
     "legal_entity_chat_id": "-1002413323859"
   },
   "employee_by_extension": {
-    "303": "Пользователь"
+    "303": "Оператор"
   },
   "stations": {
     "303": "Тестовая станция"

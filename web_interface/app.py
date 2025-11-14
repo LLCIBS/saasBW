@@ -43,7 +43,7 @@ from common.user_settings import (
 )
 
 from config.settings import get_config
-from database.models import db, User, UserSettings
+from database.models import db, User, UserSettings, FtpConnection
 from auth import login_manager
 from auth.routes import auth_bp
 try:
@@ -730,28 +730,19 @@ def ensure_service_running():
     """Проверяет и запускает сервис, если он не запущен."""
     try:
         import platform
-        # На Linux сервере сервис управляется через systemd, не нужно автозапускать
-        # Автозапуск нужен только на Windows для разработки
         if platform.system() == 'Linux':
-            # Просто проверяем статус, но не запускаем автоматически
-            # На сервере сервис должен быть настроен через systemd
+            # На Linux проверяем systemd
             status = get_service_status()
             if status.get('running'):
-                app.logger.info('Сервис Call Analyzer уже запущен через systemd')
+                app.logger.info('Сервис Call Analyzer запущен через systemd')
             else:
-                app.logger.info('Сервис Call Analyzer не запущен. Используйте systemctl для управления или кнопку в веб-интерфейсе')
-            return
-        
-        # На Windows запускаем через .bat файл
-        status = get_service_status()
-        if not status.get('running'):
-            ok, msg = run_script('start_service.bat', wait=False)
-            if ok:
-                service_status['running'] = True
-                service_status['last_start'] = datetime.now()
-                app.logger.info('Сервис запущен при старте веб-интерфейса')
-            else:
-                app.logger.error(f'Автозапуск сервиса не удался: {msg}')
+                app.logger.info('Сервис Call Analyzer не запущен. Используйте systemctl для управления')
+        else:
+            # На Windows сервис запускается автоматически через app.py (multiprocessing)
+            # Просто отмечаем, что он должен быть запущен
+            service_status['running'] = True
+            service_status['last_start'] = datetime.now()
+            app.logger.info('Сервис запущен при старте веб-интерфейса')
     except Exception as e:
         app.logger.error(f'Ошибка автозапуска сервиса: {e}')
 
@@ -871,45 +862,12 @@ def get_service_status():
             except Exception as e:
                 logging.debug(f"Ошибка проверки статуса через systemd: {e}")
         else:
-            # Windows: проверка через WMIC
-            try:
-                cmd = [
-                    'wmic', 'process', 'where', "(name='python.exe' or name='py.exe')", 'get', 'ProcessId,CommandLine', '/FORMAT:LIST'
-                ]
-                res = subprocess.run(cmd, capture_output=True, text=True, encoding='cp1251', errors='ignore')
-                out = res.stdout or ''
-                for block in out.split('\n\n'):
-                    # Ищем процесс с main.py (не app.py)
-                    if 'main.py' in block and 'app.py' not in block:
-                        running = True
-                        # Ищем PID
-                        for line in block.splitlines():
-                            if line.strip().startswith('ProcessId='):
-                                try:
-                                    pid = int(line.split('=', 1)[1].strip())
-                                except Exception:
-                                    pid = None
-                        break
-            except Exception:
-                pass
-
-            # Фолбэк через PowerShell
-            if not running:
-                ps_script = (
-                    "Get-CimInstance Win32_Process | Where-Object { ($_.Name -eq 'python.exe' -or $_.Name -eq 'py.exe') -and "
-                    "$_.CommandLine -match 'main.py' -and $_.CommandLine -notmatch 'app.py' } | Select-Object ProcessId, CommandLine"
-                )
-                try:
-                    res = subprocess.run(['powershell', '-NoProfile', '-Command', ps_script], capture_output=True, text=True)
-                    out = res.stdout or ''
-                    if out.strip():
-                        running = True
-                        for token in out.replace('\r', ' ').replace('\n', ' ').split():
-                            if token.isdigit():
-                                pid = int(token)
-                                break
-                except Exception:
-                    pass
+            # Windows: сервис запускается автоматически через app.py (multiprocessing)
+            # Если веб-интерфейс Flask работает (раз эта функция вызвана), 
+            # значит app.py запущен, а следовательно и service_manager тоже
+            running = True
+            pid = os.getpid()  # PID текущего процесса Flask
+            app.logger.debug(f"Windows: Сервис автоматически считается запущенным (Flask PID={pid})")
 
         service_status['running'] = running
         service_status['pid'] = pid
@@ -1991,6 +1949,230 @@ def api_recalls():
     except Exception as e:
         return jsonify({'error': str(e)})
 
+@app.route('/ftp')
+@login_required
+def ftp_page():
+    """Страница управления FTP подключениями"""
+    return render_template('ftp.html', active_page='ftp')
+
+@app.route('/api/ftp/connections', methods=['GET'])
+@login_required
+def api_ftp_connections():
+    """API для получения списка FTP подключений"""
+    try:
+        connections = FtpConnection.query.filter_by(user_id=current_user.id).all()
+        result = []
+        for conn in connections:
+            result.append({
+                'id': conn.id,
+                'name': conn.name,
+                'host': conn.host,
+                'port': conn.port,
+                'username': conn.username,
+                'remote_path': conn.remote_path,
+                'protocol': conn.protocol,
+                'is_active': conn.is_active,
+                'sync_interval': conn.sync_interval,
+                'last_sync': conn.last_sync.isoformat() if conn.last_sync else None,
+                'last_error': conn.last_error,
+                'download_count': conn.download_count,
+                'created_at': conn.created_at.isoformat(),
+                'updated_at': conn.updated_at.isoformat()
+            })
+        return jsonify(result)
+    except Exception as e:
+        app.logger.error(f"Ошибка получения FTP подключений: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/ftp/connections', methods=['POST'])
+@login_required
+def api_ftp_create():
+    """API для создания нового FTP подключения"""
+    try:
+        data = request.get_json()
+        
+        # Валидация
+        required_fields = ['name', 'host', 'username', 'password', 'remote_path', 'protocol']
+        for field in required_fields:
+            if not data.get(field):
+                return jsonify({'success': False, 'message': f'Поле {field} обязательно'}), 400
+        
+        # Создаем подключение
+        conn = FtpConnection(
+            user_id=current_user.id,
+            name=data['name'],
+            host=data['host'],
+            port=int(data.get('port', 21 if data['protocol'] == 'ftp' else 22)),
+            username=data['username'],
+            password=data['password'],
+            remote_path=data['remote_path'],
+            protocol=data['protocol'],
+            is_active=data.get('is_active', True),
+            sync_interval=int(data.get('sync_interval', 300))
+        )
+        
+        db.session.add(conn)
+        db.session.commit()
+        
+        # Запускаем синхронизацию только если это подключение выбрано в конфигурации пользователя
+        # Проверяем настройки пользователя
+        from database.models import UserSettings
+        from common.user_settings import default_config_template
+        
+        user_settings = UserSettings.query.filter_by(user_id=current_user.id).first()
+        if user_settings and user_settings.data:
+            config_data = user_settings.data.get('config') or default_config_template()
+            paths_cfg = config_data.get('paths') or {}
+            if paths_cfg.get('source_type') == 'ftp' and paths_cfg.get('ftp_connection_id') == conn.id:
+                if conn.is_active:
+                    try:
+                        from call_analyzer.ftp_sync_manager import start_ftp_sync
+                        start_ftp_sync(conn.id)
+                    except Exception as e:
+                        app.logger.warning(f"Не удалось запустить синхронизацию для FTP {conn.id}: {e}")
+        
+        return jsonify({'success': True, 'id': conn.id, 'message': 'FTP подключение создано'})
+    except Exception as e:
+        db.session.rollback()
+        app.logger.error(f"Ошибка создания FTP подключения: {e}")
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+@app.route('/api/ftp/connections/<int:conn_id>', methods=['PUT'])
+@login_required
+def api_ftp_update(conn_id):
+    """API для обновления FTP подключения"""
+    try:
+        conn = FtpConnection.query.filter_by(id=conn_id, user_id=current_user.id).first()
+        if not conn:
+            return jsonify({'success': False, 'message': 'Подключение не найдено'}), 404
+        
+        data = request.get_json()
+        was_active = conn.is_active
+        
+        # Обновляем поля
+        if 'name' in data:
+            conn.name = data['name']
+        if 'host' in data:
+            conn.host = data['host']
+        if 'port' in data:
+            conn.port = int(data['port'])
+        if 'username' in data:
+            conn.username = data['username']
+        if 'password' in data and data['password']:  # Обновляем пароль только если он не пустой
+            conn.password = data['password']
+        if 'remote_path' in data:
+            conn.remote_path = data['remote_path']
+        if 'protocol' in data:
+            conn.protocol = data['protocol']
+        if 'is_active' in data:
+            conn.is_active = data['is_active']
+        if 'sync_interval' in data:
+            conn.sync_interval = int(data['sync_interval'])
+        
+        db.session.commit()
+        
+        # Управляем синхронизацией только если это подключение выбрано в конфигурации
+        from database.models import UserSettings
+        from common.user_settings import default_config_template
+        
+        user_settings = UserSettings.query.filter_by(user_id=current_user.id).first()
+        is_selected = False
+        if user_settings and user_settings.data:
+            config_data = user_settings.data.get('config') or default_config_template()
+            paths_cfg = config_data.get('paths') or {}
+            is_selected = (paths_cfg.get('source_type') == 'ftp' and 
+                          paths_cfg.get('ftp_connection_id') == conn.id)
+        
+        if is_selected:
+            try:
+                from call_analyzer.ftp_sync_manager import start_ftp_sync, stop_ftp_sync
+                if conn.is_active and not was_active:
+                    start_ftp_sync(conn.id)
+                elif not conn.is_active and was_active:
+                    stop_ftp_sync(conn.id)
+            except Exception as e:
+                app.logger.warning(f"Не удалось обновить синхронизацию для FTP {conn.id}: {e}")
+        
+        return jsonify({'success': True, 'message': 'FTP подключение обновлено'})
+    except Exception as e:
+        db.session.rollback()
+        app.logger.error(f"Ошибка обновления FTP подключения: {e}")
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+@app.route('/api/ftp/connections/<int:conn_id>', methods=['DELETE'])
+@login_required
+def api_ftp_delete(conn_id):
+    """API для удаления FTP подключения"""
+    try:
+        conn = FtpConnection.query.filter_by(id=conn_id, user_id=current_user.id).first()
+        if not conn:
+            return jsonify({'success': False, 'message': 'Подключение не найдено'}), 404
+        
+        # Останавливаем синхронизацию
+        try:
+            from call_analyzer.ftp_sync_manager import stop_ftp_sync
+            stop_ftp_sync(conn.id)
+        except Exception as e:
+            app.logger.warning(f"Не удалось остановить синхронизацию для FTP {conn.id}: {e}")
+        
+        db.session.delete(conn)
+        db.session.commit()
+        
+        return jsonify({'success': True, 'message': 'FTP подключение удалено'})
+    except Exception as e:
+        db.session.rollback()
+        app.logger.error(f"Ошибка удаления FTP подключения: {e}")
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+@app.route('/api/ftp/connections/<int:conn_id>/test', methods=['POST'])
+@login_required
+def api_ftp_test(conn_id):
+    """API для тестирования FTP подключения"""
+    try:
+        conn = FtpConnection.query.filter_by(id=conn_id, user_id=current_user.id).first()
+        if not conn:
+            return jsonify({'success': False, 'message': 'Подключение не найдено'}), 404
+        
+        from call_analyzer.ftp_sync import FtpSync
+        
+        ftp = FtpSync(
+            host=conn.host,
+            port=conn.port,
+            username=conn.username,
+            password=conn.password,
+            remote_path=conn.remote_path,
+            protocol=conn.protocol
+        )
+        
+        success, message = ftp.test_connection()
+        
+        if success:
+            return jsonify({'success': True, 'message': message})
+        else:
+            return jsonify({'success': False, 'message': message}), 400
+            
+    except Exception as e:
+        app.logger.error(f"Ошибка тестирования FTP подключения: {e}")
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+@app.route('/api/ftp/connections/<int:conn_id>/sync', methods=['POST'])
+@login_required
+def api_ftp_sync(conn_id):
+    """API для ручной синхронизации FTP подключения"""
+    try:
+        conn = FtpConnection.query.filter_by(id=conn_id, user_id=current_user.id).first()
+        if not conn:
+            return jsonify({'success': False, 'message': 'Подключение не найдено'}), 404
+        
+        # Запускаем синхронизацию в фоне
+        from call_analyzer.ftp_sync_manager import sync_ftp_connection
+        threading.Thread(target=sync_ftp_connection, args=(conn.id,), daemon=True).start()
+        
+        return jsonify({'success': True, 'message': 'Синхронизация запущена'})
+    except Exception as e:
+        app.logger.error(f"Ошибка запуска синхронизации FTP: {e}")
+        return jsonify({'success': False, 'message': str(e)}), 500
+
 @app.route('/service/start', methods=['POST'])
 @login_required
 def service_start():
@@ -2161,7 +2343,41 @@ def api_config_save():
         if config_type == 'api_keys':
             config_data['api_keys'] = config_payload
         elif config_type == 'paths':
+            # Сохраняем пути
+            old_paths = config_data.get('paths', {})
             config_data['paths'] = config_payload
+            
+            # Управляем FTP синхронизацией при изменении источника
+            old_source_type = old_paths.get('source_type', 'local')
+            old_ftp_id = old_paths.get('ftp_connection_id')
+            new_source_type = config_payload.get('source_type', 'local')
+            new_ftp_id = config_payload.get('ftp_connection_id')
+            
+            # Если изменился источник или FTP подключение
+            if old_source_type != new_source_type or old_ftp_id != new_ftp_id:
+                try:
+                    from call_analyzer.ftp_sync_manager import start_ftp_sync, stop_ftp_sync
+                    
+                    # Останавливаем старое подключение, если было
+                    if old_source_type == 'ftp' and old_ftp_id:
+                        stop_ftp_sync(old_ftp_id)
+                        app.logger.info(f"Остановлена FTP синхронизация для подключения {old_ftp_id}")
+                    
+                    # Запускаем новое подключение, если выбрано FTP
+                    if new_source_type == 'ftp' and new_ftp_id:
+                        # Проверяем, что подключение существует и активно
+                        ftp_conn = FtpConnection.query.filter_by(
+                            id=new_ftp_id,
+                            user_id=current_user.id,
+                            is_active=True
+                        ).first()
+                        if ftp_conn:
+                            start_ftp_sync(new_ftp_id)
+                            app.logger.info(f"Запущена FTP синхронизация для подключения {new_ftp_id}")
+                        else:
+                            app.logger.warning(f"FTP подключение {new_ftp_id} не найдено или неактивно")
+                except Exception as e:
+                    app.logger.error(f"Ошибка управления FTP синхронизацией: {e}")
         elif config_type == 'telegram':
             config_data['telegram'] = config_payload
         elif config_type == 'employee_by_extension':

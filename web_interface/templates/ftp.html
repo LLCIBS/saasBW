@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FTP подключения - Call Analyzer</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        .sidebar {
+            min-height: 100vh;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        .sidebar .nav-link {
+            color: rgba(255, 255, 255, 0.8);
+            padding: 12px 20px;
+            border-radius: 8px;
+            margin: 2px 0;
+            transition: all 0.3s;
+        }
+        .sidebar .nav-link:hover {
+            color: white;
+            background: rgba(255, 255, 255, 0.1);
+        }
+        .sidebar .nav-link.active {
+            color: white;
+            background: rgba(255, 255, 255, 0.2);
+        }
+        .main-content {
+            background-color: #f8f9fa;
+            min-height: 100vh;
+        }
+        .modal-content {
+            border-radius: 15px;
+            border: none;
+        }
+        .modal-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 15px 15px 0 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container-fluid">
+        <div class="row">
+            {% include 'partials/sidebar.html' %}
+            
+            <main class="col-md-9 col-lg-10 main-content">
+                <div class="p-4">
+                    <div class="d-flex justify-content-between align-items-center mb-4">
+                        <h1 class="h3 mb-0">FTP подключения</h1>
+                        <button type="button" class="btn btn-primary" onclick="showAddModal()">
+                            <i class="fas fa-plus me-1"></i> Добавить подключение
+                        </button>
+                    </div>
+
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle me-2"></i>
+                        Настройте FTP/SFTP подключения для автоматической загрузки файлов звонков с удаленных серверов.
+                    </div>
+
+                    <div class="table-responsive">
+                        <table class="table table-striped table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Название</th>
+                                    <th>Хост</th>
+                                    <th>Порт</th>
+                                    <th>Протокол</th>
+                                    <th>Удаленная папка</th>
+                                    <th>Интервал (сек)</th>
+                                    <th>Статус</th>
+                                    <th>Последняя синхронизация</th>
+                                    <th>Скачано файлов</th>
+                                    <th>Действия</th>
+                                </tr>
+                            </thead>
+                            <tbody id="ftpTableBody">
+                                <tr>
+                                    <td colspan="10" class="text-center">
+                                        <div class="spinner-border text-primary" role="status">
+                                            <span class="visually-hidden">Загрузка...</span>
+                                        </div>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <!-- Modal для добавления/редактирования -->
+    <div class="modal fade" id="ftpModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="ftpModalTitle">Добавить FTP подключение</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="ftpForm">
+                        <input type="hidden" id="ftpId" name="id">
+                        
+                        <div class="mb-3">
+                            <label for="ftpName" class="form-label">Название подключения *</label>
+                            <input type="text" class="form-control" id="ftpName" name="name" required>
+                        </div>
+                        
+                        <div class="row">
+                            <div class="col-md-8 mb-3">
+                                <label for="ftpHost" class="form-label">Хост (IP или домен) *</label>
+                                <input type="text" class="form-control" id="ftpHost" name="host" required>
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label for="ftpPort" class="form-label">Порт *</label>
+                                <input type="number" class="form-control" id="ftpPort" name="port" value="21" required>
+                            </div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="ftpProtocol" class="form-label">Протокол *</label>
+                            <select class="form-select" id="ftpProtocol" name="protocol" required>
+                                <option value="ftp">FTP</option>
+                                <option value="sftp">SFTP</option>
+                            </select>
+                        </div>
+                        
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label for="ftpUsername" class="form-label">Имя пользователя *</label>
+                                <input type="text" class="form-control" id="ftpUsername" name="username" required>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label for="ftpPassword" class="form-label">
+                                    Пароль <span id="passwordRequired">*</span>
+                                    <small class="text-muted" id="passwordHint" style="display:none;">(оставьте пустым, чтобы не менять)</small>
+                                </label>
+                                <input type="password" class="form-control" id="ftpPassword" name="password" required>
+                            </div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="ftpRemotePath" class="form-label">Удаленная папка *</label>
+                            <input type="text" class="form-control" id="ftpRemotePath" name="remote_path" value="/" required>
+                            <small class="form-text text-muted">Путь к папке на FTP сервере (например: /calls или /recordings)</small>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="ftpSyncInterval" class="form-label">Интервал синхронизации (секунды) *</label>
+                            <input type="number" class="form-control" id="ftpSyncInterval" name="sync_interval" value="300" min="60" required>
+                            <small class="form-text text-muted">Минимальный интервал: 60 секунд</small>
+                        </div>
+                        
+                        <div class="mb-3 form-check">
+                            <input type="checkbox" class="form-check-input" id="ftpIsActive" name="is_active" checked>
+                            <label class="form-check-label" for="ftpIsActive">
+                                Активно (включить автоматическую синхронизацию)
+                            </label>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                    <button type="button" class="btn btn-primary" onclick="testConnection()">
+                        <i class="fas fa-plug me-1"></i> Тест подключения
+                    </button>
+                    <button type="button" class="btn btn-success" onclick="saveFtpConnection()">
+                        <i class="fas fa-save me-1"></i> Сохранить
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+    let editingId = null;
+
+    // Загрузка списка подключений
+    function loadFtpConnections() {
+        fetch('/api/ftp/connections')
+            .then(response => response.json())
+            .then(data => {
+                const tbody = document.getElementById('ftpTableBody');
+                if (data.error) {
+                    tbody.innerHTML = `<tr><td colspan="10" class="text-center text-danger">Ошибка: ${data.error}</td></tr>`;
+                    return;
+                }
+                
+                if (data.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="10" class="text-center text-muted">Нет подключений. Добавьте первое подключение.</td></tr>';
+                    return;
+                }
+                
+                tbody.innerHTML = data.map(conn => `
+                    <tr>
+                        <td><strong>${escapeHtml(conn.name)}</strong></td>
+                        <td>${escapeHtml(conn.host)}</td>
+                        <td>${conn.port}</td>
+                        <td><span class="badge bg-${conn.protocol === 'ftp' ? 'primary' : 'info'}">${conn.protocol.toUpperCase()}</span></td>
+                        <td><code>${escapeHtml(conn.remote_path)}</code></td>
+                        <td>${conn.sync_interval}</td>
+                        <td>
+                            <span class="badge bg-${conn.is_active ? 'success' : 'secondary'}">
+                                ${conn.is_active ? 'Активно' : 'Неактивно'}
+                            </span>
+                        </td>
+                        <td>
+                            ${conn.last_sync ? new Date(conn.last_sync).toLocaleString('ru-RU') : '<span class="text-muted">Никогда</span>'}
+                            ${conn.last_error ? `<br><small class="text-danger">${escapeHtml(conn.last_error.substring(0, 50))}...</small>` : ''}
+                        </td>
+                        <td>${conn.download_count}</td>
+                        <td>
+                            <div class="btn-group btn-group-sm">
+                                <button class="btn btn-outline-primary" onclick="editConnection(${conn.id})" title="Редактировать">
+                                    <i class="fas fa-edit"></i>
+                                </button>
+                                <button class="btn btn-outline-success" onclick="syncConnection(${conn.id})" title="Синхронизировать">
+                                    <i class="fas fa-sync"></i>
+                                </button>
+                                <button class="btn btn-outline-danger" onclick="deleteConnection(${conn.id})" title="Удалить">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                `).join('');
+            })
+            .catch(error => {
+                console.error('Ошибка загрузки подключений:', error);
+                document.getElementById('ftpTableBody').innerHTML = 
+                    '<tr><td colspan="10" class="text-center text-danger">Ошибка загрузки данных</td></tr>';
+            });
+    }
+
+    function showAddModal() {
+        editingId = null;
+        document.getElementById('ftpModalTitle').textContent = 'Добавить FTP подключение';
+        document.getElementById('ftpForm').reset();
+        document.getElementById('ftpId').value = '';
+        document.getElementById('ftpPort').value = '21';
+        document.getElementById('ftpProtocol').value = 'ftp';
+        document.getElementById('ftpSyncInterval').value = '300';
+        document.getElementById('ftpIsActive').checked = true;
+        document.getElementById('ftpPassword').required = true; // При создании пароль обязателен
+        document.getElementById('passwordRequired').style.display = 'inline';
+        document.getElementById('passwordHint').style.display = 'none';
+        new bootstrap.Modal(document.getElementById('ftpModal')).show();
+    }
+
+    function editConnection(id) {
+        editingId = id;
+        fetch(`/api/ftp/connections`)
+            .then(response => response.json())
+            .then(connections => {
+                const conn = connections.find(c => c.id === id);
+                if (!conn) {
+                    alert('Подключение не найдено');
+                    return;
+                }
+                
+                document.getElementById('ftpModalTitle').textContent = 'Редактировать FTP подключение';
+                document.getElementById('ftpId').value = conn.id;
+                document.getElementById('ftpName').value = conn.name;
+                document.getElementById('ftpHost').value = conn.host;
+                document.getElementById('ftpPort').value = conn.port;
+                document.getElementById('ftpProtocol').value = conn.protocol;
+                document.getElementById('ftpUsername').value = conn.username;
+                document.getElementById('ftpPassword').value = ''; // Пароль не показываем
+                document.getElementById('ftpPassword').required = false; // При редактировании пароль необязателен
+                document.getElementById('passwordRequired').style.display = 'none';
+                document.getElementById('passwordHint').style.display = 'inline';
+                document.getElementById('ftpRemotePath').value = conn.remote_path;
+                document.getElementById('ftpSyncInterval').value = conn.sync_interval;
+                document.getElementById('ftpIsActive').checked = conn.is_active;
+                
+                new bootstrap.Modal(document.getElementById('ftpModal')).show();
+            });
+    }
+
+    function saveFtpConnection() {
+        const form = document.getElementById('ftpForm');
+        if (!form.checkValidity()) {
+            form.reportValidity();
+            return;
+        }
+        
+        const data = {
+            name: document.getElementById('ftpName').value,
+            host: document.getElementById('ftpHost').value,
+            port: parseInt(document.getElementById('ftpPort').value),
+            protocol: document.getElementById('ftpProtocol').value,
+            username: document.getElementById('ftpUsername').value,
+            password: document.getElementById('ftpPassword').value,
+            remote_path: document.getElementById('ftpRemotePath').value,
+            sync_interval: parseInt(document.getElementById('ftpSyncInterval').value),
+            is_active: document.getElementById('ftpIsActive').checked
+        };
+        
+        const id = document.getElementById('ftpId').value;
+        const url = id ? `/api/ftp/connections/${id}` : '/api/ftp/connections';
+        const method = id ? 'PUT' : 'POST';
+        
+        fetch(url, {
+            method: method,
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(data)
+        })
+        .then(response => response.json())
+        .then(result => {
+            if (result.success) {
+                bootstrap.Modal.getInstance(document.getElementById('ftpModal')).hide();
+                loadFtpConnections();
+                showAlert('success', result.message || 'Подключение сохранено');
+            } else {
+                showAlert('danger', result.message || 'Ошибка сохранения');
+            }
+        })
+        .catch(error => {
+            console.error('Ошибка:', error);
+            showAlert('danger', 'Ошибка сохранения подключения');
+        });
+    }
+
+    function testConnection() {
+        const data = {
+            host: document.getElementById('ftpHost').value,
+            port: parseInt(document.getElementById('ftpPort').value),
+            protocol: document.getElementById('ftpProtocol').value,
+            username: document.getElementById('ftpUsername').value,
+            password: document.getElementById('ftpPassword').value,
+            remote_path: document.getElementById('ftpRemotePath').value
+        };
+        
+        if (!data.host || !data.username || !data.password) {
+            alert('Заполните обязательные поля для тестирования');
+            return;
+        }
+        
+        // Если редактируем существующее подключение, используем его ID
+        const id = document.getElementById('ftpId').value;
+        if (id) {
+            fetch(`/api/ftp/connections/${id}/test`, {method: 'POST'})
+                .then(response => response.json())
+                .then(result => {
+                    if (result.success) {
+                        showAlert('success', result.message || 'Подключение успешно');
+                    } else {
+                        showAlert('danger', result.message || 'Ошибка подключения');
+                    }
+                });
+        } else {
+            // Для нового подключения создаем временное и тестируем
+            showAlert('info', 'Тестирование подключения...');
+            // TODO: Можно добавить отдельный endpoint для тестирования без сохранения
+            alert('Для тестирования сначала сохраните подключение');
+        }
+    }
+
+    function syncConnection(id) {
+        if (!confirm('Запустить синхронизацию сейчас?')) return;
+        
+        fetch(`/api/ftp/connections/${id}/sync`, {method: 'POST'})
+            .then(response => response.json())
+            .then(result => {
+                if (result.success) {
+                    showAlert('success', result.message || 'Синхронизация запущена');
+                } else {
+                    showAlert('danger', result.message || 'Ошибка запуска синхронизации');
+                }
+            });
+    }
+
+    function deleteConnection(id) {
+        if (!confirm('Удалить это подключение?')) return;
+        
+        fetch(`/api/ftp/connections/${id}`, {method: 'DELETE'})
+            .then(response => response.json())
+            .then(result => {
+                if (result.success) {
+                    showAlert('success', result.message || 'Подключение удалено');
+                    loadFtpConnections();
+                } else {
+                    showAlert('danger', result.message || 'Ошибка удаления');
+                }
+            });
+    }
+
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    function showAlert(type, message) {
+        const alertDiv = document.createElement('div');
+        alertDiv.className = `alert alert-${type} alert-dismissible fade show position-fixed top-0 start-50 translate-middle-x mt-3`;
+        alertDiv.style.zIndex = '9999';
+        alertDiv.innerHTML = `
+            ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        `;
+        document.body.appendChild(alertDiv);
+        setTimeout(() => alertDiv.remove(), 5000);
+    }
+
+    // Обновление порта при смене протокола
+    document.getElementById('ftpProtocol')?.addEventListener('change', function() {
+        const portInput = document.getElementById('ftpPort');
+        if (this.value === 'ftp') {
+            portInput.value = '21';
+        } else if (this.value === 'sftp') {
+            portInput.value = '22';
+        }
+    });
+
+    // Загрузка при открытии страницы
+    document.addEventListener('DOMContentLoaded', loadFtpConnections);
+    </script>
+</body>
+</html>
