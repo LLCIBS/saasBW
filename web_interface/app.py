@@ -633,6 +633,71 @@ def get_project_root():
     """Возвращает корневую папку проекта"""
     return PROJECT_ROOT
 
+def run_systemd_command(action):
+    """Выполняет команду systemctl для управления сервисом на Linux"""
+    import subprocess
+    import platform
+    import os
+    
+    # Определяем имя сервиса
+    service_name = 'call-analyzer'  # По умолчанию используем единый сервис
+    
+    try:
+        # Проверяем, какой сервис существует
+        result = subprocess.run(
+            ['systemctl', 'list-units', '--type=service', '--all'],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+        
+        # Проверяем, какой сервис доступен
+        if 'call-analyzer.service' in result.stdout:
+            service_name = 'call-analyzer'
+        elif 'call-analyzer-service.service' in result.stdout:
+            service_name = 'call-analyzer-service'
+        
+        # Выполняем команду через sudo
+        # ВАЖНО: Требуется настройка sudo без пароля для callanalyzer
+        # Выполните на сервере: echo "callanalyzer ALL=(ALL) NOPASSWD: /bin/systemctl start call-analyzer, /bin/systemctl stop call-analyzer, /bin/systemctl restart call-analyzer" | sudo tee /etc/sudoers.d/callanalyzer-systemctl
+        if action == 'start':
+            cmd = ['sudo', 'systemctl', 'start', service_name]
+        elif action == 'stop':
+            cmd = ['sudo', 'systemctl', 'stop', service_name]
+        elif action == 'restart':
+            cmd = ['sudo', 'systemctl', 'restart', service_name]
+        elif action == 'status':
+            cmd = ['systemctl', 'is-active', service_name]
+        else:
+            return False, f"Неизвестная команда: {action}"
+        
+        # Выполняем команду
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=10,
+            env=os.environ.copy()
+        )
+        
+        if result.returncode == 0:
+            if action == 'status':
+                return result.stdout.strip() == 'active', result.stdout.strip()
+            return True, f"Команда {action} выполнена успешно"
+        else:
+            error_msg = result.stderr or result.stdout or f"Ошибка выполнения команды {action}"
+            # Если ошибка связана с правами, даем подсказку
+            if 'permission denied' in error_msg.lower() or 'sudo' in error_msg.lower():
+                error_msg += " (требуются права sudo для управления systemd сервисами)"
+            return False, error_msg
+            
+    except subprocess.TimeoutExpired:
+        return False, "Таймаут выполнения команды"
+    except FileNotFoundError:
+        return False, "systemctl не найден (не Linux система?)"
+    except Exception as e:
+        return False, f"Ошибка: {str(e)}"
+
 def run_script(script_filename, wait=False):
     """Запускает bat-скрипт из корня проекта.
 
@@ -657,7 +722,12 @@ def ensure_service_running():
     try:
         status = get_service_status()
         if not status.get('running'):
-            ok, msg = run_script('start_service.bat', wait=False)
+            # Используем systemd на Linux, .bat на Windows
+            import platform
+            if platform.system() == 'Linux':
+                ok, msg = run_systemd_command('start')
+            else:
+                ok, msg = run_script('start_service.bat', wait=False)
             if ok:
                 service_status['running'] = True
                 service_status['last_start'] = datetime.now()
@@ -724,51 +794,95 @@ def sync_prompts_from_config(user=None):
 
 
 def get_service_status():
-    """Проверяет статус сервиса Call Analyzer (ищем процесс python/py с main.py)."""
+    """Проверяет статус сервиса Call Analyzer."""
     try:
+        import platform
         running = False
         pid = None
 
-        # 1) Пытаемся через WMIC (доступно на большинстве win-систем)
-        try:
-            cmd = [
-                'wmic', 'process', 'where', "(name='python.exe' or name='py.exe')", 'get', 'ProcessId,CommandLine', '/FORMAT:LIST'
-            ]
-            res = subprocess.run(cmd, capture_output=True, text=True, encoding='cp1251', errors='ignore')
-            out = res.stdout or ''
-            for block in out.split('\n\n'):
-                # Ищем процесс с main.py (не app.py)
-                if 'main.py' in block and 'app.py' not in block:
-                    running = True
-                    # Ищем PID
-                    for line in block.splitlines():
-                        if line.strip().startswith('ProcessId='):
-                            try:
-                                pid = int(line.split('=', 1)[1].strip())
-                            except Exception:
-                                pid = None
-                    break
-        except Exception:
-            pass
-
-        # 2) Фолбэк через PowerShell Get-Process с выводом командной строки
-        if not running:
-            ps_script = (
-                "Get-CimInstance Win32_Process | Where-Object { ($_.Name -eq 'python.exe' -or $_.Name -eq 'py.exe') -and "
-                "$_.CommandLine -match 'main.py' -and $_.CommandLine -notmatch 'app.py' } | Select-Object ProcessId, CommandLine"
-            )
+        if platform.system() == 'Linux':
+            # Проверка через systemd на Linux
             try:
-                res = subprocess.run(['powershell', '-NoProfile', '-Command', ps_script], capture_output=True, text=True)
-                out = res.stdout or ''
-                if out.strip():
+                # Определяем имя сервиса
+                service_name = 'call-analyzer-service'
+                result = subprocess.run(
+                    ['systemctl', 'list-units', '--type=service', '--state=active'],
+                    capture_output=True,
+                    text=True,
+                    timeout=5
+                )
+                
+                if 'call-analyzer.service' in result.stdout:
+                    service_name = 'call-analyzer'
+                elif 'call-analyzer-service.service' in result.stdout:
+                    service_name = 'call-analyzer-service'
+                
+                # Проверяем статус
+                result = subprocess.run(
+                    ['systemctl', 'is-active', service_name],
+                    capture_output=True,
+                    text=True,
+                    timeout=5
+                )
+                
+                if result.returncode == 0 and result.stdout.strip() == 'active':
                     running = True
-                    # Пытаемся извлечь PID как первое число в выводе
-                    for token in out.replace('\r', ' ').replace('\n', ' ').split():
-                        if token.isdigit():
-                            pid = int(token)
-                            break
+                    # Получаем PID главного процесса
+                    try:
+                        result = subprocess.run(
+                            ['systemctl', 'show', '--property=MainPID', '--value', service_name],
+                            capture_output=True,
+                            text=True,
+                            timeout=5
+                        )
+                        if result.returncode == 0:
+                            pid_str = result.stdout.strip()
+                            if pid_str and pid_str.isdigit():
+                                pid = int(pid_str)
+                    except Exception:
+                        pass
+            except Exception as e:
+                logging.debug(f"Ошибка проверки статуса через systemd: {e}")
+        else:
+            # Windows: проверка через WMIC
+            try:
+                cmd = [
+                    'wmic', 'process', 'where', "(name='python.exe' or name='py.exe')", 'get', 'ProcessId,CommandLine', '/FORMAT:LIST'
+                ]
+                res = subprocess.run(cmd, capture_output=True, text=True, encoding='cp1251', errors='ignore')
+                out = res.stdout or ''
+                for block in out.split('\n\n'):
+                    # Ищем процесс с main.py (не app.py)
+                    if 'main.py' in block and 'app.py' not in block:
+                        running = True
+                        # Ищем PID
+                        for line in block.splitlines():
+                            if line.strip().startswith('ProcessId='):
+                                try:
+                                    pid = int(line.split('=', 1)[1].strip())
+                                except Exception:
+                                    pid = None
+                        break
             except Exception:
                 pass
+
+            # Фолбэк через PowerShell
+            if not running:
+                ps_script = (
+                    "Get-CimInstance Win32_Process | Where-Object { ($_.Name -eq 'python.exe' -or $_.Name -eq 'py.exe') -and "
+                    "$_.CommandLine -match 'main.py' -and $_.CommandLine -notmatch 'app.py' } | Select-Object ProcessId, CommandLine"
+                )
+                try:
+                    res = subprocess.run(['powershell', '-NoProfile', '-Command', ps_script], capture_output=True, text=True)
+                    out = res.stdout or ''
+                    if out.strip():
+                        running = True
+                        for token in out.replace('\r', ' ').replace('\n', ' ').split():
+                            if token.isdigit():
+                                pid = int(token)
+                                break
+                except Exception:
+                    pass
 
         service_status['running'] = running
         service_status['pid'] = pid
@@ -1855,7 +1969,11 @@ def api_recalls():
 def service_start():
     """Запуск сервиса"""
     try:
-        ok, msg = run_script('start_service.bat', wait=False)
+        import platform
+        if platform.system() == 'Linux':
+            ok, msg = run_systemd_command('start')
+        else:
+            ok, msg = run_script('start_service.bat', wait=False)
         if ok:
             service_status['running'] = True
             service_status['last_start'] = datetime.now()
@@ -1870,7 +1988,11 @@ def service_start():
 def service_stop():
     """Остановка сервиса"""
     try:
-        ok, msg = run_script('stop_service.bat', wait=True)
+        import platform
+        if platform.system() == 'Linux':
+            ok, msg = run_systemd_command('stop')
+        else:
+            ok, msg = run_script('stop_service.bat', wait=True)
         if ok:
             service_status['running'] = False
             service_status['last_stop'] = datetime.now()
@@ -1885,8 +2007,14 @@ def service_stop():
 def service_restart():
     """Перезапуск сервиса"""
     try:
-        ok, msg = run_script('restart_service.bat', wait=False)
+        import platform
+        if platform.system() == 'Linux':
+            ok, msg = run_systemd_command('restart')
+        else:
+            ok, msg = run_script('restart_service.bat', wait=False)
         if ok:
+            service_status['running'] = True
+            service_status['last_start'] = datetime.now()
             return jsonify({'success': True, 'message': 'Сервис перезапущен'})
         return jsonify({'success': False, 'message': msg})
             
