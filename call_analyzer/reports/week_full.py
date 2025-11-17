@@ -288,10 +288,13 @@ def analyze_files(period_start: datetime, period_end: datetime, base_folder=None
             if os.path.exists(script_8_path_candidate) and os.path.isdir(script_8_path_candidate):
                 script_folders.append(script_8_path_candidate)
             # Затем ищем другие папки со script в названии
-            for item in os.listdir(transcriptions_base):
-                item_path = os.path.join(transcriptions_base, item)
-                if os.path.isdir(item_path) and 'script' in item.lower() and item != 'script_8':
-                    script_folders.append(item_path)
+            try:
+                for item in os.listdir(transcriptions_base):
+                    item_path = os.path.join(transcriptions_base, item)
+                    if os.path.isdir(item_path) and 'script' in item.lower() and item != 'script_8':
+                        script_folders.append(item_path)
+            except (OSError, PermissionError) as e:
+                print(f"Ошибка при чтении директории {transcriptions_base}: {e}")
         
         if not script_folders:
             print(f"Папки с анализами не найдены для {date_str}, пропуск.")
@@ -300,7 +303,15 @@ def analyze_files(period_start: datetime, period_end: datetime, base_folder=None
         # Используем первую найденную папку (обычно script_8)
         script_8_path = script_folders[0]
         print(f"Проверка готовых анализов в {script_8_path}")
-        print(f"DEBUG: Files in script_8_path: {os.listdir(script_8_path)}")
+        try:
+            files_in_script_8 = os.listdir(script_8_path)
+            print(f"DEBUG: Files in script_8_path: {files_in_script_8}")
+            # Фильтруем только файлы анализов
+            analysis_files = [f for f in files_in_script_8 if f.endswith('_analysis.txt')]
+            print(f"DEBUG: Analysis files found: {len(analysis_files)} (total files: {len(files_in_script_8)})")
+        except (OSError, PermissionError) as e:
+            print(f"Ошибка при чтении директории {script_8_path}: {e}")
+            continue
 
         # Подготовим словарь для быстрого фильтра по tg_bw_calls
         call_records_dict = {}
@@ -311,61 +322,61 @@ def analyze_files(period_start: datetime, period_end: datetime, base_folder=None
         print(f"DEBUG: call_records count: {len(call_records)}")
         print(f"DEBUG: call_records_dict keys: {list(call_records_dict.keys())}")
 
-        for file in os.listdir(script_8_path):
-            if file.endswith("_analysis.txt"):
-                print(f"DEBUG: Processing analysis file: {file}")
-                file_path = os.path.join(script_8_path, file)
-                output_path = os.path.join(transcriptions_folder, file)
-                
-                # Предварительная фильтрация: копируем только те файлы, которые есть в tg_bw_calls
-                base_name = file.replace('_analysis.txt', '')
-                pre_phone = None
-                pre_dt = None
-                
-                # Парсим имя файла для проверки соответствия tg_bw_calls
-                match_fs = re.match(r'fs_(\+?\d+)_\d{3,4}_(\d{4}-\d{2}-\d{2})-(\d{2}-\d{2}-\d{2})', base_name)
-                if match_fs:
-                    pre_phone = match_fs.group(1).lstrip('+')
-                    pre_dt_str = f"{match_fs.group(2)} {match_fs.group(3).replace('-', ':')}"
-                    try:
-                        pre_dt = datetime.strptime(pre_dt_str, '%Y-%m-%d %H:%M:%S')
-                    except ValueError:
-                        pre_dt = None
-                elif base_name.lower().startswith('external-'):
-                    try:
-                        parts = base_name.split('-')
-                        pre_phone = parts[2].lstrip('+')
-                        yyyymmdd = parts[3]
-                        hhmmss = parts[4]
-                        pre_dt = datetime.strptime(f"{yyyymmdd} {hhmmss}", '%Y%m%d %H%M%S')
-                    except Exception:
-                        pre_dt = None
-
-                if pre_dt and pre_phone:
-                    key_exact = (pre_phone, pre_dt.strftime('%Y-%m-%d %H:%M'))
-                    in_calls = key_exact in call_records_dict
-                    print(f"DEBUG: Checking file {file}: phone={pre_phone}, dt={pre_dt}, key={key_exact}, exact_match={in_calls}")
-                    if not in_calls:
-                        for minutes_diff in range(-5, 6):
-                            adjusted_time = pre_dt + timedelta(minutes=minutes_diff)
-                            key = (pre_phone, adjusted_time.strftime('%Y-%m-%d %H:%M'))
-                            if key in call_records_dict:
-                                in_calls = True
-                                print(f"DEBUG: Found match with {minutes_diff} minutes offset")
-                                break
-                    if not in_calls:
-                        # Этот файл не входит в tg_bw_calls выбранного периода — пропускаем
-                        print(f"DEBUG: File {file} not in call_records, skipping")
-                        continue
-                    print(f"DEBUG: File {file} matches, will copy")
-
-                # Копируем готовый анализ
+        # Используем список analysis_files, который мы уже отфильтровали выше
+        for file in analysis_files:
+            print(f"DEBUG: Processing analysis file: {file}")
+            file_path = os.path.join(script_8_path, file)
+            output_path = os.path.join(transcriptions_folder, file)
+            
+            # Предварительная фильтрация: копируем только те файлы, которые есть в tg_bw_calls
+            base_name = file.replace('_analysis.txt', '')
+            pre_phone = None
+            pre_dt = None
+            
+            # Парсим имя файла для проверки соответствия tg_bw_calls
+            match_fs = re.match(r'fs_(\+?\d+)_\d{3,4}_(\d{4}-\d{2}-\d{2})-(\d{2}-\d{2}-\d{2})', base_name)
+            if match_fs:
+                pre_phone = match_fs.group(1).lstrip('+')
+                pre_dt_str = f"{match_fs.group(2)} {match_fs.group(3).replace('-', ':')}"
                 try:
-                    import shutil
-                    shutil.copy2(file_path, output_path)
-                    print(f"Скопирован готовый анализ: {file}")
-                except Exception as e:
-                    print(f"Ошибка копирования файла {file}: {e}")
+                    pre_dt = datetime.strptime(pre_dt_str, '%Y-%m-%d %H:%M:%S')
+                except ValueError:
+                    pre_dt = None
+            elif base_name.lower().startswith('external-'):
+                try:
+                    parts = base_name.split('-')
+                    pre_phone = parts[2].lstrip('+')
+                    yyyymmdd = parts[3]
+                    hhmmss = parts[4]
+                    pre_dt = datetime.strptime(f"{yyyymmdd} {hhmmss}", '%Y%m%d %H%M%S')
+                except Exception:
+                    pre_dt = None
+
+            if pre_dt and pre_phone:
+                key_exact = (pre_phone, pre_dt.strftime('%Y-%m-%d %H:%M'))
+                in_calls = key_exact in call_records_dict
+                print(f"DEBUG: Checking file {file}: phone={pre_phone}, dt={pre_dt}, key={key_exact}, exact_match={in_calls}")
+                if not in_calls:
+                    for minutes_diff in range(-5, 6):
+                        adjusted_time = pre_dt + timedelta(minutes=minutes_diff)
+                        key = (pre_phone, adjusted_time.strftime('%Y-%m-%d %H:%M'))
+                        if key in call_records_dict:
+                            in_calls = True
+                            print(f"DEBUG: Found match with {minutes_diff} minutes offset")
+                            break
+                if not in_calls:
+                    # Этот файл не входит в tg_bw_calls выбранного периода — пропускаем
+                    print(f"DEBUG: File {file} not in call_records, skipping")
+                    continue
+                print(f"DEBUG: File {file} matches, will copy")
+
+            # Копируем готовый анализ
+            try:
+                import shutil
+                shutil.copy2(file_path, output_path)
+                print(f"Скопирован готовый анализ: {file}")
+            except Exception as e:
+                print(f"Ошибка копирования файла {file}: {e}")
 
     print("Копирование готовых анализов завершено.")
 

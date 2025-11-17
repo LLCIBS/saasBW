@@ -424,17 +424,38 @@ def parse_answers_and_form_message(analysis_text: str, station_code: str, phone_
 def save_analysis(txt_path: str, dialog_text: str, new_analysis: str, qa_text: str, overall_text: str) -> str:
     """
     Сохраняем итог расширенного анализа рядом (script_8/).
+    Использует Path для кроссплатформенности и правильной обработки путей.
     """
-    base_dir = os.path.dirname(txt_path)
-    script_dir = os.path.join(base_dir, "script_8")
-    if not os.path.exists(script_dir):
-        os.makedirs(script_dir, exist_ok=True)
-
-    base_name = os.path.splitext(os.path.basename(txt_path))[0]
-    analysis_filename = f"{base_name}_analysis.txt"
-    analysis_path = os.path.join(script_dir, analysis_filename)
+    # Используем Path для кроссплатформенности и нормализации путей
+    txt_path_obj = Path(txt_path)
+    
+    # Нормализуем путь для получения абсолютного пути (важно для Ubuntu)
     try:
-        with open(analysis_path, "w", encoding="utf-8") as f:
+        txt_path_obj = txt_path_obj.resolve()
+    except (OSError, ValueError):
+        # Если не удалось разрешить, используем как есть
+        pass
+    
+    # base_dir - это директория, где находится txt файл (обычно transcriptions/)
+    base_dir = txt_path_obj.parent
+    script_dir = base_dir / "script_8"
+    
+    # Создаем директорию script_8 если её нет
+    script_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Нормализуем путь script_dir для единообразия
+    try:
+        script_dir = script_dir.resolve()
+    except (OSError, ValueError):
+        pass
+
+    # Получаем базовое имя файла без расширения
+    base_name = txt_path_obj.stem
+    analysis_filename = f"{base_name}_analysis.txt"
+    analysis_path = script_dir / analysis_filename
+    
+    try:
+        with analysis_path.open("w", encoding="utf-8") as f:
             f.write("Диалог (из исходного TXT):\n\n")
             f.write(dialog_text)
             f.write("\n\nРаспознавание по чек-листу:\n\n")
@@ -444,7 +465,7 @@ def save_analysis(txt_path: str, dialog_text: str, new_analysis: str, qa_text: s
         logger.info(f"[exental_alert] Файл анализа сохранён: {analysis_path}")
     except Exception as e:
         logger.error(f"[exental_alert] Ошибка при сохранении {analysis_path}: {e}")
-    return analysis_path
+    return str(analysis_path)
 
 def guess_mp3_path(txt_path: str) -> str:
     """

@@ -675,8 +675,51 @@ def thebai_analyze(transcript: str, prompt: str) -> str:
 
 
 def save_transcript_analysis(file_path: Path, transcript_text: str, analysis_text: str) -> Path:
-    today_subdir = datetime.now().strftime("%Y/%m/%d")
-    trans_dir = config.BASE_RECORDS_PATH / today_subdir / "transcriptions"
+    """
+    Сохраняет транскрипт и анализ в папку transcriptions относительно исходного файла.
+    Это гарантирует, что файлы сохраняются в правильной папке пользователя.
+    """
+    # Определяем путь относительно исходного файла, а не используем общий BASE_RECORDS_PATH
+    # Это важно для многопользовательского режима, когда файлы могут быть в /var/calls/users/1/
+    try:
+        # Нормализуем путь исходного файла
+        file_path = file_path.resolve()
+    except (OSError, ValueError):
+        pass  # Используем как есть, если не удалось разрешить
+    
+    # Определяем базовую директорию дня (YYYY/MM/DD) относительно исходного файла
+    # Если файл в /var/calls/users/1/2025/11/17/file.wav, то transcriptions будет в /var/calls/users/1/2025/11/17/transcriptions/
+    file_parent = file_path.parent
+    
+    # Проверяем, находится ли файл в структуре YYYY/MM/DD
+    # Проверяем последние 3 компонента пути: должны быть YYYY (4 цифры), MM (2 цифры), DD (2 цифры)
+    is_in_date_structure = False
+    if file_parent.exists() and len(file_parent.parts) >= 3:
+        # Берем последние 3 части пути
+        last_three_parts = file_parent.parts[-3:]
+        # Проверяем формат: YYYY (4 цифры), MM (2 цифры), DD (2 цифры)
+        if (len(last_three_parts[0]) == 4 and last_three_parts[0].isdigit() and
+            len(last_three_parts[1]) == 2 and last_three_parts[1].isdigit() and
+            len(last_three_parts[2]) == 2 and last_three_parts[2].isdigit()):
+            # Дополнительная проверка: год должен быть разумным (1900-2100), месяц 01-12, день 01-31
+            try:
+                year = int(last_three_parts[0])
+                month = int(last_three_parts[1])
+                day = int(last_three_parts[2])
+                if 1900 <= year <= 2100 and 1 <= month <= 12 and 1 <= day <= 31:
+                    is_in_date_structure = True
+            except ValueError:
+                pass  # Если не удалось преобразовать в числа, структура неверна
+    
+    # Если файл в правильной структуре даты, используем родительскую директорию дня
+    # Если нет, используем config.BASE_RECORDS_PATH как fallback
+    if is_in_date_structure:
+        trans_dir = file_parent / "transcriptions"
+    else:
+        today_subdir = datetime.now().strftime("%Y/%m/%d")
+        trans_dir = config.BASE_RECORDS_PATH / today_subdir / "transcriptions"
+        logger.debug(f"Файл не в структуре дня (путь: {file_parent}), используем fallback: {trans_dir}")
+    
     os.makedirs(trans_dir, exist_ok=True)
     result_file = trans_dir / f"{file_path.stem}.txt"
 
