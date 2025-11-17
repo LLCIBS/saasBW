@@ -55,3 +55,10 @@ call_analyzer/bestway.log
 *.temp
 runtime/
 
+# User configuration files (should not be in git)
+# These are runtime-generated user-specific configs with sensitive data (API keys, tokens, etc.)
+# Pattern matches: user_*.json, *_backup.json, and any other JSON files in this directory
+runtime_configs/*.json
+# Note: If you need to track template/example JSON files in this directory in the future,
+# add them with: !runtime_configs/template.json (before the ignore pattern)
+
