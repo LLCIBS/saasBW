@@ -720,7 +720,8 @@ def save_transcript_analysis(file_path: Path, transcript_text: str, analysis_tex
         trans_dir = config.BASE_RECORDS_PATH / today_subdir / "transcriptions"
         logger.debug(f"Файл не в структуре дня (путь: {file_parent}), используем fallback: {trans_dir}")
     
-    os.makedirs(trans_dir, exist_ok=True)
+    # Создаем директорию используя метод Path (не os.makedirs, так как trans_dir это Path объект)
+    trans_dir.mkdir(parents=True, exist_ok=True)
     result_file = trans_dir / f"{file_path.stem}.txt"
 
     if result_file.exists():
