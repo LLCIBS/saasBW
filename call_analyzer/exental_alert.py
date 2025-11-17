@@ -448,29 +448,52 @@ def save_analysis(txt_path: str, dialog_text: str, new_analysis: str, qa_text: s
 
 def guess_mp3_path(txt_path: str) -> str:
     """
-    Пытаемся вывести путь к .mp3. Если TXT лежит в papke /transcriptions/,
+    Пытаемся вывести путь к .mp3. Если TXT лежит в папке /transcriptions/,
     то mp3 обычно на уровень выше.
+    Использует Path для кроссплатформенности (Windows/Ubuntu).
     """
     if not txt_path.lower().endswith(".txt"):
         return txt_path
+    
+    # Используем Path для кроссплатформенности
+    txt_path_obj = Path(txt_path)
+    
+    # Нормализуем путь для получения абсолютного пути (важно для Ubuntu)
+    try:
+        txt_path_obj = txt_path_obj.resolve()
+    except (OSError, ValueError):
+        # Если не удалось разрешить, используем как есть
+        pass
+    
     # Определяем базовое имя без расширения
-    base_filename = os.path.splitext(os.path.basename(txt_path))[0]
+    base_filename = txt_path_obj.stem
+    
     # Если TXT в папке transcriptions, оригинальный аудио файл на уровень выше
-    if "transcriptions" in os.path.normpath(txt_path):
-        parent_dir = os.path.dirname(os.path.dirname(txt_path))
+    if "transcriptions" in str(txt_path_obj):
+        parent_dir = txt_path_obj.parent.parent
     else:
-        parent_dir = os.path.dirname(txt_path)
+        parent_dir = txt_path_obj.parent
 
     # Пытаемся определить фактическое расширение аудио
-    mp3_path = os.path.join(parent_dir, base_filename + ".mp3")
-    wav_path = os.path.join(parent_dir, base_filename + ".wav")
+    mp3_path = parent_dir / (base_filename + ".mp3")
+    wav_path = parent_dir / (base_filename + ".wav")
+    
+    # Нормализуем пути для проверки существования
+    try:
+        mp3_path = mp3_path.resolve()
+    except (OSError, ValueError):
+        pass
+    try:
+        wav_path = wav_path.resolve()
+    except (OSError, ValueError):
+        pass
 
-    if os.path.isfile(mp3_path):
-        return mp3_path
-    if os.path.isfile(wav_path):
-        return wav_path
+    if mp3_path.exists() and mp3_path.is_file():
+        return str(mp3_path)
+    if wav_path.exists() and wav_path.is_file():
+        return str(wav_path)
     # Если ничего не найдено, по умолчанию возвращаем mp3-путь (для обратной совместимости)
-    return mp3_path
+    return str(mp3_path)
 
 def send_exental_results(station_code: str, caption: str, overall_text: str, mp3_path: str, analysis_path: str):
     """
@@ -479,10 +502,18 @@ def send_exental_results(station_code: str, caption: str, overall_text: str, mp3
     chat_list = config.STATION_CHAT_IDS.get(station_code, [config.ALERT_CHAT_ID])
     for cid in chat_list:
         audio_sent = False
-        if os.path.isfile(mp3_path):
-            audio_sent = send_telegram_audio(cid, mp3_path, caption)
+        # Используем Path для кроссплатформенности
+        mp3_path_obj = Path(mp3_path)
+        # Нормализуем путь для проверки существования (важно для Ubuntu)
+        try:
+            mp3_path_obj = mp3_path_obj.resolve()
+        except (OSError, ValueError):
+            pass
+        
+        if mp3_path_obj.exists() and mp3_path_obj.is_file():
+            audio_sent = send_telegram_audio(cid, str(mp3_path_obj), caption)
         else:
-            logger.warning(f"[exental_alert] MP3 {mp3_path} не найден, не отправляем аудио.")
+            logger.warning(f"[exental_alert] MP3 {mp3_path_obj} не найден, не отправляем аудио.")
         
         # Если аудио не удалось отправить, отправляем caption отдельным текстовым сообщением
         if not audio_sent:

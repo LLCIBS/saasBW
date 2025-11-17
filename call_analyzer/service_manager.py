@@ -86,8 +86,47 @@ def _write_profile_file(user_id, runtime):
     # Глобальный ключ модели общий, не передаём его в профиль
     runtime_copy.get('api_keys', {}).pop('thebai_api_key', None)
     profile_path = PROFILE_DIR / f'user_{user_id}.json'
-    with profile_path.open('w', encoding='utf-8') as f:
-        json.dump(runtime_copy, f, ensure_ascii=False, indent=2)
+    
+    # Убеждаемся, что директория существует и имеет правильные права
+    PROFILE_DIR.mkdir(parents=True, exist_ok=True)
+    
+    # Устанавливаем права доступа для записи (на случай если запущено от root)
+    try:
+        import os
+        import stat
+        # Устанавливаем права 755 на директорию и 644 на файл
+        os.chmod(PROFILE_DIR, stat.S_IRWXU | stat.S_IRGRP | stat.S_IXGRP | stat.S_IROTH | stat.S_IXOTH)
+    except Exception as e:
+        LOGGER.warning(f"Не удалось установить права на {PROFILE_DIR}: {e}")
+    
+    try:
+        with profile_path.open('w', encoding='utf-8') as f:
+            json.dump(runtime_copy, f, ensure_ascii=False, indent=2)
+        # Устанавливаем права на файл после записи
+        try:
+            os.chmod(profile_path, stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP | stat.S_IROTH)
+        except Exception:
+            pass  # Игнорируем ошибки установки прав на файл
+    except PermissionError as e:
+        LOGGER.error(f"Ошибка доступа при записи профиля {profile_path}: {e}")
+        # Пытаемся исправить права и повторить (только на Linux/Unix)
+        try:
+            import platform
+            if platform.system() != 'Windows':
+                # Получаем текущего пользователя процесса
+                current_user = os.getenv('SUDO_USER') or os.getenv('USER') or 'callanalyzer'
+                # Пытаемся изменить владельца (требует sudo, только на Unix)
+                try:
+                    import pwd
+                    uid = pwd.getpwnam(current_user).pw_uid
+                    os.chown(PROFILE_DIR, uid, -1)
+                    if profile_path.exists():
+                        os.chown(profile_path, uid, -1)
+                except (KeyError, PermissionError, ImportError):
+                    pass  # Не удалось изменить владельца или pwd недоступен
+        except Exception:
+            pass
+        raise
     return profile_path
 
 

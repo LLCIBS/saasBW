@@ -371,6 +371,13 @@ def load_prompts():
     try:
         with config.PROMPTS_FILE.open("r", encoding="utf-8") as f:
             data = yaml.safe_load(f)
+            # Проверяем, что data не None и является словарем
+            if data is None:
+                logger.warning(f"Файл промптов {config.PROMPTS_FILE} пуст или невалиден, используем дефолтный.")
+                return {}
+            if not isinstance(data, dict):
+                logger.warning(f"Файл промптов {config.PROMPTS_FILE} имеет неверный формат, используем дефолтный.")
+                return {}
             return data.get("stations", {})
     except Exception as e:
         msg = f"Ошибка загрузки промтов: {e}"

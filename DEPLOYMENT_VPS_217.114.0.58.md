@@ -144,6 +144,11 @@ sudo mkdir -p /var/log/call-analyzer
 sudo chown -R callanalyzer:callanalyzer /opt/call-analyzer
 sudo chown -R callanalyzer:callanalyzer /var/calls
 sudo chown -R callanalyzer:callanalyzer /var/log/call-analyzer
+
+# Создаем и настраиваем папку для runtime конфигураций
+sudo mkdir -p /opt/call-analyzer/runtime_configs
+sudo chown -R callanalyzer:callanalyzer /opt/call-analyzer/runtime_configs
+sudo chmod 755 /opt/call-analyzer/runtime_configs
 ```
 
 **Примечание о пароле и sudo для пользователя callanalyzer:**
@@ -1534,6 +1539,27 @@ sudo chown -R callanalyzer:callanalyzer /var/log/call-analyzer
 # Установите права на .env
 sudo chmod 600 /opt/call-analyzer/.env
 sudo chown callanalyzer:callanalyzer /opt/call-analyzer/.env
+
+# Исправьте права на runtime_configs (для профилей пользователей)
+sudo mkdir -p /opt/call-analyzer/runtime_configs
+sudo chown -R callanalyzer:callanalyzer /opt/call-analyzer/runtime_configs
+sudo chmod 755 /opt/call-analyzer/runtime_configs
+sudo chmod 644 /opt/call-analyzer/runtime_configs/*.json 2>/dev/null || true
+```
+
+**Если возникает ошибка `PermissionError: [Errno 13] Permission denied: 'runtime_configs/user_X.json'`:**
+
+```bash
+# Убедитесь, что папка runtime_configs существует и имеет правильные права
+sudo mkdir -p /opt/call-analyzer/runtime_configs
+sudo chown -R callanalyzer:callanalyzer /opt/call-analyzer/runtime_configs
+sudo chmod 755 /opt/call-analyzer/runtime_configs
+
+# Если файлы уже созданы от root, измените владельца
+sudo chown callanalyzer:callanalyzer /opt/call-analyzer/runtime_configs/*.json 2>/dev/null || true
+
+# Перезапустите сервис
+sudo systemctl restart call-analyzer
 ```
 
 ---
