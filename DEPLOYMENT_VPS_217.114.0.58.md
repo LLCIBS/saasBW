@@ -11,15 +11,20 @@
 4. **⚠️ Установка и настройка PostgreSQL базы данных (ОБЯЗАТЕЛЬНО!)**
 5. Настройка переменных окружения (.env)
 6. Настройка systemd сервисов
-7. Настройка Nginx (с IP адресом вместо домена)
-8. Инициализация базы данных
-9. Запуск и проверка работы
+7. Настройка DNS для домена easy-call-analytics.ru
+8. Настройка Nginx с доменом
+9. Настройка SSL/HTTPS (Let's Encrypt)
+10. Инициализация базы данных
+11. Запуск и проверка работы
 
 **Чек-лист критических шагов:**
 - ✅ PostgreSQL установлен и запущен
 - ✅ База данных `call_analyzer` создана
 - ✅ Пользователь `call_analyzer` создан с паролем
 - ✅ Файл `.env` настроен с правильным `DATABASE_URL`
+- ✅ DNS записи настроены (домен `easy-call-analytics.ru` указывает на `217.114.0.58`)
+- ✅ Nginx настроен с доменом
+- ✅ SSL сертификат получен и настроен (HTTPS работает)
 - ✅ База данных инициализирована (таблицы созданы)
 
 **Время выполнения:** примерно 30-60 минут (в зависимости от скорости интернета и сервера)
@@ -39,12 +44,14 @@
 4. [Настройка базы данных PostgreSQL](#4-настройка-базы-данных-postgresql)
 5. [Настройка переменных окружения](#5-настройка-переменных-окружения)
 6. [Установка и настройка systemd сервисов](#6-установка-и-настройка-systemd-сервисов)
-7. [Настройка Nginx](#7-настройка-nginx)
-8. [Инициализация базы данных](#8-инициализация-базы-данных)
-9. [Запуск сервисов](#9-запуск-сервисов)
-10. [Проверка работы](#10-проверка-работы)
-11. [Управление сервисами](#11-управление-сервисами)
-12. [Устранение неполадок](#12-устранение-неполадок)
+7. [Настройка DNS для домена](#7-настройка-dns-для-домена)
+8. [Настройка Nginx с доменом](#8-настройка-nginx-с-доменом)
+9. [Настройка SSL/HTTPS (Let's Encrypt)](#9-настройка-sslhttps-lets-encrypt)
+10. [Инициализация базы данных](#10-инициализация-базы-данных)
+11. [Запуск сервисов](#11-запуск-сервисов)
+12. [Проверка работы](#12-проверка-работы)
+13. [Управление сервисами](#13-управление-сервисами)
+14. [Устранение неполадок](#14-устранение-неполадок)
 
 ---
 
@@ -623,11 +630,79 @@ sudo systemctl enable call-analyzer-web
 
 ---
 
-## 7. Настройка Nginx
+## 7. Настройка DNS для домена
 
-**⚠️ ВАЖНО: Перед настройкой Nginx убедитесь, что он установлен!**
+**⚠️ ВАЖНО: Перед настройкой Nginx и SSL необходимо настроить DNS записи для домена `easy-call-analytics.ru`!**
 
-### 7.0 Проверка установки Nginx
+### 7.1 Настройка DNS записей
+
+Вам нужно настроить DNS записи у вашего регистратора домена или DNS-провайдера.
+
+**Необходимые DNS записи:**
+
+1. **A-запись** (основная запись для домена):
+   - **Имя/Хост:** `@` или `easy-call-analytics.ru` (или оставьте пустым)
+   - **Тип:** `A`
+   - **Значение/IP:** `217.114.0.58`
+   - **TTL:** `3600` (или значение по умолчанию)
+
+2. **A-запись для www** (опционально, для www.easy-call-analytics.ru):
+   - **Имя/Хост:** `www`
+   - **Тип:** `A`
+   - **Значение/IP:** `217.114.0.58`
+   - **TTL:** `3600`
+
+**Примеры настройки для разных провайдеров:**
+
+**Для REG.RU:**
+1. Войдите в панель управления доменом
+2. Перейдите в раздел "DNS-серверы и зона"
+3. Добавьте A-запись:
+   - Поддомен: `@` (или оставьте пустым)
+   - IP-адрес: `217.114.0.58`
+   - TTL: `3600`
+
+**Для других провайдеров:**
+- Найдите раздел "DNS записи", "Управление DNS" или "DNS зона"
+- Добавьте A-запись с IP адресом `217.114.0.58`
+
+### 7.2 Проверка DNS записей
+
+После настройки DNS подождите несколько минут (обычно 5-15 минут) и проверьте:
+
+```bash
+# Проверка A-записи
+nslookup easy-call-analytics.ru
+
+# Или используйте dig
+dig easy-call-analytics.ru +short
+
+# Должно вернуть: 217.114.0.58
+```
+
+**Важно:** DNS изменения могут распространяться до 24-48 часов, но обычно это происходит в течение 15-30 минут.
+
+### 7.3 Проверка доступности домена
+
+Проверьте, что домен указывает на ваш сервер:
+
+```bash
+# Проверка с сервера
+curl -I http://easy-call-analytics.ru
+
+# Или с локального компьютера
+ping easy-call-analytics.ru
+```
+
+**⚠️ ВАЖНО:** Не переходите к следующему разделу, пока DNS записи не настроены и домен не указывает на IP `217.114.0.58`!
+
+---
+
+## 8. Настройка Nginx с доменом
+
+**⚠️ ВАЖНО: Перед настройкой Nginx убедитесь, что он установлен и DNS записи настроены!**
+
+### 8.0 Проверка установки Nginx
 
 Проверьте, установлен ли Nginx:
 
@@ -669,13 +744,13 @@ sudo systemctl status nginx
 
 Если Nginx работает, вы можете открыть в браузере `http://217.114.0.58` и увидеть страницу приветствия Nginx (до настройки проксирования).
 
-### 7.1 Копирование конфигурации
+### 8.1 Копирование конфигурации
 
 ```bash
 sudo cp /opt/call-analyzer/deploy/nginx/call-analyzer.conf /etc/nginx/sites-available/call-analyzer
 ```
 
-### 7.2 Редактирование конфигурации для IP адреса
+### 8.2 Редактирование конфигурации для домена
 
 ```bash
 sudo nano /etc/nginx/sites-available/call-analyzer
@@ -691,7 +766,7 @@ upstream call_analyzer_web {
 
 server {
     listen 80;
-    server_name 217.114.0.58;  # Используем IP адрес вместо домена
+    server_name easy-call-analytics.ru www.easy-call-analytics.ru;
 
     # Логи
     access_log /var/log/nginx/call-analyzer-access.log;
@@ -723,7 +798,12 @@ server {
 }
 ```
 
-### 7.3 Включение сайта
+**Важно:** 
+- `server_name` теперь указывает на домен `easy-call-analytics.ru` и `www.easy-call-analytics.ru`
+- Порт 80 (HTTP) будет использоваться для получения SSL сертификата
+- После настройки SSL конфигурация будет обновлена автоматически
+
+### 8.3 Включение сайта
 
 ```bash
 # Создаем симлинк
@@ -742,22 +822,254 @@ sudo nginx -t
 sudo systemctl restart nginx
 ```
 
-### 7.4 Настройка firewall (если используется)
+### 8.4 Настройка firewall (если используется)
 
 ```bash
-# Разрешаем HTTP трафик
-sudo ufw allow 80/tcp
-sudo ufw allow 22/tcp  # SSH
+# Разрешаем HTTP и HTTPS трафик
+sudo ufw allow 80/tcp   # HTTP (для получения SSL сертификата)
+sudo ufw allow 443/tcp  # HTTPS
+sudo ufw allow 22/tcp   # SSH
 sudo ufw enable
 ```
 
+**Примечание:** Порт 80 необходим для автоматического получения SSL сертификата через Let's Encrypt.
+
 ---
 
-## 8. Инициализация базы данных
+## 9. Настройка SSL/HTTPS (Let's Encrypt)
+
+**⚠️ ВАЖНО: Перед настройкой SSL убедитесь, что:**
+- DNS записи настроены и домен указывает на IP `217.114.0.58`
+- Nginx настроен и работает на порту 80
+- Домен `easy-call-analytics.ru` доступен по HTTP
+
+### 9.1 Установка Certbot
+
+Certbot - это инструмент для автоматического получения и обновления SSL сертификатов от Let's Encrypt.
+
+```bash
+# Обновляем список пакетов
+sudo apt update
+
+# Устанавливаем Certbot и плагин для Nginx
+sudo apt install -y certbot python3-certbot-nginx
+```
+
+### 9.2 Получение SSL сертификата
+
+**Вариант 1: Автоматическая настройка (рекомендуется)**
+
+Certbot автоматически настроит Nginx для использования SSL:
+
+```bash
+# Получаем сертификат и автоматически настраиваем Nginx
+sudo certbot --nginx -d easy-call-analytics.ru -d www.easy-call-analytics.ru
+```
+
+Во время выполнения Certbot:
+1. Запросит ваш email (для уведомлений о продлении)
+2. Спросит согласие с условиями использования
+3. Спросит, хотите ли вы перенаправлять HTTP на HTTPS (рекомендуется выбрать "Yes")
+4. Автоматически обновит конфигурацию Nginx
+5. Автоматически перезапустит Nginx
+
+**Вариант 2: Только получение сертификата (без автоматической настройки)**
+
+Если вы хотите настроить Nginx вручную:
+
+```bash
+# Получаем только сертификат
+sudo certbot certonly --nginx -d easy-call-analytics.ru -d www.easy-call-analytics.ru
+```
+
+### 9.3 Проверка автоматической настройки
+
+После выполнения Certbot проверьте конфигурацию Nginx:
+
+```bash
+sudo nano /etc/nginx/sites-available/call-analyzer
+```
+
+Certbot должен был автоматически добавить блок для HTTPS:
+
+```nginx
+server {
+    listen 443 ssl http2;
+    server_name easy-call-analytics.ru www.easy-call-analytics.ru;
+
+    ssl_certificate /etc/letsencrypt/live/easy-call-analytics.ru/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/easy-call-analytics.ru/privkey.pem;
+    
+    # SSL настройки безопасности
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers 'ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384';
+    ssl_prefer_server_ciphers off;
+    ssl_session_cache shared:SSL:10m;
+    ssl_session_timeout 10m;
+
+    # Логи
+    access_log /var/log/nginx/call-analyzer-access.log;
+    error_log /var/log/nginx/call-analyzer-error.log;
+
+    # Максимальный размер загружаемых файлов
+    client_max_body_size 100M;
+
+    # Проксирование на Flask приложение
+    location / {
+        proxy_pass http://call_analyzer_web;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        
+        # Таймауты для долгих запросов
+        proxy_connect_timeout 300s;
+        proxy_send_timeout 300s;
+        proxy_read_timeout 300s;
+    }
+
+    # Статические файлы
+    location /static {
+        alias /opt/call-analyzer/web_interface/static;
+        expires 30d;
+        add_header Cache-Control "public, immutable";
+    }
+}
+
+# Перенаправление HTTP на HTTPS
+server {
+    listen 80;
+    server_name easy-call-analytics.ru www.easy-call-analytics.ru;
+    return 301 https://$server_name$request_uri;
+}
+```
+
+### 9.4 Ручная настройка SSL (если Certbot не настроил автоматически)
+
+Если вы использовали вариант 2 (только получение сертификата), добавьте вручную:
+
+```bash
+sudo nano /etc/nginx/sites-available/call-analyzer
+```
+
+Замените содержимое на:
+
+```nginx
+upstream call_analyzer_web {
+    server 127.0.0.1:5000;
+    keepalive 32;
+}
+
+# HTTPS сервер
+server {
+    listen 443 ssl http2;
+    server_name easy-call-analytics.ru www.easy-call-analytics.ru;
+
+    # SSL сертификаты
+    ssl_certificate /etc/letsencrypt/live/easy-call-analytics.ru/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/easy-call-analytics.ru/privkey.pem;
+    
+    # SSL настройки безопасности
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers 'ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384';
+    ssl_prefer_server_ciphers off;
+    ssl_session_cache shared:SSL:10m;
+    ssl_session_timeout 10m;
+
+    # Логи
+    access_log /var/log/nginx/call-analyzer-access.log;
+    error_log /var/log/nginx/call-analyzer-error.log;
+
+    # Максимальный размер загружаемых файлов
+    client_max_body_size 100M;
+
+    # Проксирование на Flask приложение
+    location / {
+        proxy_pass http://call_analyzer_web;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        
+        # Таймауты для долгих запросов
+        proxy_connect_timeout 300s;
+        proxy_send_timeout 300s;
+        proxy_read_timeout 300s;
+    }
+
+    # Статические файлы
+    location /static {
+        alias /opt/call-analyzer/web_interface/static;
+        expires 30d;
+        add_header Cache-Control "public, immutable";
+    }
+}
+
+# Перенаправление HTTP на HTTPS
+server {
+    listen 80;
+    server_name easy-call-analytics.ru www.easy-call-analytics.ru;
+    return 301 https://$server_name$request_uri;
+}
+```
+
+### 9.5 Проверка и перезапуск Nginx
+
+```bash
+# Проверяем конфигурацию
+sudo nginx -t
+
+# Если проверка прошла успешно, перезапускаем Nginx
+sudo systemctl restart nginx
+```
+
+### 9.6 Настройка автоматического обновления сертификата
+
+Сертификаты Let's Encrypt действительны 90 дней. Certbot автоматически настроит задачу для обновления.
+
+Проверьте, что автоматическое обновление настроено:
+
+```bash
+# Проверка таймера обновления
+sudo systemctl status certbot.timer
+
+# Проверка последнего обновления
+sudo certbot renew --dry-run
+```
+
+Если таймер не активен, включите его:
+
+```bash
+sudo systemctl enable certbot.timer
+sudo systemctl start certbot.timer
+```
+
+### 9.7 Проверка SSL сертификата
+
+Проверьте, что SSL работает:
+
+```bash
+# Проверка с сервера
+curl -I https://easy-call-analytics.ru
+
+# Проверка деталей сертификата
+openssl s_client -connect easy-call-analytics.ru:443 -servername easy-call-analytics.ru < /dev/null
+```
+
+Также проверьте в браузере:
+- Откройте `https://easy-call-analytics.ru`
+- Должен отображаться замочек в адресной строке
+- Сертификат должен быть валидным
+
+**✅ SSL/HTTPS настроен!**
+
+---
+
+## 10. Инициализация базы данных
 
 **Примечание:** Если вы использовали `deploy/deploy.sh` в разделе 3, инициализация базы данных уже выполнена. Пропустите этот раздел или выполните только миграцию JSON (если нужно).
 
-### 8.1 Переключение на пользователя приложения
+### 10.1 Переключение на пользователя приложения
 
 ```bash
 sudo su - callanalyzer
@@ -765,7 +1077,7 @@ cd /opt/call-analyzer
 source venv/bin/activate
 ```
 
-### 8.2 Инициализация базы данных
+### 10.2 Инициализация базы данных
 
 ```bash
 # Проверьте, что .env файл настроен правильно
@@ -778,7 +1090,7 @@ python3 scripts/init_db.py
 python3 init_db_fixed.py
 ```
 
-### 8.3 Миграция данных из JSON (если есть)
+### 10.3 Миграция данных из JSON (если есть)
 
 Если у вас есть файлы `transfer_cases.json` или `recall_cases.json`:
 
@@ -788,9 +1100,9 @@ python3 scripts/migrate_json_to_db.py
 
 ---
 
-## 9. Запуск сервисов
+## 11. Запуск сервисов
 
-### 9.1 Запуск systemd сервисов
+### 11.1 Запуск systemd сервисов
 
 **Вариант 1: Два отдельных сервиса (как в конфигах по умолчанию)**
 
@@ -805,7 +1117,7 @@ sudo systemctl start call-analyzer-web
 sudo systemctl start call-analyzer
 ```
 
-### 9.2 Проверка статуса
+### 11.2 Проверка статуса
 
 **Для двух сервисов:**
 ```bash
@@ -835,19 +1147,24 @@ sudo journalctl -u call-analyzer -n 50
 
 ---
 
-## 10. Проверка работы
+## 12. Проверка работы
 
-### 10.1 Проверка через браузер
+### 12.1 Проверка через браузер
 
 Откройте в браузере:
 
 ```
-http://217.114.0.58
+https://easy-call-analytics.ru
 ```
+
+**Важно:** 
+- Используйте HTTPS (не HTTP)
+- Браузер автоматически перенаправит с HTTP на HTTPS
+- Должен отображаться замочек в адресной строке (валидный SSL сертификат)
 
 Вы должны увидеть страницу входа в систему.
 
-### 10.2 Первый вход
+### 12.2 Первый вход
 
 Используйте учетные данные администратора из файла `.env`:
 - **Логин:** `admin` (или значение из `ADMIN_USERNAME`)
@@ -855,7 +1172,15 @@ http://217.114.0.58
 
 **ВАЖНО:** Сразу после первого входа смените пароль администратора!
 
-### 10.3 Проверка логов
+### 12.3 Проверка SSL сертификата
+
+Проверьте SSL сертификат в браузере:
+1. Откройте `https://easy-call-analytics.ru`
+2. Нажмите на замочек в адресной строке
+3. Проверьте, что сертификат выдан Let's Encrypt
+4. Проверьте срок действия сертификата
+
+### 12.4 Проверка логов
 
 ```bash
 # Логи сервисов
@@ -872,9 +1197,9 @@ sudo tail -f /var/log/nginx/call-analyzer-error.log
 
 ---
 
-## 11. Управление сервисами
+## 13. Управление сервисами
 
-### 11.1 Просмотр статуса
+### 13.1 Просмотр статуса
 
 **Для двух сервисов:**
 ```bash
@@ -889,7 +1214,7 @@ sudo systemctl status call-analyzer
 sudo systemctl status nginx
 ```
 
-### 11.2 Перезапуск сервисов
+### 13.2 Перезапуск сервисов
 
 **Для двух сервисов:**
 ```bash
@@ -904,7 +1229,7 @@ sudo systemctl restart call-analyzer
 sudo systemctl restart nginx
 ```
 
-### 11.3 Остановка сервисов
+### 13.3 Остановка сервисов
 
 **Для двух сервисов:**
 ```bash
@@ -917,7 +1242,7 @@ sudo systemctl stop call-analyzer-web
 sudo systemctl stop call-analyzer
 ```
 
-### 11.4 Просмотр логов
+### 13.4 Просмотр логов
 
 **Для двух сервисов:**
 ```bash
@@ -948,9 +1273,9 @@ sudo tail -f /var/log/nginx/call-analyzer-error.log
 
 ---
 
-## 12. Устранение неполадок
+## 14. Устранение неполадок
 
-### 12.1 Сервис не запускается
+### 14.1 Сервис не запускается
 
 **Проблема:** Сервис не стартует или сразу падает.
 
@@ -989,7 +1314,7 @@ source venv/bin/activate
 python web_interface/app.py
 ```
 
-### 12.2 База данных не подключается
+### 14.2 База данных не подключается
 
 **Проблема:** Ошибки подключения к PostgreSQL.
 
@@ -1059,7 +1384,7 @@ EOF
 nano /opt/call-analyzer/.env
 ```
 
-### 12.3 Веб-интерфейс недоступен
+### 14.3 Веб-интерфейс недоступен
 
 **Проблема:** Страница не открывается в браузере.
 
@@ -1097,7 +1422,81 @@ sudo nginx -t
 sudo ufw status
 ```
 
-### 12.4 Ошибки при установке зависимостей
+7. Проверьте DNS:
+```bash
+nslookup easy-call-analytics.ru
+dig easy-call-analytics.ru +short
+```
+
+### 14.6 Проблемы с SSL сертификатом
+
+**Проблема:** SSL сертификат не работает или истек.
+
+**Решение:**
+
+1. **Проверьте статус сертификата:**
+```bash
+sudo certbot certificates
+```
+
+2. **Проверьте срок действия:**
+```bash
+sudo certbot certificates | grep -A 5 "easy-call-analytics.ru"
+```
+
+3. **Обновите сертификат вручную:**
+```bash
+sudo certbot renew
+```
+
+4. **Проверьте автоматическое обновление:**
+```bash
+sudo systemctl status certbot.timer
+sudo certbot renew --dry-run
+```
+
+5. **Если сертификат не обновляется автоматически:**
+```bash
+sudo systemctl enable certbot.timer
+sudo systemctl start certbot.timer
+```
+
+6. **Проверьте логи Certbot:**
+```bash
+sudo tail -f /var/log/letsencrypt/letsencrypt.log
+```
+
+7. **Если нужно перевыпустить сертификат:**
+```bash
+sudo certbot --nginx -d easy-call-analytics.ru -d www.easy-call-analytics.ru --force-renewal
+```
+
+### 14.7 Проблемы с DNS
+
+**Проблема:** Домен не указывает на сервер.
+
+**Решение:**
+
+1. **Проверьте DNS записи:**
+```bash
+nslookup easy-call-analytics.ru
+dig easy-call-analytics.ru +short
+```
+
+2. **Должно вернуть:** `217.114.0.58`
+
+3. **Если DNS не настроен:**
+   - Вернитесь к разделу 7
+   - Настройте A-запись у вашего DNS провайдера
+   - Подождите 15-30 минут для распространения изменений
+
+4. **Проверьте с разных DNS серверов:**
+```bash
+dig @8.8.8.8 easy-call-analytics.ru +short
+dig @1.1.1.1 easy-call-analytics.ru +short
+```
+
+### 14.4 Ошибки при установке зависимостей
 
 **Проблема:** Ошибки при `pip install`.
 
@@ -1120,7 +1519,7 @@ pip install psycopg2-binary
 # и т.д.
 ```
 
-### 12.5 Проблемы с правами доступа
+### 14.5 Проблемы с правами доступа
 
 **Проблема:** Ошибки доступа к файлам или директориям.
 
@@ -1238,9 +1637,49 @@ sudo netstat -tlnp | grep -E '5000|80|5432'
 
 # Проверка подключения к БД
 sudo -u postgres psql -d call_analyzer -U call_analyzer
+
+# Проверка SSL сертификата
+sudo certbot certificates
+
+# Проверка DNS
+nslookup easy-call-analytics.ru
+```
+
+---
+
+## Дополнительная информация
+
+### Обновление SSL сертификата
+
+Сертификаты Let's Encrypt автоматически обновляются через Certbot. Проверка обновления выполняется дважды в день.
+
+**Ручное обновление:**
+```bash
+sudo certbot renew
+sudo systemctl reload nginx
+```
+
+**Проверка автоматического обновления:**
+```bash
+sudo certbot renew --dry-run
+```
+
+### Мониторинг SSL сертификата
+
+Добавьте в cron проверку срока действия сертификата:
+
+```bash
+sudo crontab -e
+```
+
+Добавьте строку (проверка каждый месяц):
+```
+0 0 1 * * certbot renew --quiet && systemctl reload nginx
 ```
 
 ---
 
 **Успешного развертывания!**
+
+**Ваш сайт доступен по адресу:** `https://easy-call-analytics.ru`
 

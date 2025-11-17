@@ -89,13 +89,32 @@ def sync_ftp_connection(connection_id: int):
         # Определяем папку для сохранения: должна быть папка дня YYYY/MM/DD
         # чтобы watchdog подхватил файлы
         from datetime import datetime
+        import platform
         today = datetime.now()
+        
+        # Нормализуем базовый путь для кроссплатформенности
         base_path = Path(user_base_path_str)
+        # На Ubuntu важно использовать resolve() для получения абсолютного пути
+        # На Windows это тоже работает корректно
+        try:
+            base_path = base_path.resolve()
+        except (OSError, ValueError) as e:
+            # Если не удалось разрешить (например, путь не существует), создаем как есть
+            logger.warning(f"Не удалось разрешить базовый путь {user_base_path_str}, используем как есть: {e}")
+            base_path = Path(user_base_path_str)
+        
         # Создаем структуру папок как для локальных файлов: BASE_RECORDS_PATH/YYYY/MM/DD
         target_folder = base_path / str(today.year) / f"{today.month:02d}" / f"{today.day:02d}"
         target_folder.mkdir(parents=True, exist_ok=True)
         
-        logger.info(f"FTP {row.name}: файлы будут сохраняться в {target_folder}")
+        # Нормализуем target_folder для единообразия
+        try:
+            target_folder = target_folder.resolve()
+        except (OSError, ValueError):
+            # Если не удалось разрешить, используем как есть
+            pass
+        
+        logger.info(f"FTP {row.name}: файлы будут сохраняться в {target_folder} (ОС: {platform.system()})")
         
         # Создаем FTP синхронизатор
         ftp = FtpSync(
@@ -174,17 +193,36 @@ def sync_ftp_connection(connection_id: int):
             try:
                 from call_analyzer.call_handler import CallHandler
                 from types import SimpleNamespace
+                import platform
                 
                 handler = CallHandler()
                 for file_path in downloaded_files:
                     try:
+                        # Нормализуем путь для кроссплатформенности
+                        # На Ubuntu важно использовать resolve() для получения абсолютного пути
+                        # На Windows это тоже работает корректно
+                        try:
+                            normalized_path = file_path.resolve()
+                        except (OSError, ValueError) as e:
+                            logger.warning(f"Не удалось разрешить путь {file_path}, используем как есть: {e}")
+                            normalized_path = file_path
+                        
+                        # Проверяем существование файла
+                        if not normalized_path.exists():
+                            logger.warning(f"Файл не существует, пропускаем: {normalized_path}")
+                            continue
+                        
+                        # Используем str() для преобразования в строку - это работает корректно на обеих ОС
+                        # Path.resolve() уже нормализовал путь для текущей ОС
+                        path_str = str(normalized_path)
+                        
                         # Создаем mock события для watchdog
                         mock_event = SimpleNamespace(
-                            src_path=str(file_path),
+                            src_path=path_str,
                             is_directory=False
                         )
                         handler.on_created(mock_event)
-                        logger.info(f"→ Файл {file_path.name} передан в обработку")
+                        logger.info(f"→ Файл {file_path.name} передан в обработку (путь: {path_str}, ОС: {platform.system()})")
                     except Exception as e:
                         logger.error(f"Ошибка обработки файла {file_path.name}: {e}", exc_info=True)
             except Exception as e:

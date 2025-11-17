@@ -404,7 +404,16 @@ class CallHandler(FileSystemEventHandler):
         if event.is_directory:
             return
 
-        file_path = Path(event.src_path)
+        # Нормализуем путь для кроссплатформенности
+        # На Ubuntu важно использовать resolve() для получения абсолютного пути
+        # Это работает корректно и на Windows
+        try:
+            file_path = Path(event.src_path).resolve()
+        except (OSError, ValueError) as e:
+            # Если не удалось разрешить путь, пробуем без resolve()
+            logger.warning(f"Не удалось разрешить путь {event.src_path}, используем как есть: {e}")
+            file_path = Path(event.src_path)
+        
         name_lower = file_path.name.lower()
         # Принимаем стандартные записи fs_*, external-*, in-* и новый формат вход_*; расширения из конфигурации
         if not (
@@ -425,10 +434,24 @@ class CallHandler(FileSystemEventHandler):
             _processed_files.add(file_path.name)
 
         # Межпроцессная дедупликация: создаём lock-файл для имени звонка
-        lock_dir = config.BASE_RECORDS_PATH / "runtime" / "locks"
+        # Нормализуем путь для кроссплатформенности
+        try:
+            base_path = Path(config.BASE_RECORDS_PATH).resolve()
+        except (OSError, ValueError):
+            base_path = Path(config.BASE_RECORDS_PATH)
+        
+        lock_dir = base_path / "runtime" / "locks"
+        lock_path = None  # Инициализируем для использования в замыкании
+        has_lock = False
+        
         try:
             os.makedirs(lock_dir, exist_ok=True)
-            lock_path = lock_dir / f"{file_path.name}.lock"
+            # Нормализуем lock_path для единообразия
+            lock_path = (lock_dir / f"{file_path.name}.lock")
+            try:
+                lock_path = lock_path.resolve()
+            except (OSError, ValueError):
+                pass  # Используем как есть, если не удалось разрешить
             # атомарное создание
             fd = os.open(str(lock_path), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
             os.close(fd)
@@ -436,6 +459,14 @@ class CallHandler(FileSystemEventHandler):
         except FileExistsError:
             # Если lock уже существует, проверим его «протухание»: возможно, остался от упавшего процесса
             try:
+                # lock_path должен быть уже определен выше, но на всякий случай проверяем
+                if lock_path is None:
+                    lock_path = (lock_dir / f"{file_path.name}.lock")
+                    try:
+                        lock_path = lock_path.resolve()
+                    except (OSError, ValueError):
+                        pass
+                
                 if lock_path.exists():
                     mtime = os.path.getmtime(lock_path)
                     age_sec = time.time() - mtime
@@ -464,7 +495,10 @@ class CallHandler(FileSystemEventHandler):
         # Помощник для безопасного снятия lock
         def _release_lock():
             try:
-                if 'lock_path' in locals() and has_lock and os.path.exists(lock_path):
+                # Проверяем, что lock_path был определен и has_lock установлен
+                # Используем nonlocal для доступа к переменным внешней области видимости
+                nonlocal lock_path, has_lock
+                if lock_path is not None and has_lock and os.path.exists(lock_path):
                     os.remove(lock_path)
             except Exception:
                 pass
