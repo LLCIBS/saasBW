@@ -17,10 +17,12 @@ from dotenv import load_dotenv
 BASE_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(BASE_DIR))
 
+# ВАЖНО: Загружаем .env ПЕРЕД импортом config!
+# Это необходимо, чтобы переменные окружения были доступны при инициализации Config
+load_dotenv(BASE_DIR / '.env')
+
 from config.settings import get_config  # noqa: E402
 from database.models import db  # noqa: E402
-
-load_dotenv()
 
 app = Flask(__name__)
 app.config.from_object(get_config())
