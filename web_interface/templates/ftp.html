@@ -70,6 +70,8 @@
                                     <th>Протокол</th>
                                     <th>Удаленная папка</th>
                                     <th>Интервал (сек)</th>
+                                    <th>Дата старта</th>
+                                    <th>Последний обработанный</th>
                                     <th>Статус</th>
                                     <th>Последняя синхронизация</th>
                                     <th>Скачано файлов</th>
@@ -78,7 +80,7 @@
                             </thead>
                             <tbody id="ftpTableBody">
                                 <tr>
-                                    <td colspan="10" class="text-center">
+                                    <td colspan="12" class="text-center">
                                         <div class="spinner-border text-primary" role="status">
                                             <span class="visually-hidden">Загрузка...</span>
                                         </div>
@@ -147,6 +149,19 @@
                             <input type="text" class="form-control" id="ftpRemotePath" name="remote_path" value="/" required>
                             <small class="form-text text-muted">Путь к папке на FTP сервере (например: /calls или /recordings)</small>
                         </div>
+
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label for="ftpStartFrom" class="form-label">Начать обработку с даты</label>
+                                <input type="datetime-local" class="form-control" id="ftpStartFrom" name="start_from">
+                                <small class="form-text text-muted">Файлы старше выбранной даты игнорируются. Поле необязательное.</small>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Последний обработанный файл</label>
+                                <div class="form-control-plaintext border rounded bg-light py-2 px-3" id="ftpLastProcessedInfo">—</div>
+                                <small class="form-text text-muted">Это поле только для чтения.</small>
+                            </div>
+                        </div>
                         
                         <div class="mb-3">
                             <label for="ftpSyncInterval" class="form-label">Интервал синхронизации (секунды) *</label>
@@ -186,12 +201,12 @@
             .then(data => {
                 const tbody = document.getElementById('ftpTableBody');
                 if (data.error) {
-                    tbody.innerHTML = `<tr><td colspan="10" class="text-center text-danger">Ошибка: ${data.error}</td></tr>`;
+                    tbody.innerHTML = `<tr><td colspan="12" class="text-center text-danger">Ошибка: ${data.error}</td></tr>`;
                     return;
                 }
                 
                 if (data.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="10" class="text-center text-muted">Нет подключений. Добавьте первое подключение.</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="12" class="text-center text-muted">Нет подключений. Добавьте первое подключение.</td></tr>';
                     return;
                 }
                 
@@ -203,6 +218,13 @@
                         <td><span class="badge bg-${conn.protocol === 'ftp' ? 'primary' : 'info'}">${conn.protocol.toUpperCase()}</span></td>
                         <td><code>${escapeHtml(conn.remote_path)}</code></td>
                         <td>${conn.sync_interval}</td>
+                        <td>
+                            ${conn.start_from ? new Date(conn.start_from).toLocaleString('ru-RU') : '<span class="text-muted">Не задано</span>'}
+                        </td>
+                        <td>
+                            ${conn.last_processed_mtime ? new Date(conn.last_processed_mtime).toLocaleString('ru-RU') : '<span class="text-muted">—</span>'}
+                            ${conn.last_processed_filename ? `<br><small class="text-muted">${escapeHtml(conn.last_processed_filename)}</small>` : ''}
+                        </td>
                         <td>
                             <span class="badge bg-${conn.is_active ? 'success' : 'secondary'}">
                                 ${conn.is_active ? 'Активно' : 'Неактивно'}
@@ -232,7 +254,7 @@
             .catch(error => {
                 console.error('Ошибка загрузки подключений:', error);
                 document.getElementById('ftpTableBody').innerHTML = 
-                    '<tr><td colspan="10" class="text-center text-danger">Ошибка загрузки данных</td></tr>';
+                    '<tr><td colspan="12" class="text-center text-danger">Ошибка загрузки данных</td></tr>';
             });
     }
 
@@ -244,6 +266,8 @@
         document.getElementById('ftpPort').value = '21';
         document.getElementById('ftpProtocol').value = 'ftp';
         document.getElementById('ftpSyncInterval').value = '300';
+        document.getElementById('ftpStartFrom').value = '';
+        document.getElementById('ftpLastProcessedInfo').innerHTML = '—';
         document.getElementById('ftpIsActive').checked = true;
         document.getElementById('ftpPassword').required = true; // При создании пароль обязателен
         document.getElementById('passwordRequired').style.display = 'inline';
@@ -275,6 +299,8 @@
                 document.getElementById('passwordHint').style.display = 'inline';
                 document.getElementById('ftpRemotePath').value = conn.remote_path;
                 document.getElementById('ftpSyncInterval').value = conn.sync_interval;
+                document.getElementById('ftpStartFrom').value = formatDatetimeLocal(conn.start_from);
+                renderLastProcessedInfo(conn);
                 document.getElementById('ftpIsActive').checked = conn.is_active;
                 
                 new bootstrap.Modal(document.getElementById('ftpModal')).show();
@@ -299,6 +325,9 @@
             sync_interval: parseInt(document.getElementById('ftpSyncInterval').value),
             is_active: document.getElementById('ftpIsActive').checked
         };
+
+        const startFromValue = document.getElementById('ftpStartFrom').value;
+        data.start_from = startFromValue ? new Date(startFromValue).toISOString() : null;
         
         const id = document.getElementById('ftpId').value;
         const url = id ? `/api/ftp/connections/${id}` : '/api/ftp/connections';
@@ -393,6 +422,32 @@
         const div = document.createElement('div');
         div.textContent = text;
         return div.innerHTML;
+    }
+
+    function formatDatetimeLocal(isoString) {
+        if (!isoString) {
+            return '';
+        }
+        const date = new Date(isoString);
+        const pad = (value) => String(value).padStart(2, '0');
+        return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+    }
+
+    function renderLastProcessedInfo(conn) {
+        const infoEl = document.getElementById('ftpLastProcessedInfo');
+        if (!infoEl) {
+            return;
+        }
+        if (!conn || !conn.last_processed_mtime) {
+            infoEl.innerHTML = '—';
+            return;
+        }
+        const datetimeText = new Date(conn.last_processed_mtime).toLocaleString('ru-RU');
+        let html = escapeHtml(datetimeText);
+        if (conn.last_processed_filename) {
+            html += `<br><small>${escapeHtml(conn.last_processed_filename)}</small>`;
+        }
+        infoEl.innerHTML = html;
     }
 
     function showAlert(type, message) {

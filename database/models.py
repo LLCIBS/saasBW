@@ -160,6 +160,9 @@ class FtpConnection(db.Model):
     protocol = db.Column(db.String(10), default='ftp', nullable=False)  # ftp или sftp
     is_active = db.Column(db.Boolean, default=True, nullable=False)  # Активно ли подключение
     sync_interval = db.Column(db.Integer, default=300, nullable=False)  # Интервал синхронизации в секундах
+    start_from = db.Column(db.DateTime, nullable=True)  # Дата, с которой начинать обработку файлов
+    last_processed_mtime = db.Column(db.DateTime, nullable=True)  # Момент времени последнего обработанного файла
+    last_processed_filename = db.Column(db.String(500), nullable=True)  # Имя последнего обработанного файла
     last_sync = db.Column(db.DateTime, nullable=True)  # Время последней синхронизации
     last_error = db.Column(Text, nullable=True)  # Последняя ошибка
     download_count = db.Column(db.Integer, default=0, nullable=False)  # Количество скачанных файлов

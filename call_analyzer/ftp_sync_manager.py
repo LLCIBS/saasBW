@@ -38,8 +38,20 @@ def sync_ftp_connection(connection_id: int):
         # Получаем данные подключения
         with engine.connect() as connection:
             sql = text("""
-                SELECT id, user_id, name, host, port, username, password, 
-                       remote_path, protocol, is_active, sync_interval
+                SELECT id,
+                       user_id,
+                       name,
+                       host,
+                       port,
+                       username,
+                       password,
+                       remote_path,
+                       protocol,
+                       is_active,
+                       sync_interval,
+                       start_from,
+                       last_processed_mtime,
+                       last_processed_filename
                 FROM ftp_connections
                 WHERE id = :conn_id
             """)
@@ -53,6 +65,10 @@ def sync_ftp_connection(connection_id: int):
             if not row.is_active:
                 logger.info(f"FTP подключение {row.name} неактивно, пропускаем синхронизацию")
                 return
+
+            start_from = row.start_from
+            last_processed_mtime = row.last_processed_mtime
+            last_processed_filename = row.last_processed_filename or ''
             
             # Получаем путь для сохранения файлов из настроек пользователя
             user_settings_sql = text("""
@@ -94,12 +110,9 @@ def sync_ftp_connection(connection_id: int):
         
         # Нормализуем базовый путь для кроссплатформенности
         base_path = Path(user_base_path_str)
-        # На Ubuntu важно использовать resolve() для получения абсолютного пути
-        # На Windows это тоже работает корректно
         try:
             base_path = base_path.resolve()
         except (OSError, ValueError) as e:
-            # Если не удалось разрешить (например, путь не существует), создаем как есть
             logger.warning(f"Не удалось разрешить базовый путь {user_base_path_str}, используем как есть: {e}")
             base_path = Path(user_base_path_str)
         
@@ -107,11 +120,10 @@ def sync_ftp_connection(connection_id: int):
         target_folder = base_path / str(today.year) / f"{today.month:02d}" / f"{today.day:02d}"
         target_folder.mkdir(parents=True, exist_ok=True)
         
-        # Нормализуем target_folder для единообразия
+        # Нормализуем target_folder
         try:
             target_folder = target_folder.resolve()
         except (OSError, ValueError):
-            # Если не удалось разрешить, используем как есть
             pass
         
         logger.info(f"FTP {row.name}: файлы будут сохраняться в {target_folder} (ОС: {platform.system()})")
@@ -128,12 +140,11 @@ def sync_ftp_connection(connection_id: int):
         
         # Получаем список файлов на удаленном сервере
         try:
-            remote_files = ftp.list_files()
+            remote_files = ftp.list_files(recursive=True)
             logger.info(f"Найдено {len(remote_files)} файлов на FTP сервере {row.host}")
         except Exception as e:
             error_msg = f"Ошибка получения списка файлов: {str(e)}"
             logger.error(f"FTP {row.name}: {error_msg}")
-            # Обновляем ошибку в БД в отдельном соединении
             with engine.connect() as update_connection:
                 update_sql = text("""
                     UPDATE ftp_connections
@@ -148,13 +159,64 @@ def sync_ftp_connection(connection_id: int):
                     })
             return
         
+        # Нормализуем список файлов и применяем фильтры
+        normalized_files = []
+        for file_info in remote_files:
+            info = dict(file_info)
+            file_mtime = info.get('mtime')
+            if not isinstance(file_mtime, datetime):
+                file_mtime = datetime.utcnow()
+            info['mtime'] = file_mtime
+            name = info.get('name', '')
+            relative_path = info.get('relative_path') or name
+            info['name'] = name
+            info['relative_path'] = relative_path
+            normalized_files.append(info)
+
+        total_detected = len(normalized_files)
+        normalized_files.sort(key=lambda f: (f['mtime'], f['relative_path']))
+
+        filtered_files = normalized_files
+        if start_from:
+            filtered_files = [
+                f for f in filtered_files
+                if f['mtime'] >= start_from
+            ]
+            logger.info(
+                f"FTP {row.name}: отфильтрованы файлы старше {start_from.isoformat()} "
+                f"(осталось {len(filtered_files)} из {total_detected})"
+            )
+
+        processed_name_marker = last_processed_filename or ''
+        if last_processed_mtime:
+            filtered_files = [
+                f for f in filtered_files
+                if (f['mtime'] > last_processed_mtime) or
+                   (f['mtime'] == last_processed_mtime and f['relative_path'] > processed_name_marker)
+            ]
+            logger.info(
+                f"FTP {row.name}: отфильтрованы уже обработанные файлы "
+                f"(осталось {len(filtered_files)} из {total_detected})"
+            )
+
+        remote_files = filtered_files
+        logger.info(
+            f"FTP {row.name}: к обработке готово {len(remote_files)} файлов из {total_detected}"
+        )
+
         # Скачиваем новые файлы
         downloaded = 0
-        downloaded_files = []  # Список скачанных файлов для ручной обработки
-        
+        downloaded_files = []
+        latest_processed_mtime = last_processed_mtime
+        latest_processed_name = last_processed_filename or ''
+
         for file_info in remote_files:
             try:
                 filename = file_info['name']
+                relative_path = file_info.get('relative_path') or filename
+                
+                # Исправление дублирования путей: сохраняем файл прямо в целевую папку дня
+                # Игнорируем структуру папок с FTP, так как мы уже в папке нужного дня
                 local_file_path = target_folder / filename
                 
                 # Пропускаем, если файл уже существует
@@ -168,23 +230,39 @@ def sync_ftp_connection(connection_id: int):
                     filename_lower.startswith("fs_") or 
                     filename_lower.startswith("external-") or 
                     filename_lower.startswith("in-") or
-                    filename_lower.startswith("вход_")
+                    filename_lower.startswith("вход_") or
+                    filename_lower.startswith("out-")
                 )
                 valid_extensions = ['.mp3', '.wav']
                 is_valid_ext = any(filename_lower.endswith(ext) for ext in valid_extensions)
                 
                 if not is_valid_name or not is_valid_ext:
-                    logger.warning(f"Файл {filename} не соответствует формату (должен начинаться с fs_/external-/in-/вход_ и иметь расширение .mp3/.wav). Пропускаем.")
+                    # Для out- файлов может быть много ложных срабатываний в мониторинге,
+                    # но мы добавили out- в разрешенные, поэтому warning будет только на совсем левые файлы
+                    logger.warning(f"Файл {filename} не соответствует формату. Пропускаем.")
                     continue
                 
                 # Скачиваем файл
-                if ftp.download_file(filename, local_file_path):
+                # Используем relative_path, но FTP client должен понимать, что это может быть полный путь
+                # В нашей реализации FtpSync мы передаем relative_path, 
+                # но если мы нашли файл рекурсивно, в relative_path уже может быть путь
+                # Однако FtpSync.download_file ожидает путь ОТНОСИТЕЛЬНО remote_path
+                # Если мы передаем туда file_info['relative_path'], все должно работать
+                
+                if ftp.download_file(relative_path, local_file_path):
                     downloaded += 1
                     downloaded_files.append(local_file_path)
-                    logger.info(f"✓ Скачан файл: {filename} -> {local_file_path}")
+                    logger.info(f"✓ Скачан файл: {relative_path} -> {local_file_path}")
+
+                    file_mtime = file_info.get('mtime') or datetime.utcnow()
+                    if (latest_processed_mtime is None or
+                            file_mtime > latest_processed_mtime or
+                            (file_mtime == latest_processed_mtime and relative_path > latest_processed_name)):
+                        latest_processed_mtime = file_mtime
+                        latest_processed_name = relative_path
                 
             except Exception as e:
-                logger.error(f"Ошибка скачивания файла {file_info.get('name', 'unknown')}: {e}")
+                logger.error(f"Ошибка скачивания файла {file_info.get('relative_path') or file_info.get('name', 'unknown')}: {e}")
                 continue
         
         # Вручную обрабатываем скачанные файлы через CallHandler
@@ -198,49 +276,47 @@ def sync_ftp_connection(connection_id: int):
                 handler = CallHandler()
                 for file_path in downloaded_files:
                     try:
-                        # Нормализуем путь для кроссплатформенности
-                        # На Ubuntu важно использовать resolve() для получения абсолютного пути
-                        # На Windows это тоже работает корректно
                         try:
                             normalized_path = file_path.resolve()
                         except (OSError, ValueError) as e:
                             logger.warning(f"Не удалось разрешить путь {file_path}, используем как есть: {e}")
                             normalized_path = file_path
                         
-                        # Проверяем существование файла
                         if not normalized_path.exists():
                             logger.warning(f"Файл не существует, пропускаем: {normalized_path}")
                             continue
                         
-                        # Используем str() для преобразования в строку - это работает корректно на обеих ОС
-                        # Path.resolve() уже нормализовал путь для текущей ОС
                         path_str = str(normalized_path)
                         
-                        # Создаем mock события для watchdog
                         mock_event = SimpleNamespace(
                             src_path=path_str,
                             is_directory=False
                         )
                         handler.on_created(mock_event)
-                        logger.info(f"→ Файл {file_path.name} передан в обработку (путь: {path_str}, ОС: {platform.system()})")
+                        logger.info(f"→ Файл {file_path.name} передан в обработку")
                     except Exception as e:
-                        logger.error(f"Ошибка обработки файла {file_path.name}: {e}", exc_info=True)
+                        logger.error(f"Ошибка обработи файла {file_path.name}: {e}", exc_info=True)
             except Exception as e:
                 logger.error(f"Ошибка инициализации CallHandler: {e}", exc_info=True)
         
-        # Обновляем статистику в отдельном соединении
+        # Обновляем статистику
         with engine.connect() as update_connection:
             update_sql = text("""
                 UPDATE ftp_connections
-                SET last_sync = :now, last_error = NULL, 
-                    download_count = download_count + :downloaded
+                SET last_sync = :now,
+                    last_error = NULL,
+                    download_count = download_count + :downloaded,
+                    last_processed_mtime = :last_processed_mtime,
+                    last_processed_filename = :last_processed_filename
                 WHERE id = :conn_id
             """)
             with update_connection.begin():
                 update_connection.execute(update_sql, {
                     'now': datetime.utcnow(),
                     'downloaded': downloaded,
-                    'conn_id': connection_id
+                    'conn_id': connection_id,
+                    'last_processed_mtime': latest_processed_mtime,
+                    'last_processed_filename': latest_processed_name if latest_processed_mtime else None
                 })
         
         logger.info(f"FTP синхронизация {row.name} завершена. Скачано файлов: {downloaded}")
@@ -271,16 +347,11 @@ def sync_ftp_connection(connection_id: int):
 def _sync_worker(connection_id: int, sync_interval: int):
     """
     Рабочий поток для периодической синхронизации FTP подключения
-    
-    Args:
-        connection_id: ID подключения
-        sync_interval: Интервал синхронизации в секундах
     """
     logger.info(f"Запущен поток синхронизации для FTP подключения {connection_id}")
     
     while True:
         try:
-            # Проверяем, активно ли подключение (без Flask context)
             from config.settings import get_config
             from sqlalchemy import create_engine, text
             config = get_config()
@@ -299,30 +370,21 @@ def _sync_worker(connection_id: int, sync_interval: int):
                     logger.info(f"FTP подключение {connection_id} неактивно, останавливаем синхронизацию")
                     break
             
-            # Выполняем синхронизацию
             sync_ftp_connection(connection_id)
             
-            # Ждем до следующей синхронизации
             time.sleep(sync_interval)
             
         except Exception as e:
             logger.error(f"Ошибка в потоке синхронизации FTP {connection_id}: {e}", exc_info=True)
-            time.sleep(60)  # Ждем минуту перед повтором при ошибке
+            time.sleep(60)
 
 
 def start_ftp_sync(connection_id: int):
-    """
-    Запускает фоновую синхронизацию для FTP подключения
-    
-    Args:
-        connection_id: ID подключения
-    """
     with _sync_lock:
         if connection_id in _sync_threads:
             logger.warning(f"Синхронизация для FTP подключения {connection_id} уже запущена")
             return
         
-        # Получаем интервал синхронизации (без Flask context)
         from config.settings import get_config
         from sqlalchemy import create_engine, text
         config = get_config()
@@ -347,7 +409,6 @@ def start_ftp_sync(connection_id: int):
             
             sync_interval = row.sync_interval or 300
         
-        # Создаем и запускаем поток
         thread = threading.Thread(
             target=_sync_worker,
             args=(connection_id, sync_interval),
@@ -361,18 +422,9 @@ def start_ftp_sync(connection_id: int):
 
 
 def stop_ftp_sync(connection_id: int):
-    """
-    Останавливает синхронизацию для FTP подключения
-    
-    Args:
-        connection_id: ID подключения
-    """
     with _sync_lock:
         if connection_id not in _sync_threads:
             return
-        
-        # Поток остановится сам, когда увидит, что подключение неактивно
-        # Просто удаляем из словаря
         del _sync_threads[connection_id]
         logger.info(f"Остановлена синхронизация для FTP подключения {connection_id}")
 
@@ -385,14 +437,12 @@ def start_all_active_ftp_syncs():
         from common.user_settings import default_config_template
         import json
         
-        # Создаем подключение к БД напрямую, без Flask контекста
         config = get_config()
         engine = create_engine(config.SQLALCHEMY_DATABASE_URI)
         
         started_count = 0
         
         with engine.connect() as connection:
-            # Получаем всех пользователей с настройками
             sql = text("""
                 SELECT us.user_id, us.data
                 FROM user_settings us
@@ -407,7 +457,6 @@ def start_all_active_ftp_syncs():
                 if not data:
                     continue
                 
-                # Парсим JSON данные
                 if isinstance(data, str):
                     try:
                         data = json.loads(data)
@@ -419,9 +468,7 @@ def start_all_active_ftp_syncs():
                 source_type = paths_cfg.get('source_type', 'local')
                 ftp_connection_id = paths_cfg.get('ftp_connection_id')
                 
-                # Если пользователь выбрал FTP как источник
                 if source_type == 'ftp' and ftp_connection_id:
-                    # Проверяем, что подключение существует и активно
                     conn_sql = text("""
                         SELECT id, name, user_id, is_active
                         FROM ftp_connections
@@ -454,4 +501,3 @@ def stop_all_ftp_syncs():
         for conn_id in connection_ids:
             stop_ftp_sync(conn_id)
         logger.info("Остановлены все FTP синхронизации")
-

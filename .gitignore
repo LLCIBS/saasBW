@@ -62,3 +62,6 @@ runtime_configs/*.json
 # Note: If you need to track template/example JSON files in this directory in the future,
 # add them with: !runtime_configs/template.json (before the ignore pattern)
 
+# Documentation files (Markdown)
+*.md
+

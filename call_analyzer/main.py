@@ -93,6 +93,15 @@ def main():
         observer.start()
         logger.info(f"[MAIN] Начат мониторинг папки: {path}")
 
+        # Запуск FTP синхронизации (только в глобальном режиме, так как service_manager запускает его сам)
+        if getattr(profile_config, 'PROFILE_LABEL', 'global') == 'global':
+            try:
+                from call_analyzer.ftp_sync_manager import start_all_active_ftp_syncs
+                logger.info("[MAIN] Запуск FTP синхронизации (глобальный режим)...")
+                start_all_active_ftp_syncs()
+            except Exception as e:
+                logger.error(f"[MAIN] Ошибка запуска FTP синхронизации: {e}")
+
         # 3. Основной цикл
         while True:
             now = datetime.now()

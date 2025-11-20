@@ -1949,6 +1949,18 @@ def api_recalls():
     except Exception as e:
         return jsonify({'error': str(e)})
 
+def _parse_datetime_field(value):
+    """Преобразует ISO-строку в datetime или возвращает None."""
+    if not value:
+        return None
+    if isinstance(value, datetime):
+        return value
+    try:
+        return datetime.fromisoformat(value)
+    except Exception:
+        return None
+
+
 @app.route('/ftp')
 @login_required
 def ftp_page():
@@ -1973,6 +1985,9 @@ def api_ftp_connections():
                 'protocol': conn.protocol,
                 'is_active': conn.is_active,
                 'sync_interval': conn.sync_interval,
+                'start_from': conn.start_from.isoformat() if conn.start_from else None,
+                'last_processed_mtime': conn.last_processed_mtime.isoformat() if conn.last_processed_mtime else None,
+                'last_processed_filename': conn.last_processed_filename,
                 'last_sync': conn.last_sync.isoformat() if conn.last_sync else None,
                 'last_error': conn.last_error,
                 'download_count': conn.download_count,
@@ -1997,6 +2012,8 @@ def api_ftp_create():
             if not data.get(field):
                 return jsonify({'success': False, 'message': f'Поле {field} обязательно'}), 400
         
+        start_from = _parse_datetime_field(data.get('start_from'))
+
         # Создаем подключение
         conn = FtpConnection(
             user_id=current_user.id,
@@ -2008,7 +2025,8 @@ def api_ftp_create():
             remote_path=data['remote_path'],
             protocol=data['protocol'],
             is_active=data.get('is_active', True),
-            sync_interval=int(data.get('sync_interval', 300))
+            sync_interval=int(data.get('sync_interval', 300)),
+            start_from=start_from
         )
         
         db.session.add(conn)
@@ -2068,6 +2086,8 @@ def api_ftp_update(conn_id):
             conn.is_active = data['is_active']
         if 'sync_interval' in data:
             conn.sync_interval = int(data['sync_interval'])
+        if 'start_from' in data:
+            conn.start_from = _parse_datetime_field(data.get('start_from'))
         
         db.session.commit()
         
@@ -2737,4 +2757,3 @@ if __name__ == '__main__':
     debug = app.config.get('DEBUG', False)
 
     app.run(host=host, port=port, debug=debug, use_reloader=False)
-
