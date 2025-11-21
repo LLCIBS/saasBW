@@ -2091,27 +2091,33 @@ def api_ftp_update(conn_id):
         
         db.session.commit()
         
-        # Управляем синхронизацией только если это подключение выбрано в конфигурации
-        from database.models import UserSettings
-        from common.user_settings import default_config_template
-        
-        user_settings = UserSettings.query.filter_by(user_id=current_user.id).first()
-        is_selected = False
-        if user_settings and user_settings.data:
-            config_data = user_settings.data.get('config') or default_config_template()
-            paths_cfg = config_data.get('paths') or {}
-            is_selected = (paths_cfg.get('source_type') == 'ftp' and 
-                          paths_cfg.get('ftp_connection_id') == conn.id)
-        
-        if is_selected:
-            try:
-                from call_analyzer.ftp_sync_manager import start_ftp_sync, stop_ftp_sync
-                if conn.is_active and not was_active:
+        # Управляем синхронизацией
+        # Всегда останавливаем синхронизацию перед возможным перезапуском для применения новых настроек
+        try:
+            from call_analyzer.ftp_sync_manager import start_ftp_sync, stop_ftp_sync
+            
+            stop_ftp_sync(conn.id)
+            
+            if conn.is_active:
+                from database.models import UserSettings
+                from common.user_settings import default_config_template
+                
+                user_settings = UserSettings.query.filter_by(user_id=current_user.id).first()
+                is_selected = False
+                paths_cfg = {}
+                if user_settings and user_settings.data:
+                    config_data = user_settings.data.get('config') or default_config_template()
+                    paths_cfg = config_data.get('paths') or {}
+                    is_selected = (paths_cfg.get('source_type') == 'ftp' and 
+                                  paths_cfg.get('ftp_connection_id') == conn.id)
+                
+                if is_selected:
+                    app.logger.info(f"FTP подключение {conn.id} ({conn.name}) активно и выбрано в конфигурации, запускаем синхронизацию")
                     start_ftp_sync(conn.id)
-                elif not conn.is_active and was_active:
-                    stop_ftp_sync(conn.id)
-            except Exception as e:
-                app.logger.warning(f"Не удалось обновить синхронизацию для FTP {conn.id}: {e}")
+                else:
+                    app.logger.info(f"FTP подключение {conn.id} ({conn.name}) активно, но не выбрано в конфигурации (source_type={paths_cfg.get('source_type')}, ftp_id={paths_cfg.get('ftp_connection_id')})")
+        except Exception as e:
+            app.logger.warning(f"Не удалось обновить синхронизацию для FTP {conn.id}: {e}", exc_info=True)
         
         return jsonify({'success': True, 'message': 'FTP подключение обновлено'})
     except Exception as e:
@@ -2186,6 +2192,7 @@ def api_ftp_sync(conn_id):
         
         # Запускаем синхронизацию в фоне
         from call_analyzer.ftp_sync_manager import sync_ftp_connection
+        app.logger.info(f"Запуск ручной синхронизации для FTP подключения {conn.id} ({conn.name})")
         threading.Thread(target=sync_ftp_connection, args=(conn.id,), daemon=True).start()
         
         return jsonify({'success': True, 'message': 'Синхронизация запущена'})

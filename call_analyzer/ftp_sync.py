@@ -129,15 +129,48 @@ class FtpSync:
             return f"/{child}" if child else '/'
         return f"{parent}/{child}" if child else parent
 
-    def list_files(self, path: Optional[str] = None, recursive: bool = False) -> List[dict]:
+    def _should_skip_directory(self, dir_path: str, min_mtime: Optional[datetime]) -> bool:
+        if not min_mtime:
+            return False
+        try:
+            parts = dir_path.strip('/').split('/')
+            year, month, day = None, None, None
+            
+            for i, part in enumerate(parts):
+                if part.isdigit() and len(part) == 4:
+                    try:
+                        y = int(part)
+                        if 2000 <= y <= 2100:
+                            year = y
+                            if i + 1 < len(parts) and parts[i+1].isdigit():
+                                m = int(parts[i+1])
+                                if 1 <= m <= 12:
+                                    month = m
+                                    if i + 2 < len(parts) and parts[i+2].isdigit():
+                                        d = int(parts[i+2])
+                                        if 1 <= d <= 31:
+                                            day = d
+                            break
+                    except: continue
+            
+            if year is not None:
+                if year < min_mtime.year: return True
+                if year == min_mtime.year and month is not None:
+                    if month < min_mtime.month: return True
+                    if month == min_mtime.month and day is not None:
+                        if day < min_mtime.day: return True
+            return False
+        except: return False
+
+    def list_files(self, path: Optional[str] = None, recursive: bool = False, min_mtime: Optional[datetime] = None) -> List[dict]:
         remote_dir = path or self.remote_path
         
         if self.protocol == 'ftp':
-            return self._list_files_ftp(remote_dir, recursive=recursive)
+            return self._list_files_ftp(remote_dir, recursive=recursive, min_mtime=min_mtime)
         else:
-            return self._list_files_sftp(remote_dir, recursive=recursive)
+            return self._list_files_sftp(remote_dir, recursive=recursive, min_mtime=min_mtime)
 
-    def _list_files_ftp(self, remote_dir: str, recursive: bool = False) -> List[dict]:
+    def _list_files_ftp(self, remote_dir: str, recursive: bool = False, min_mtime: Optional[datetime] = None) -> List[dict]:
         files = []
         ftp = None
         remote_dir = self._normalize_remote_dir(remote_dir)
@@ -146,16 +179,15 @@ class FtpSync:
             initial_pwd = ftp.pwd()
             absolute_base = self._compose_absolute_path(initial_pwd, remote_dir)
             
-            # Используем deque для очереди (BFS) вместо стека (DFS)
-            # Это может помочь не зарываться сразу глубоко и избегать тайм-аутов
             from collections import deque
             queue = deque([(absolute_base, PurePosixPath('.'))])
             visited = set()
             
             logger.info(f"FTP LIST: Начинаем обход с {absolute_base}")
+            if min_mtime:
+                logger.info(f"FTP LIST: Пропускаем папки старше {min_mtime.strftime('%Y-%m-%d')}")
 
-            # Ограничиваем глубину или количество папок, чтобы не зависнуть
-            max_dirs = 1000
+            max_dirs = 2000
             dirs_processed = 0
 
             while queue:
@@ -171,19 +203,11 @@ class FtpSync:
                 visited.add(normalized_dir)
                 dirs_processed += 1
                 
-                # Если путь содержит год, проверяем, не слишком ли он старый
-                # Это эвристика для Asterisk /var/spool/asterisk/monitor/YYYY/MM/DD
-                try:
-                    parts = normalized_dir.split('/')
-                    for part in parts:
-                        if part.isdigit() and len(part) == 4:
-                            year = int(part)
-                            current_year = datetime.now().year
-                            if year < current_year - 1: # Сканируем только текущий и прошлый год
-                                # logger.debug(f"Пропускаем старую папку: {normalized_dir}")
-                                continue
-                except:
-                    pass
+                if self._should_skip_directory(normalized_dir, min_mtime):
+                    continue
+                
+                if dirs_processed % 50 == 0:
+                    logger.info(f"FTP LIST: обработано {dirs_processed} папок, найдено {len(files)} файлов")
                 
                 try:
                     ftp.cwd(normalized_dir)
@@ -196,13 +220,11 @@ class FtpSync:
                     ftp.retrlines('LIST', entries.append)
                 except Exception as e:
                     logger.error(f"Ошибка получения списка файлов через FTP в {normalized_dir}: {e}")
-                    # Если тайм-аут, возможно стоит переподключиться
                     if "time" in str(e).lower() or "out" in str(e).lower():
                         logger.info("Попытка переподключения к FTP...")
                         try:
                             ftp.quit()
-                        except:
-                            pass
+                        except: pass
                         try:
                             ftp = self._get_ftp_connection()
                             ftp.cwd(normalized_dir)
@@ -211,31 +233,25 @@ class FtpSync:
                              break
                     continue
                 
-                if not entries:
-                    # logger.debug(f"FTP: Пустой каталог {normalized_dir}")
-                    pass
-
                 for line in entries:
                     info = self._parse_ftp_list_line(line)
-                    if not info:
-                        if line.strip() and not line.startswith('total'):
-                            # logger.warning(f"Не удалось распарсить строку FTP: '{line}'")
-                            pass
-                        continue
+                    if not info: continue
                         
                     name = info['name']
-                    if name in ('.', '..'):
-                        continue
+                    if name in ('.', '..'): continue
                         
                     relative_path = str((relative_prefix / name).as_posix())
                     info['relative_path'] = relative_path or name
                     info['remote_path'] = self._build_remote_path(normalized_dir, name)
                     
                     if info.get('type') == 'file':
+                        if min_mtime and info.get('mtime') and info['mtime'] < min_mtime:
+                            continue
                         files.append(info)
                     elif recursive and info.get('type') == 'directory':
                         if info['remote_path'] not in visited:
-                            queue.append((info['remote_path'], PurePosixPath(info['relative_path'])))
+                            if not self._should_skip_directory(info['remote_path'], min_mtime):
+                                queue.append((info['remote_path'], PurePosixPath(info['relative_path'])))
                             
         except Exception as e:
             logger.error(f"Ошибка получения списка файлов через FTP: {e}")
@@ -246,7 +262,9 @@ class FtpSync:
                     ftp.quit()
                 except:
                     ftp.close()
-        return [f for f in files if f and f.get('type') == 'file']
+        
+        logger.info(f"FTP LIST: завершено, найдено {len(files)} файлов (обработано {dirs_processed} папок)")
+        return files
 
     def _parse_ftp_list_line(self, line: str) -> Optional[dict]:
         """Парсит строку из FTP LIST команды"""
@@ -343,7 +361,7 @@ class FtpSync:
         except:
             return None
 
-    def _list_files_sftp(self, remote_dir: str, recursive: bool = False) -> List[dict]:
+    def _list_files_sftp(self, remote_dir: str, recursive: bool = False, min_mtime: Optional[datetime] = None) -> List[dict]:
         files = []
         ssh = None
         sftp = None
@@ -358,6 +376,10 @@ class FtpSync:
                 if normalized_dir in visited:
                     continue
                 visited.add(normalized_dir)
+                
+                if self._should_skip_directory(normalized_dir, min_mtime):
+                     continue
+
                 try:
                     entries = sftp.listdir_attr(normalized_dir)
                 except Exception as e:
@@ -371,12 +393,18 @@ class FtpSync:
                     full_remote_path = str((PurePosixPath(normalized_dir) / name).as_posix())
                     if stat.S_ISDIR(item.st_mode):
                         if recursive:
-                            stack.append((full_remote_path, PurePosixPath(relative_path)))
+                            if not self._should_skip_directory(full_remote_path, min_mtime):
+                                stack.append((full_remote_path, PurePosixPath(relative_path)))
                         continue
+                    
+                    file_mtime = datetime.fromtimestamp(item.st_mtime)
+                    if min_mtime and file_mtime < min_mtime:
+                         continue
+
                     files.append({
                         'name': name,
                         'size': item.st_size,
-                        'mtime': datetime.fromtimestamp(item.st_mtime),
+                        'mtime': file_mtime,
                         'type': 'file',
                         'relative_path': relative_path or name,
                         'remote_path': full_remote_path

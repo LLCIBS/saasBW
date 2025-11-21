@@ -6,7 +6,7 @@
 import logging
 import threading
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
 
@@ -24,6 +24,7 @@ def sync_ftp_connection(connection_id: int):
     Args:
         connection_id: ID подключения из базы данных
     """
+    logger.info(f"Начало синхронизации FTP подключения {connection_id} (ручная или автоматическая)")
     try:
         # Используем прямое подключение к БД без Flask context
         from config.settings import get_config
@@ -140,8 +141,21 @@ def sync_ftp_connection(connection_id: int):
         
         # Получаем список файлов на удаленном сервере
         try:
-            remote_files = ftp.list_files(recursive=True)
-            logger.info(f"Найдено {len(remote_files)} файлов на FTP сервере {row.host}")
+            scan_min_date = None
+            if last_processed_mtime:
+                # Если уже синхронизировали, берем с запасом 2 дня
+                scan_min_date = last_processed_mtime - timedelta(days=2)
+            elif start_from:
+                # Если есть начальная дата
+                scan_min_date = start_from
+            
+            if scan_min_date:
+                logger.info(f"FTP {row.name}: сканирование файлов с сервера {row.host} (фильтр даты >= {scan_min_date.strftime('%Y-%m-%d')})")
+            else:
+                logger.info(f"FTP {row.name}: полное сканирование файлов с сервера {row.host}")
+
+            remote_files = ftp.list_files(recursive=True, min_mtime=scan_min_date)
+            logger.info(f"FTP {row.name}: найдено {len(remote_files)} файлов")
         except Exception as e:
             error_msg = f"Ошибка получения списка файлов: {str(e)}"
             logger.error(f"FTP {row.name}: {error_msg}")
@@ -209,8 +223,33 @@ def sync_ftp_connection(connection_id: int):
         downloaded_files = []
         latest_processed_mtime = last_processed_mtime
         latest_processed_name = last_processed_filename or ''
+        
+        last_db_check_time = time.time()
+        
+        logger.info(f"FTP {row.name}: начинаем скачивание файлов (всего {len(remote_files)} файлов)")
 
         for file_info in remote_files:
+            # 1. Быстрая проверка авто-синхронизации (in-memory)
+            current_thread_name = threading.current_thread().name
+            if current_thread_name == f"FtpSync-{connection_id}":
+                if connection_id not in _sync_threads:
+                    logger.info(f"Авто-синхронизация FTP {connection_id} прервана пользователем (local check)")
+                    return
+            
+            # 2. Проверка статуса в БД (для надежной остановки любой синхронизации)
+            # Проверяем каждые 2 секунды
+            if time.time() - last_db_check_time > 2.0:
+                last_db_check_time = time.time()
+                try:
+                    with engine.connect() as status_conn:
+                        status_sql = text("SELECT is_active FROM ftp_connections WHERE id = :id")
+                        res = status_conn.execute(status_sql, {"id": connection_id}).fetchone()
+                        if not res or not res.is_active:
+                            logger.info(f"Синхронизация FTP {connection_id} прервана (отключено в БД)")
+                            return
+                except Exception as e:
+                    logger.warning(f"Не удалось проверить статус активности FTP: {e}")
+
             try:
                 filename = file_info['name']
                 relative_path = file_info.get('relative_path') or filename
@@ -348,9 +387,14 @@ def _sync_worker(connection_id: int, sync_interval: int):
     """
     Рабочий поток для периодической синхронизации FTP подключения
     """
-    logger.info(f"Запущен поток синхронизации для FTP подключения {connection_id}")
+    logger.info(f"_sync_worker: Запущен поток синхронизации для FTP {connection_id} (интервал {sync_interval} сек)")
     
     while True:
+        # Проверяем, не остановили ли нас
+        if connection_id not in _sync_threads:
+            logger.info(f"Поток синхронизации FTP {connection_id} остановлен (удален из активных)")
+            break
+
         try:
             from config.settings import get_config
             from sqlalchemy import create_engine, text
@@ -380,45 +424,50 @@ def _sync_worker(connection_id: int, sync_interval: int):
 
 
 def start_ftp_sync(connection_id: int):
+    logger.info(f"start_ftp_sync: Запрос на запуск ID={connection_id}")
     with _sync_lock:
         if connection_id in _sync_threads:
-            logger.warning(f"Синхронизация для FTP подключения {connection_id} уже запущена")
+            logger.warning(f"start_ftp_sync: Синхронизация для FTP {connection_id} уже запущена (в списке активных)")
             return
         
-        from config.settings import get_config
-        from sqlalchemy import create_engine, text
-        config = get_config()
-        engine = create_engine(config.SQLALCHEMY_DATABASE_URI)
-        
-        with engine.connect() as connection:
-            sql = text("""
-                SELECT id, name, is_active, sync_interval
-                FROM ftp_connections
-                WHERE id = :conn_id
-            """)
-            result = connection.execute(sql, {'conn_id': connection_id})
-            row = result.fetchone()
+        try:
+            from config.settings import get_config
+            from sqlalchemy import create_engine, text
+            config = get_config()
+            engine = create_engine(config.SQLALCHEMY_DATABASE_URI)
             
-            if not row:
-                logger.error(f"FTP подключение {connection_id} не найдено")
-                return
+            with engine.connect() as connection:
+                sql = text("""
+                    SELECT id, name, is_active, sync_interval
+                    FROM ftp_connections
+                    WHERE id = :conn_id
+                """)
+                result = connection.execute(sql, {'conn_id': connection_id})
+                row = result.fetchone()
+                
+                if not row:
+                    logger.error(f"start_ftp_sync: FTP подключение {connection_id} не найдено в БД")
+                    return
+                
+                if not row.is_active:
+                    logger.info(f"start_ftp_sync: FTP подключение {row.name} неактивно в БД, отмена запуска")
+                    return
+                
+                sync_interval = row.sync_interval or 300
             
-            if not row.is_active:
-                logger.info(f"FTP подключение {row.name} неактивно, не запускаем синхронизацию")
-                return
+            thread = threading.Thread(
+                target=_sync_worker,
+                args=(connection_id, sync_interval),
+                daemon=True,
+                name=f"FtpSync-{connection_id}"
+            )
+            thread.start()
+            _sync_threads[connection_id] = thread
             
-            sync_interval = row.sync_interval or 300
-        
-        thread = threading.Thread(
-            target=_sync_worker,
-            args=(connection_id, sync_interval),
-            daemon=True,
-            name=f"FtpSync-{connection_id}"
-        )
-        thread.start()
-        _sync_threads[connection_id] = thread
-        
-        logger.info(f"Запущена синхронизация для FTP подключения {connection_id}")
+            logger.info(f"start_ftp_sync: Поток запущен и добавлен в реестр для FTP {connection_id}")
+            
+        except Exception as e:
+            logger.error(f"start_ftp_sync: Ошибка запуска: {e}", exc_info=True)
 
 
 def stop_ftp_sync(connection_id: int):
