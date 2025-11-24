@@ -249,7 +249,16 @@ def get_user_prompts_file_path(user=None):
     if not prompts_file:
         return None
     path = Path(prompts_file)
+    # Создаем директорию с правильными правами
     path.parent.mkdir(parents=True, exist_ok=True)
+    # Устанавливаем права доступа (если директория только что создана)
+    try:
+        import os
+        import stat
+        # Устанавливаем права 755 на директорию
+        os.chmod(path.parent, stat.S_IRWXU | stat.S_IRGRP | stat.S_IXGRP | stat.S_IROTH | stat.S_IXOTH)
+    except Exception:
+        pass  # Игнорируем ошибки прав доступа (может не хватать прав)
     return path
 
 
@@ -1156,10 +1165,11 @@ def api_prompts_save():
 def api_prompts_sync():
     """Синхронизирует промпты со списком станций и обновляет файл."""
     try:
-        if sync_prompts_from_config():
-            current_data = get_user_prompts_data()
+        user = current_user if hasattr(current_user, 'is_authenticated') and current_user.is_authenticated else None
+        if sync_prompts_from_config(user=user):
+            current_data = get_user_prompts_data(user=user)
             try:
-                write_prompts_file(current_data)
+                write_prompts_file(current_data, user=user)
             except Exception as file_error:
                 app.logger.error("Не удалось обновить файл промптов: %s", file_error)
             return jsonify({'success': True, 'message': 'Промпты синхронизированы'})

@@ -90,9 +90,38 @@ def build_runtime_config(project_config, config_data=None, user_id=None):
         base_records_path = str(Path(str(default_base)) / 'users' / str(user_id))
         paths_cfg['base_records_path'] = base_records_path
         changed = True
-    prompts_file = paths_cfg.get('prompts_file') or str(_fallback('PROMPTS_FILE', ''))
-    additional_vocab_file = paths_cfg.get('additional_vocab_file') or str(_fallback('ADDITIONAL_VOCAB_FILE', ''))
-    script_prompt_file = paths_cfg.get('script_prompt_file') or str(_fallback('SCRIPT_PROMPT_8_PATH', ''))
+    
+    # Автоматически формируем пути к конфигурационным файлам в пользовательской директории
+    user_config_dir = None
+    if user_id and base_records_path:
+        user_config_dir = Path(base_records_path) / 'config'
+    
+    prompts_file = paths_cfg.get('prompts_file') or ''
+    if not prompts_file:
+        if user_config_dir:
+            prompts_file = str(user_config_dir / 'prompts.yaml')
+            paths_cfg['prompts_file'] = prompts_file
+            changed = True
+        else:
+            prompts_file = str(_fallback('PROMPTS_FILE', ''))
+    
+    additional_vocab_file = paths_cfg.get('additional_vocab_file') or ''
+    if not additional_vocab_file:
+        if user_config_dir:
+            additional_vocab_file = str(user_config_dir / 'additional_vocab.yaml')
+            paths_cfg['additional_vocab_file'] = additional_vocab_file
+            changed = True
+        else:
+            additional_vocab_file = str(_fallback('ADDITIONAL_VOCAB_FILE', ''))
+    
+    script_prompt_file = paths_cfg.get('script_prompt_file') or ''
+    if not script_prompt_file:
+        if user_config_dir:
+            script_prompt_file = str(user_config_dir / 'script_prompt_8.yaml')
+            paths_cfg['script_prompt_file'] = script_prompt_file
+            changed = True
+        else:
+            script_prompt_file = str(_fallback('SCRIPT_PROMPT_8_PATH', ''))
     runtime_paths = {
         'base_records_path': base_records_path or str(default_base),
         'prompts_file': prompts_file,
