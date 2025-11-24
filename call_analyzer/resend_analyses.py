@@ -39,7 +39,7 @@ def parse_analysis_file(analysis_path: str):
 def extract_info_from_filename(filename: str):
     """
     Извлекает station_code, phone_number, date_str из имени файла анализа.
-    Поддерживает форматы: вход_*, fs_*, external-*, in-*
+    Поддерживает форматы: вход_*, fs_*, external-*
     """
     base_name = filename.replace("_analysis.txt", "")
     
@@ -67,14 +67,6 @@ def extract_info_from_filename(filename: str):
     
     # Формат: external-station-phone-YYYYMMDD-HHMMSS
     match = re.match(r'external-(\d+)-(\d+)-(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})', base_name)
-    if match:
-        station_code = match.group(1)
-        phone_number = "+" + match.group(2)
-        date_str = f"{match.group(3)}-{match.group(4)}-{match.group(5)}-{match.group(6)}-{match.group(7)}-{match.group(8)}"
-        return station_code, phone_number, date_str
-    
-    # Формат: in-station-phone-YYYYMMDD-HHMMSS
-    match = re.match(r'in-(\d+)-(\d+)-(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})', base_name)
     if match:
         station_code = match.group(1)
         phone_number = "+" + match.group(2)

@@ -268,7 +268,6 @@ def sync_ftp_connection(connection_id: int):
                 is_valid_name = (
                     filename_lower.startswith("fs_") or 
                     filename_lower.startswith("external-") or 
-                    filename_lower.startswith("in-") or
                     filename_lower.startswith("вход_") or
                     filename_lower.startswith("out-")
                 )

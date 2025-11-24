@@ -188,9 +188,8 @@ def parse_filename(file_name: str):
             # Падать не будем — попробуем другие форматы ниже
             pass
 
-    # Поддержка форматов с дефисами из конфигурации:
+    # Поддержка формата с дефисами из конфигурации:
     # - external-<station>-<phone>-<YYYYMMDD>-<HHMMSS>-...
-    # - in-<station>-<phone>-<YYYYMMDD>-<HHMMSS>-...
     m = re.match(config.FILENAME_PATTERNS['external_pattern'], file_name, re.IGNORECASE)
     if m:
         try:
@@ -361,24 +360,6 @@ def is_legal_entity_call(transcript_text: str) -> bool:
     
     Args:
         transcript_text (str): Текст транскрипции звонка
-        
-    # Поддержка формата: in-<station>-<phone>-<YYYYMMDD>-<HHMMSS>-...
-    # Пример: in-9623217779-+79033227159-20251007-110801-1759824481.3355.wav
-    if file_name.lower().startswith("in-"):
-        in_parts = file_name.split("-")
-        # Ожидаем минимум: [in, station, phone, yyyymmdd, hhmmss, ...]
-        if len(in_parts) >= 5:
-            try:
-                station_code = in_parts[1]
-                phone_number = in_parts[2]
-                yyyymmdd = in_parts[3]
-                hhmmss = in_parts[4]
-                dt_str = f"{yyyymmdd[:4]}-{yyyymmdd[4:6]}-{yyyymmdd[6:8]}-{hhmmss[:2]}-{hhmmss[2:4]}-{hhmmss[4:6]}"
-                call_time = datetime.datetime.strptime(dt_str, "%Y-%m-%d-%H-%M-%S")
-                phone_number = normalize_phone_number(phone_number)
-                return phone_number, station_code, call_time
-            except Exception:
-                pass
 
     Returns:
         bool: True если звонок от юридического лица, False иначе

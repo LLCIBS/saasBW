@@ -656,19 +656,6 @@ def create_excel_report(transcriptions_folder, output_file_path, telegram_messag
                         phone_number = ph
                     except Exception:
                         date_time_obj = None
-            # Поддержка формата in-<station>-<phone>-<YYYYMMDD>-<HHMMSS>-...
-            if not date_time_obj:
-                if base_name.lower().startswith('in-'):
-                    try:
-                        parts = base_name.split('-')
-                        station_code = parts[1]
-                        ph = parts[2].lstrip('+')
-                        yyyymmdd = parts[3]
-                        hhmmss = parts[4]
-                        date_time_obj = datetime.strptime(f"{yyyymmdd} {hhmmss}", '%Y%m%d %H%M%S')
-                        phone_number = ph
-                    except Exception:
-                        date_time_obj = None
             # Поддержка формата вход_<station>_с_<phone>_на_<phone>_от_<YYYY>_<MM>_<DD>
             if not date_time_obj:
                 if base_name.lower().startswith('вход_'):
@@ -1087,18 +1074,6 @@ def compute_realtime_summary(
 
             # external- формат
             if not date_time_obj and base_name.lower().startswith('external-'):
-                try:
-                    parts = base_name.split('-')
-                    station_code = parts[1]
-                    phone_number = parts[2].lstrip('+')
-                    yyyymmdd = parts[3]
-                    hhmmss = parts[4]
-                    date_time_obj = datetime.strptime(f"{yyyymmdd} {hhmmss}", '%Y%m%d %H%M%S')
-                except Exception:
-                    date_time_obj = None
-
-            # in- формат
-            if not date_time_obj and base_name.lower().startswith('in-'):
                 try:
                     parts = base_name.split('-')
                     station_code = parts[1]

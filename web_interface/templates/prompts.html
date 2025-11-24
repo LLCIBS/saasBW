@@ -640,6 +640,8 @@
             }
 
             renderChecklistItems();
+            // Генерируем собранный промпт при первой загрузке
+            generateAssembledPrompt();
         }
 
         function renderChecklistItems() {
@@ -682,16 +684,57 @@
             if (!Array.isArray(scriptPromptData.checklist)) return;
             scriptPromptData.checklist.splice(index, 1);
             renderChecklistItems();
+            // Обновляем собранный промпт после удаления пункта
+            generateAssembledPrompt();
         }
 
         function updateChecklistTitle(index, value) {
             if (!Array.isArray(scriptPromptData.checklist)) return;
             scriptPromptData.checklist[index].title = value;
+            // Автоматически обновляем собранный промпт при изменении названия пункта
+            generateAssembledPrompt();
         }
 
         function updateChecklistPrompt(index, value) {
             if (!Array.isArray(scriptPromptData.checklist)) return;
             scriptPromptData.checklist[index].prompt = value;
+            // Автоматически обновляем собранный промпт при изменении пунктов
+            generateAssembledPrompt();
+        }
+
+        function generateAssembledPrompt() {
+            if (!Array.isArray(scriptPromptData.checklist)) return;
+            
+            const items = scriptPromptData.checklist.filter(item => item.title && item.title.trim());
+            
+            if (items.length === 0) {
+                return;
+            }
+            
+            // Формируем собранный промпт на основе пунктов чек-листа
+            let assembledPrompt = `Оцени звонок по пунктам чек-листа ниже. Для КАЖДОГО пункта ответь строго формой '[ОТВЕТ: ДА]' или '[ОТВЕТ: НЕТ]' без дополнительных слов после него.
+
+После всех ответов добавь блок <общая оценка>... </общая оценка> с кратким выводом.
+
+Если пункт неприменим, ставь '[ОТВЕТ: НЕТ]'.
+
+
+Чек-лист:
+
+`;
+            
+            // Добавляем пункты чек-листа с их номерами
+            items.forEach((item, index) => {
+                assembledPrompt += `${index + 1}. ${item.title}\n\n`;
+            });
+            
+            // Обновляем поле собранного промпта
+            const assembledPromptField = document.getElementById('assembledPrompt');
+            if (assembledPromptField) {
+                assembledPromptField.value = assembledPrompt.trim();
+                // Обновляем данные
+                scriptPromptData.prompt = assembledPrompt.trim();
+            }
         }
 
         async function generatePrompt(index) {
@@ -754,10 +797,13 @@
 
         async function saveScriptPrompt() {
             try {
+                // Перед сохранением обновляем собранный промпт на основе текущих пунктов
+                generateAssembledPrompt();
+                
                 const payload = {
                     data: {
                         checklist: scriptPromptData.checklist || [],
-                        prompt: document.getElementById('assembledPrompt')?.value || ''
+                        prompt: document.getElementById('assembledPrompt')?.value || scriptPromptData.prompt || ''
                     }
                 };
                 const resp = await fetch('/api/script-prompt/save', {

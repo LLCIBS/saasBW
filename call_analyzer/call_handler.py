@@ -422,11 +422,10 @@ class CallHandler(FileSystemEventHandler):
             file_path = Path(event.src_path)
         
         name_lower = file_path.name.lower()
-        # Принимаем стандартные записи fs_*, external-*, in-* и новый формат вход_*; расширения из конфигурации
+        # Принимаем стандартные записи fs_*, external-* и новый формат вход_*; расширения из конфигурации
         if not (
             name_lower.startswith("fs_") or 
             name_lower.startswith("external-") or 
-            name_lower.startswith("in-") or
             name_lower.startswith("вход_")
         ):
             return
