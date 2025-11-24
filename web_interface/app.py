@@ -433,26 +433,48 @@ def legacy_config_override(runtime_cfg):
     """
     Временное применение пользовательских настроек к legacy-модулю call_analyzer.config.
     Позволяет запускать отчёты в контексте конкретного профиля.
+    Патчит как call_analyzer.config, так и config (если он загружен отдельно).
     """
+    import sys
+    configs_to_patch = []
+
+    # 1. call_analyzer.config
     try:
         from call_analyzer import config as legacy_config
+        configs_to_patch.append(legacy_config)
     except ImportError:
+        pass
+
+    # 2. config (если загружен как top-level модуль, что делает week_full.py и exental_alert.py)
+    if 'config' in sys.modules:
+        configs_to_patch.append(sys.modules['config'])
+
+    if not configs_to_patch:
         yield None
         return
 
     sentinel = object()
-    overrides = {}
+    # overrides хранит список изменений для каждого модуля: {module_obj: {attr: prev_value}}
+    overrides = {cfg: {} for cfg in configs_to_patch}
 
     def _set_attr(attr, value):
-        overrides[attr] = getattr(legacy_config, attr, sentinel)
-        setattr(legacy_config, attr, value)
+        for cfg in configs_to_patch:
+            if cfg not in overrides:
+                overrides[cfg] = {}
+            
+            # Сохраняем старое значение только один раз
+            if attr not in overrides[cfg]:
+                overrides[cfg][attr] = getattr(cfg, attr, sentinel)
+            
+            setattr(cfg, attr, value)
 
     def _restore():
-        for attr, prev in overrides.items():
-            if prev is sentinel:
-                delattr(legacy_config, attr)
-            else:
-                setattr(legacy_config, attr, prev)
+        for cfg, attrs in overrides.items():
+            for attr, prev in attrs.items():
+                if prev is sentinel:
+                    delattr(cfg, attr)
+                else:
+                    setattr(cfg, attr, prev)
 
     try:
         paths_cfg = runtime_cfg.get('paths', {})
@@ -493,7 +515,8 @@ def legacy_config_override(runtime_cfg):
         _set_attr('NIZH_STATION_CODES', list(runtime_cfg.get('nizh_station_codes') or []))
         _set_attr('LEGAL_ENTITY_KEYWORDS', list(runtime_cfg.get('legal_entity_keywords') or []))
 
-        yield legacy_config
+        # Возвращаем первый конфиг для совместимости (хотя yield может и не использоваться)
+        yield configs_to_patch[0] if configs_to_patch else None
     finally:
         _restore()
 

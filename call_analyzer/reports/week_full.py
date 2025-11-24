@@ -4,6 +4,10 @@ import json
 import requests
 import pandas as pd
 import openpyxl
+
+# Отключаем FutureWarning pandas о downcasting
+pd.set_option('future.no_silent_downcasting', True)
+
 from datetime import datetime, timedelta
 import time
 from openpyxl.styles import Font, Border, Side, Alignment
@@ -673,6 +677,20 @@ def create_excel_report(transcriptions_folder, output_file_path, telegram_messag
                     except Exception:
                         date_time_obj = None
 
+            # Поддержка формата out-<phone>-<station>-<YYYYMMDD>-<HHMMSS>-...
+            if not date_time_obj:
+                if base_name.lower().startswith('out-'):
+                    try:
+                        parts = base_name.split('-')
+                        # out-89196552973-203-20251120-173809-...
+                        phone_number = parts[1].lstrip('+')
+                        station_code = parts[2]
+                        yyyymmdd = parts[3]
+                        hhmmss = parts[4]
+                        date_time_obj = datetime.strptime(f"{yyyymmdd} {hhmmss}", '%Y%m%d %H%M%S')
+                    except Exception:
+                        date_time_obj = None
+
             # Инициализируем значения по умолчанию
             consultant_surname = 'Не указано'
             station_code = 'Неизвестно'
@@ -688,8 +706,11 @@ def create_excel_report(transcriptions_folder, output_file_path, telegram_messag
                 print(f"DEBUG: Доступные ключи в call_records_dict: {list(call_records_dict.keys())}")
                 
                 if key_exact in call_records_dict:
-                    # consultant_surname из call_records_dict - это fallback, но не приоритет
+                    # consultant_surname из call_records_dict - это fallback
                     consultant_surname_fallback = call_records_dict[key_exact]['consultant_surname']
+                    if consultant_surname_fallback and consultant_surname_fallback != 'Не указано':
+                        consultant_surname = consultant_surname_fallback
+                    
                     station_code = call_records_dict[key_exact]['station_code']
                     print(f"DEBUG: Найдено точное соответствие: consultant={consultant_surname_fallback}, station={station_code}")
                 else:
@@ -700,6 +721,9 @@ def create_excel_report(transcriptions_folder, output_file_path, telegram_messag
                         key = (phone_number, adjusted_time.strftime('%Y-%m-%d %H:%M'))
                         if key in call_records_dict:
                             consultant_surname_fallback = call_records_dict[key]['consultant_surname']
+                            if consultant_surname_fallback and consultant_surname_fallback != 'Не указано':
+                                consultant_surname = consultant_surname_fallback
+                            
                             station_code = call_records_dict[key]['station_code']
                             matched = True
                             print(f"DEBUG: Найдено соответствие с допуском {minutes_diff} мин: consultant={consultant_surname_fallback}, station={station_code}")
@@ -752,11 +776,22 @@ def create_excel_report(transcriptions_folder, output_file_path, telegram_messag
             # Получаем имя оператора с приоритетом: из транскрипции, затем из таблицы
             if station_code and station_code != 'Неизвестно':
                 consultant_surname_before = consultant_surname  # Сохраняем для сравнения
-                consultant_surname = get_operator_name(dialog_text, station_code)
-                if consultant_surname != consultant_surname_before:
-                    print(f"DEBUG: Имя оператора изменено с '{consultant_surname_before}' на '{consultant_surname}' (извлечено из транскрипции)")
+                
+                # get_operator_name может вернуть "Не указано", если не найдет
+                extracted_name = get_operator_name(dialog_text, station_code)
+                
+                # Если удалось извлечь новое имя, и оно не "Не указано" - обновляем
+                if extracted_name and extracted_name != 'Не указано':
+                    consultant_surname = extracted_name
+                    print(f"DEBUG: Имя оператора обновлено с '{consultant_surname_before}' на '{consultant_surname}' (извлечено из транскрипции/конфига)")
+                elif consultant_surname == 'Не указано' and extracted_name == 'Не указано':
+                    # Если было "Не указано" и осталось "Не указано", пробуем поискать в конфиге напрямую
+                    # (get_operator_name уже должна это делать, но на всякий случай)
+                    if station_code in employee_by_extension:
+                        consultant_surname = employee_by_extension[station_code]
+                        print(f"DEBUG: Имя оператора взято из конфига по коду станции: {consultant_surname}")
                 else:
-                    print(f"DEBUG: Имя оператора '{consultant_surname}' (из таблицы, т.к. не найдено в транскрипции)")
+                     print(f"DEBUG: Оставили имя '{consultant_surname}' (get_operator_name вернул '{extracted_name}')")
 
             # Применяем маппинг станций: если это подстанция, находим основную станцию
             if station_code and station_code != 'Неизвестно':
@@ -1187,6 +1222,12 @@ def compute_realtime_summary(
         rows.append(row)
 
     df = pd.DataFrame(rows)
+
+    # Приводим столбцы с вопросами к числовому типу, чтобы избежать ошибок при агрегации (особенно если там None)
+    question_cols = [f'Вопрос {i}' for i in range(1, total_q + 1)]
+    for col in question_cols:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors='coerce')
 
     # Группировка станций
     station_names = get_station_groups()
