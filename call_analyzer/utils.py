@@ -205,6 +205,22 @@ def parse_filename(file_name: str):
             # Падать не будем — попробуем общий формат ниже
             pass
 
+    # Поддержка формата out-* (исходящие FTP):
+    # out-<phone>-<station>-<YYYYMMDD>-<HHMMSS>-...
+    m = re.match(config.FILENAME_PATTERNS['out_pattern'], file_name, re.IGNORECASE)
+    if m:
+        try:
+            phone_number = m.group(1)
+            station_code = m.group(2)
+            yyyymmdd = m.group(3)
+            hhmmss = m.group(4)
+            dt_str = f"{yyyymmdd[:4]}-{yyyymmdd[4:6]}-{yyyymmdd[6:8]}-{hhmmss[:2]}-{hhmmss[2:4]}-{hhmmss[4:6]}"
+            call_time = datetime.datetime.strptime(dt_str, config.FILENAME_PATTERNS['datetime_format'])
+            phone_number = normalize_phone_number(phone_number)
+            return phone_number, station_code, call_time
+        except Exception:
+            pass
+
     parts = file_name.split("_")
     if len(parts) < 4:
         return None, None, None  # невалидное имя файла

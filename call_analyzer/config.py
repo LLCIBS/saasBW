@@ -122,6 +122,9 @@ FILENAME_PATTERNS = {
     # Формат с дефисами external-*
     'external_pattern': r'^external-([^\-]+)-([^\-]+)-(\d{8})-(\d{6})(?:-.+)?',
     
+    # Формат out-* (исходящие FTP)
+    'out_pattern': r'^out-([^\-]+)-([^\-]+)-(\d{8})-(\d{6})(?:-.+)?',
+    
     # Новый формат: вход_EkbFocusMal128801_с_79536098664_на_73432260822_от_2025_10_20
     'direction_pattern': r'^вход_([a-zA-Z\-]+)(\d+)_с_(\d+)_на_(\d+)_от_(\d{4})_(\d{1,2})_(\d{1,2})(?:\.\w+)?$',
     
@@ -150,6 +153,11 @@ FILENAME_FORMATS = {
         'pattern': 'external-[station]-[phone]-[YYYYMMDD]-[HHMMSS]-...',
         'description': 'Внешний звонок (Ретрак)',
         'example': 'external-9301-79056154237-20251013-102803-...'
+    },
+    'outgoing_ftp': {
+        'pattern': 'out-[phone]-[station]-[YYYYMMDD]-[HHMMSS]-...',
+        'description': 'Исходящий звонок (FTP)',
+        'example': 'out-89196552973-203-20251120-173809-...'
     },
     'direction_format': {
         'pattern': 'вход_[station_name][station_code]_с_[from_phone]_на_[to_phone]_от_[YYYY]_[MM]_[DD]',

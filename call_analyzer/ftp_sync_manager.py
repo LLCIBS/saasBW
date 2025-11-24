@@ -224,9 +224,14 @@ def sync_ftp_connection(connection_id: int):
         latest_processed_mtime = last_processed_mtime
         latest_processed_name = last_processed_filename or ''
         
+        # Сохраняем нужные поля из row в переменные, чтобы использовать их в цикле
+        # даже если объект row станет недоступен
+        connection_name = row.name
+        connection_local_path = user_base_path_str
+        
         last_db_check_time = time.time()
         
-        logger.info(f"FTP {row.name}: начинаем скачивание файлов (всего {len(remote_files)} файлов)")
+        logger.info(f"FTP {connection_name}: начинаем скачивание файлов (всего {len(remote_files)} файлов)")
 
         for file_info in remote_files:
             # 1. Быстрая проверка авто-синхронизации (in-memory)
@@ -254,9 +259,36 @@ def sync_ftp_connection(connection_id: int):
                 filename = file_info['name']
                 relative_path = file_info.get('relative_path') or filename
                 
-                # Исправление дублирования путей: сохраняем файл прямо в целевую папку дня
-                # Игнорируем структуру папок с FTP, так как мы уже в папке нужного дня
-                local_file_path = target_folder / filename
+                # Исправление дублирования путей: сохраняем файл в папку, соответствующую дате звонка
+                # Извлекаем дату из имени файла, если возможно
+                from call_analyzer.utils import parse_filename
+                _, _, call_dt = parse_filename(filename)
+                
+                if call_dt:
+                    # Если дата есть, формируем путь YYYY/MM/DD
+                    date_folder = call_dt.strftime("%Y/%m/%d")
+                    # target_folder - это базовая папка (local_path из настроек)
+                    # Нам нужно найти корень base_records_path. 
+                    # target_folder уже содержит сегодняшнюю дату в текущей реализации (см. выше)?
+                    # Проверим, как target_folder вычисляется. 
+                    # В main loop: target_folder = Path(local_path) / datetime.now().strftime("%Y/%m/%d")
+                    # Это неправильно для старых файлов.
+                    
+                    # Нам нужно получить local_path (корень)
+                    # local_path доступен из row.local_path (но row может быть устаревшим внутри цикла?)
+                    # Лучше взять из target_folder, поднявшись на 3 уровня вверх (DD -> MM -> YYYY -> ROOT)
+                    
+                    # Вариант надежнее: target_folder вычисляется как Path(row.local_path) / ...
+                    # Используем сохраненный local_path
+                    local_root = Path(connection_local_path)
+                    file_target_folder = local_root / date_folder
+                    
+                    # Создаем папку, если нет
+                    file_target_folder.mkdir(parents=True, exist_ok=True)
+                    local_file_path = file_target_folder / filename
+                else:
+                    # Если дату не удалось извлечь, кладем в текущую папку (как было)
+                    local_file_path = target_folder / filename
                 
                 # Пропускаем, если файл уже существует
                 if local_file_path.exists():
