@@ -181,8 +181,13 @@
                             <input type="text" class="form-control" id="newAnchorName" placeholder="Например, Общий скрипт" required>
                         </div>
                         <div class="mb-3">
-                            <label for="newAnchorPrompt" class="form-label">Текст промпта</label>
-                            <textarea class="form-control prompt-textarea" id="newAnchorPrompt" placeholder="Введите текст промпта..." required></textarea>
+                            <label for="newAnchorPrompt" class="form-label">Текст промпта (или описание задачи для генерации)</label>
+                            <textarea class="form-control prompt-textarea" id="newAnchorPrompt" placeholder="Введите текст промпта или опишите задачу (например: Хочу искать звонки с первичными обращениями клиента...)" required></textarea>
+                            <div class="mt-2">
+                                <button type="button" class="btn btn-outline-primary btn-sm" onclick="generateAnchorPrompt()">
+                                    <i class="fas fa-magic me-2"></i>Сгенерировать промпт из описания
+                                </button>
+                            </div>
                         </div>
                         <div class="text-muted small">
                             Якорь можно будет выбрать для любой станции или использовать как шаблон для кастомного текста.
@@ -199,7 +204,7 @@
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-        let promptsData = { anchors: {}, stations: {}, default: '' };
+        let promptsData = { anchors: {}, stations: {}, "default": '' };
         let scriptPromptData = { checklist: [], prompt: '' };
 
         function ensurePromptsStructure() {
@@ -224,7 +229,8 @@
                 .replace(/</g, '&lt;')
                 .replace(/>/g, '&gt;')
                 .replace(/"/g, '&quot;')
-                .replace(/'/g, '&#39;');
+                .replace(/'/g, '&#39;')
+                .replace(/`/g, '&#96;');
         }
 
         function decodeKey(value) {
@@ -244,13 +250,21 @@
         async function loadPrompts() {
             try {
                 const response = await fetch('/api/prompts');
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
                 const data = await response.json();
                 promptsData = data || { anchors: {}, stations: {}, default: '' };
                 ensurePromptsStructure();
                 renderPrompts();
             } catch (error) {
                 console.error('Ошибка загрузки промптов:', error);
-                showAlert('Ошибка загрузки промптов', 'danger');
+                // Если ошибка парсинга JSON (например, сервер вернул HTML)
+                let msg = error.message;
+                if (msg.includes('Unexpected token')) {
+                    msg = 'Ошибка сервера (получен некорректный ответ). Проверьте логи.';
+                }
+                showAlert('Ошибка загрузки промптов: ' + msg, 'danger');
             }
         }
 
@@ -271,11 +285,32 @@
 
         async function syncPrompts() {
             try {
+                // Собираем текущие данные перед синхронизацией
+                ensurePromptsStructure();
+                const anchors = { ...(promptsData.anchors || {}) };
+                const stations = {};
+                const stationSelects = document.querySelectorAll('[data-station-select="true"]');
+                stationSelects.forEach(select => {
+                    const stationCode = select.dataset.stationCode;
+                    if (!stationCode) {
+                        return;
+                    }
+                    stations[stationCode] = (promptsData.stations && promptsData.stations[stationCode]) || '';
+                });
+                const defaultPrompt = document.getElementById('defaultPrompt').value || '';
+
+                const payload = {
+                    anchors,
+                    stations,
+                    default: defaultPrompt
+                };
+
                 const response = await fetch('/api/prompts/sync', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
-                    }
+                    },
+                    body: JSON.stringify(payload) // Отправляем текущие данные
                 });
                 
                 const result = await response.json();
@@ -355,6 +390,48 @@
             const form = document.getElementById('anchorForm');
             if (form) {
                 form.reset();
+            }
+        }
+
+        async function generateAnchorPrompt() {
+            const promptInput = document.getElementById('newAnchorPrompt');
+            const intent = (promptInput?.value || '').trim();
+
+            if (!intent) {
+                showAlert('Введите описание задачи в поле промпта', 'warning');
+                return;
+            }
+
+            const button = event.target.closest('button');
+            const originalContent = button.innerHTML;
+            button.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Генерация...';
+            button.disabled = true;
+
+            try {
+                const response = await fetch('/api/generate-anchor-prompt', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        intent: intent
+                    })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    promptInput.value = result.prompt;
+                    showAlert('Промпт успешно сгенерирован!', 'success');
+                } else {
+                    showAlert('Ошибка генерации: ' + (result.message || 'Неизвестная ошибка'), 'danger');
+                }
+            } catch (error) {
+                console.error('Ошибка:', error);
+                showAlert('Ошибка соединения: ' + error.message, 'danger');
+            } finally {
+                button.innerHTML = originalContent;
+                button.disabled = false;
             }
         }
 
@@ -574,7 +651,7 @@
                     if (!stationCode) {
                         return;
                     }
-                    stations[stationCode] = promptsData.stations?.[stationCode] || '';
+                    stations[stationCode] = (promptsData.stations && promptsData.stations[stationCode]) || '';
                 });
 
                 const defaultPrompt = document.getElementById('defaultPrompt').value || '';

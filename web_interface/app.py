@@ -14,6 +14,7 @@ import logging
 import re
 import importlib
 import importlib.util
+import requests
 from datetime import datetime, timedelta
 from pathlib import Path
 from collections import OrderedDict
@@ -328,9 +329,15 @@ def write_prompts_file(prompts_data, user=None):
 
     payload['stations'] = normalized['stations'] or {}
 
+    # YAML иногда ругается на OrderedDict, преобразуем в обычный dict через JSON-сериализацию
+    try:
+        serializable_payload = json.loads(json.dumps(payload, ensure_ascii=False))
+    except Exception:
+        serializable_payload = dict(payload)
+
     try:
         with path.open('w', encoding='utf-8') as handler:
-            yaml.safe_dump(payload, handler, allow_unicode=True, sort_keys=False)
+            yaml.safe_dump(serializable_payload, handler, allow_unicode=True, sort_keys=False)
     except Exception as exc:
         app.logger.error("Не удалось сохранить prompts-файл %s: %s", path, exc)
 
@@ -1121,29 +1128,35 @@ def prompts_page():
 @login_required
 def api_prompts():
     """Возвращает промпты пользователя (с учётом файла в профиле)."""
-    sync_prompts_from_config()
-    prompts_data = get_user_prompts_data()
-    file_data = load_prompts_file()
-    changed = False
+    try:
+        sync_prompts_from_config()
+        prompts_data = get_user_prompts_data()
+        file_data = load_prompts_file()
+        changed = False
 
-    if file_data.get('anchors'):
-        if prompts_data.get('anchors') != file_data.get('anchors'):
-            prompts_data['anchors'] = file_data['anchors']
+        # Приоритет отдаем данным из БД, чтобы избежать перезаписи новых данных старыми из файла
+        # if file_data.get('anchors'):
+        #     if prompts_data.get('anchors') != file_data.get('anchors'):
+        #         prompts_data['anchors'] = file_data['anchors']
+        #         changed = True
+
+        if file_data.get('stations'):
+            if prompts_data.get('stations') != file_data.get('stations'):
+                prompts_data['stations'] = file_data['stations']
+                changed = True
+
+        if file_data.get('default') and prompts_data.get('default') != file_data.get('default'):
+            prompts_data['default'] = file_data['default']
             changed = True
 
-    if file_data.get('stations'):
-        if prompts_data.get('stations') != file_data.get('stations'):
-            prompts_data['stations'] = file_data['stations']
-            changed = True
+        if changed:
+            save_user_prompts_data(prompts_data)
 
-    if file_data.get('default') and prompts_data.get('default') != file_data.get('default'):
-        prompts_data['default'] = file_data['default']
-        changed = True
-
-    if changed:
-        save_user_prompts_data(prompts_data)
-
-    return jsonify(prompts_data)
+        return jsonify(prompts_data)
+    except Exception as e:
+        app.logger.error(f"Ошибка в api_prompts: {e}", exc_info=True)
+        # Возвращаем структуру, которую ожидает фронт, но пустую, или ошибку
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/prompts/save', methods=['POST'])
 @login_required
@@ -1166,14 +1179,32 @@ def api_prompts_sync():
     """Синхронизирует промпты со списком станций и обновляет файл."""
     try:
         user = current_user if hasattr(current_user, 'is_authenticated') and current_user.is_authenticated else None
+        
+        # Сохраняем данные, пришедшие с фронта, чтобы не потерять изменения до синхронизации
+        data = request.get_json() or {}
+        payload_before_sync = None
+        if data:
+            payload_before_sync = normalize_prompts_payload(data)
+            save_user_prompts_data(payload_before_sync, user=user)
+        else:
+            payload_before_sync = get_user_prompts_data(user=user)
+
+        # Независимо от того, были ли изменения в конфиге станций, записываем текущее состояние в файл
+        try:
+            write_prompts_file(payload_before_sync, user=user)
+        except Exception as file_error:
+            app.logger.error("Не удалось обновить файл промптов (до синхронизации): %s", file_error)
+
         if sync_prompts_from_config(user=user):
-            current_data = get_user_prompts_data(user=user)
+            # Если синхронизация добавила/удалила станции, повторно пишем файл уже с обновлёнными данными
+            updated_data = get_user_prompts_data(user=user)
             try:
-                write_prompts_file(current_data, user=user)
+                write_prompts_file(updated_data, user=user)
             except Exception as file_error:
-                app.logger.error("Не удалось обновить файл промптов: %s", file_error)
+                app.logger.error("Не удалось обновить файл промптов (после синхронизации): %s", file_error)
             return jsonify({'success': True, 'message': 'Промпты синхронизированы'})
-        return jsonify({'success': True, 'message': 'Изменений не обнаружено'})
+        
+        return jsonify({'success': True, 'message': 'Промпты сохранены (конфиг без изменений)'})
     except Exception as e:
         app.logger.error(f"Ошибка синхронизации промптов: {e}")
         return jsonify({'success': False, 'message': str(e)})
@@ -1293,6 +1324,129 @@ def api_generate_prompt():
     except Exception as e:
         app.logger.error(f"Ошибка генерации промпта: {e}")
         return jsonify({'success': False, 'message': f'Ошибка генерации: {str(e)}'}), 500
+
+@app.route('/api/generate-anchor-prompt', methods=['POST'])
+@login_required
+def api_generate_anchor_prompt():
+    """API для генерации полного промпта якоря на основе описания задачи"""
+    try:
+        data = request.get_json()
+        user_intent = (data.get('intent') or '').strip()
+
+        if not user_intent:
+            return jsonify({'success': False, 'message': 'Описание задачи не может быть пустым'}), 400
+
+        # Системный промпт для генерации промпта
+        system_instruction = """Ты — эксперт по созданию системных промптов (инструкций) для AI-анализа телефонных разговоров.
+Твоя задача: На основе описания пользователя создать подробный, структурированный и эффективный промпт, который будет использоваться другой нейросетью для анализа диалогов.
+
+Требования к генерируемому промпту:
+1. Он должен быть написан от лица инструктора к исполнителю (AI-аналитику).
+2. Он должен включать четкие критерии классификации звонков (Тип, Класс, Результат), основанные на пожеланиях пользователя.
+3. Он должен требовать СТРОГИЙ формат вывода с тегами, так как это используется для автоматического парсинга.
+
+Обязательная структура ответа (тегов), которую ты должен включить в генерируемый промпт:
+- [ТИПЗВОНКА:ЦЕЛЕВОЙ] или [ТИПЗВОНКА:НЕЦЕЛЕВОЙ]
+- [КЛАСС:A], [КЛАСС:B] и т.д. (если применимо)
+- [РЕЗУЛЬТАТ:...] (например, ЗАПИСЬ, ОТКАЗ, ПЕРЕЗВОНИТЬ, КОНСУЛЬТАЦИЯ и т.д.)
+- Краткое объяснение после тегов.
+
+Контекст задачи пользователя:
+"""
+
+        import requests
+        runtime_cfg = build_user_runtime_config()
+        api_keys = runtime_cfg.get('api_keys', {})
+        thebai_api_key = api_keys.get('thebai_api_key')
+        thebai_url = api_keys.get('thebai_url') or 'https://api.deepseek.com/v1/chat/completions'
+        thebai_model = api_keys.get('thebai_model') or 'deepseek-reasoner'
+
+        if not thebai_api_key:
+            return jsonify({'success': False, 'message': 'Укажите DeepSeek/TheB.ai API key в настройках профиля'}), 400
+
+        prompt_request = {
+            "model": thebai_model,
+            "messages": [
+                {
+                    "role": "system",
+                    "content": system_instruction
+                },
+                {
+                    "role": "user",
+                    "content": f"Создай промпт для следующей задачи: {user_intent}"
+                },
+            ],
+            "temperature": 0.6, # Чуть выше для креативности в инструкциях
+        }
+
+        # Retry логика для надежности
+        max_retries = 3
+        timeout = 120  # Увеличенный таймаут для генерации большого промпта
+        response = None
+        last_error = None
+        
+        for attempt in range(max_retries):
+            try:
+                response = requests.post(
+                    thebai_url,
+                    headers={
+                        'Authorization': f'Bearer {thebai_api_key}',
+                        'Content-Type': 'application/json',
+                    },
+                    json=prompt_request,
+                    timeout=timeout,
+                )
+                break  # Успешный запрос, выходим из цикла
+            except (requests.exceptions.Timeout, requests.exceptions.ConnectionError, requests.exceptions.RequestException) as e:
+                last_error = e
+                if attempt < max_retries - 1:
+                    wait_time = (attempt + 1) * 2  # Экспоненциальная задержка: 2, 4, 6 секунд
+                    app.logger.warning(f"Попытка {attempt + 1}/{max_retries} не удалась, повтор через {wait_time} сек: {e}")
+                    time.sleep(wait_time)
+                else:
+                    app.logger.error(f"Все {max_retries} попытки не удались: {e}")
+                    raise
+        
+        if not response:
+            return jsonify({'success': False, 'message': 'Не удалось получить ответ от API после всех попыток'}), 503
+        
+        if response.status_code == 200:
+            result = response.json()
+            if not result.get('choices') or len(result['choices']) == 0:
+                return jsonify({'success': False, 'message': 'Пустой ответ от API'})
+            
+            generated_prompt = (result.get('choices', [{}])[0]
+                                    .get('message', {})
+                                    .get('content', '')).strip()
+            
+            # Убираем markdown code blocks если они есть
+            if generated_prompt.startswith("```") and generated_prompt.endswith("```"):
+                lines = generated_prompt.split('\n')
+                if lines[0].startswith("```"):
+                    lines = lines[1:]
+                if lines[-1].startswith("```"):
+                    lines = lines[:-1]
+                generated_prompt = '\n'.join(lines)
+            elif generated_prompt.startswith("```"):
+                 generated_prompt = generated_prompt.replace("```yaml", "").replace("```", "")
+            
+            return jsonify({'success': True, 'prompt': generated_prompt.strip()})
+
+        app.logger.error(f"Ошибка API при генерации якоря: {response.status_code} - {response.text}")
+        return jsonify({'success': False, 'message': f'Ошибка API: {response.status_code}'}), 502
+
+    except requests.exceptions.Timeout:
+        app.logger.error("Таймаут при генерации якоря (превышено время ожидания ответа от API)")
+        return jsonify({'success': False, 'message': 'Превышено время ожидания ответа от API. Попробуйте еще раз.'}), 504
+    except requests.exceptions.ConnectionError as e:
+        app.logger.error(f"Ошибка соединения при генерации якоря: {e}")
+        return jsonify({'success': False, 'message': 'Ошибка соединения с API. Проверьте интернет-соединение и попробуйте еще раз.'}), 503
+    except Exception as e:
+        app.logger.error(f"Ошибка генерации якоря: {e}", exc_info=True)
+        error_msg = str(e)
+        if 'timeout' in error_msg.lower() or 'timed out' in error_msg.lower():
+            return jsonify({'success': False, 'message': 'Превышено время ожидания ответа от API. Попробуйте еще раз.'}), 504
+        return jsonify({'success': False, 'message': f'Ошибка генерации: {error_msg}'}), 500
 
 @app.route('/vocabulary')
 @login_required

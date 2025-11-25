@@ -66,9 +66,43 @@ def run_exental_alert(txt_path: str, station_code: str, phone_number: str, date_
         return
 
     script_prompt_8 = config.SCRIPT_PROMPT_8_PATH  # Пусть в config.py будет SCRIPT_PROMPT_8_PATH
+    
+    # Автоматическое создание файла промпта, если он отсутствует
     if not script_prompt_8.exists():
-        logger.error(f"[exental_alert] Файл промпта {script_prompt_8} не найден.")
+        try:
+            logger.info(f"[exental_alert] Файл промпта {script_prompt_8} не найден. Создаю файл по умолчанию.")
+            script_prompt_8.parent.mkdir(parents=True, exist_ok=True)
+            
+            default_content = """checklist:
+  - title: "1. Приветствие"
+    prompt: "Консультант поздоровался и представился"
+  - title: "2. Выявление потребности"
+    prompt: "Консультант задал уточняющие вопросы"
+  - title: "3. Результат"
+    prompt: "Клиент записан или договорились о звонке"
+
+prompt: |
+  Оцени звонок по пунктам чек-листа ниже. Для КАЖДОГО пункта ответь строго формой '[ОТВЕТ: ДА]' или '[ОТВЕТ: НЕТ]' без дополнительных слов после него.
+
+  После всех ответов добавь блок <общая оценка>... </общая оценка> с кратким выводом.
+
+  Если пункт неприменим, ставь '[ОТВЕТ: НЕТ]'.
+
+  Чек-лист:
+  1. Приветствие
+  2. Выявление потребности
+  3. Результат
+"""
+            with script_prompt_8.open("w", encoding="utf-8") as f:
+                f.write(default_content)
+        except Exception as e:
+            logger.error(f"[exental_alert] Не удалось создать файл промпта по умолчанию: {e}")
+            return
+
+    if not script_prompt_8.exists():
+        logger.error(f"[exental_alert] Файл промпта {script_prompt_8} всё ещё не найден.")
         return
+        
     prompt_8, checklist_titles, checklist_prompts = load_script_prompt_8(script_prompt_8)
     if not prompt_8.strip():
         logger.warning("[exental_alert] Пустой prompt_8, завершаем.")
