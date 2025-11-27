@@ -1189,12 +1189,32 @@ def compute_realtime_summary(
             # Получаем имя оператора с приоритетом: из транскрипции, затем из таблицы
             consultant = resolve_consultant_name(dialog_text, station_code, employee_by_extension)
 
-            # Получаем название станции из кода
-            station_name = main_config.STATION_NAMES.get(station_code, station_code)
+            # Преобразуем код подстанции в основной код станции для группировки
+            main_station_code = station_code
+            # Сначала проверяем, есть ли код в основных станциях
+            if station_code not in station_names:
+                # Ищем в маппинге подстанций
+                for main_code, sub_codes in station_mapping.items():
+                    if station_code in sub_codes:
+                        main_station_code = main_code
+                        break
+            
+            # Получаем название станции из основного кода
+            # Если название не найдено, используем код, но затем оно будет преобразовано через station_groups_map
+            station_name = station_names.get(main_station_code, main_station_code)
 
-            # Фильтрация по разрешенным станциям
-            if allowed_stations is not None and station_code not in allowed_stations:
-                continue
+            # Фильтрация по разрешенным станциям (проверяем и основной код, и подстанции)
+            if allowed_stations is not None:
+                # Проверяем основной код и все подстанции
+                is_allowed = main_station_code in allowed_stations or station_code in allowed_stations
+                # Также проверяем, если основной код в allowed_stations, то все его подстанции разрешены
+                if not is_allowed and main_station_code in station_mapping:
+                    for sub_code in station_mapping[main_station_code]:
+                        if sub_code in allowed_stations:
+                            is_allowed = True
+                            break
+                if not is_allowed:
+                    continue
 
             records.append({
                 'consultant': consultant,
@@ -1229,9 +1249,9 @@ def compute_realtime_summary(
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors='coerce')
 
-    # Группировка станций
-    station_names = get_station_groups()
-    df['Полное название станции'] = df['Название станции'].astype(str).map(lambda x: station_names.get(x, x))
+    # Группировка станций (используем переданные параметры)
+    station_groups_map = get_station_groups(station_names, station_mapping, employee_by_extension)
+    df['Полное название станции'] = df['Название станции'].astype(str).map(lambda x: station_groups_map.get(x, x))
 
     question_cols = [f'Вопрос {i}' for i in range(1, total_q + 1)]
     grouped = df.groupby('Полное название станции')
