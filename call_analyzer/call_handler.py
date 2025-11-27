@@ -162,17 +162,22 @@ def transcribe_and_analyze(file_path: Path, station_code: str):
             filename=filename
         )
 
-    # 5. Запускаем расширенный разбор по чек-листу для всех звонков
-    logger.info("Запускаем расширенный разбор (чек-лист) для звонка.")
-    if phone_number and call_time:
-        run_exental_alert(
-            txt_path=str(result_filename),
-            station_code=station_code,
-            phone_number=phone_number,
-            date_str=call_time.strftime("%Y-%m-%d-%H-%M-%S")
-        )
+    # 5. Запускаем расширенный разбор по чек-листу (ТОЛЬКО ДЛЯ ЦЕЛЕВЫХ/ПЕРВИЧНЫХ ЗВОНКОВ)
+    # Проверяем наличие маркера ЦЕЛЕВОЙ (или ПЕРВИЧНЫЙ) в результате анализа якоря.
+    # Это экономит ресурсы и исключает оценку менеджера по ошибочным звонкам.
+    if "[ТИПЗВОНКА:ЦЕЛЕВОЙ]" in analysis_upper or "ПЕРВИЧНЫЙ" in analysis_upper:
+        logger.info("Звонок определен как ЦЕЛЕВОЙ/ПЕРВИЧНЫЙ. Запускаем расширенный разбор (чек-лист).")
+        if phone_number and call_time:
+            run_exental_alert(
+                txt_path=str(result_filename),
+                station_code=station_code,
+                phone_number=phone_number,
+                date_str=call_time.strftime("%Y-%m-%d-%H-%M-%S")
+            )
+        else:
+            logger.warning("Слишком мало данных (phone_number/call_time), не можем вызвать exental_alert.")
     else:
-        logger.warning("Слишком мало данных (phone_number/call_time), не можем вызвать exental_alert.")
+        logger.info(f"Звонок НЕ является целевым (анализ: {analysis_upper[:50]}...). Чек-лист пропущен.")
 
     # 6. Если видим результат ПЕРЕВОД
     if "[ТИПЗВОНКА:ЦЕЛЕВОЙ]" in analysis_upper and "[РЕЗУЛЬТАТ:ПЕРЕВОД]" in analysis_upper:
@@ -189,7 +194,7 @@ def transcribe_and_analyze(file_path: Path, station_code: str):
         transfer_analysis = thebai_analyze(transcript_text, transfer_prompt_primary)
         # --- Сохраняем анализ и транскрипт (primary) ---
         today_folder = call_time.strftime("%Y/%m/%d")
-        save_dir = Path(f"E:/CallRecords/{today_folder}/transcriptions/transfer_analysis")
+        save_dir = Path(config.BASE_RECORDS_PATH) / today_folder / "transcriptions" / "transfer_analysis"
         save_dir.mkdir(parents=True, exist_ok=True)
         filename = save_dir / f"primary_transfer_{phone_number.lstrip('+')}_{station_code}_{call_time.strftime('%Y%m%d_%H%M%S')}.txt"
         with filename.open("w", encoding="utf-8") as f:
@@ -252,7 +257,7 @@ def transcribe_and_analyze(file_path: Path, station_code: str):
         recall_analysis = thebai_analyze(transcript_text, recall_prompt_primary)
         # --- Сохраняем анализ и транскрипт (primary) ---
         today_folder = call_time.strftime("%Y/%m/%d")
-        save_dir = Path(f"E:/CallRecords/{today_folder}/transcriptions/recall_analysis")
+        save_dir = Path(config.BASE_RECORDS_PATH) / today_folder / "transcriptions" / "recall_analysis"
         save_dir.mkdir(parents=True, exist_ok=True)
         filename = save_dir / f"primary_recall_{phone_number.lstrip('+')}_{station_code}_{call_time.strftime('%Y%m%d_%H%M%S')}.txt"
         with filename.open("w", encoding="utf-8") as f:

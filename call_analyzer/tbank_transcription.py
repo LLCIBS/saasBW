@@ -400,7 +400,39 @@ def transcribe_audio_with_tbank(file_path: Path) -> str | None:
             logger.info(f"Автоопределение типа звонка: {'СТЕРЕО' if detected_stereo else 'МОНО'} "
                        f"(каналы: {channels}, разница: {analysis_info.get('channel_difference', 0):.3f}, "
                        f"энергия: {analysis_info.get('energy_difference', 0):.3f})")
-                
+
+            # ИНТЕГРАЦИЯ SPEECH SEPARATION (ОПЦИОНАЛЬНО)
+            # Если обнаружено МОНО, пробуем разделить на псевдо-стерео через SpeechBrain
+            # Проверяем наличие модуля и конфиг (если нужно)
+            use_separation = not detected_stereo and os.getenv("ENABLE_SPEECH_SEPARATION", "false").lower() == "true"
+            
+            pseudo_stereo_path = None
+            if use_separation:
+                try:
+                    from .audio_separator import convert_mono_to_stereo_split
+                    logger.info("Включено разделение речи (Speech Separation) для моно-звонка")
+                    
+                    temp_sep_dir = Path(config.BASE_RECORDS_PATH) / "runtime" / "temp_sep"
+                    temp_sep_dir.mkdir(parents=True, exist_ok=True)
+                    pseudo_stereo_path = temp_sep_dir / f"sep_{file_path.stem}.wav"
+                    
+                    success = convert_mono_to_stereo_split(str(file_path), str(pseudo_stereo_path))
+                    
+                    if success:
+                        logger.info(f"Успешно создано псевдо-стерео: {pseudo_stereo_path}")
+                        # Подменяем аудио для дальнейшей обработки на новое псевдо-стерео
+                        audio = AudioSegment.from_file(str(pseudo_stereo_path))
+                        channels = 2 # Теперь это стерео
+                        detected_stereo = True # Теперь мы считаем это стерео
+                        logger.info("Переключаем режим обработки на СТЕРЕО (после разделения)")
+                    else:
+                        logger.warning("Не удалось разделить аудио, продолжаем как моно")
+                        
+                except ImportError:
+                    logger.warning("Модуль audio_separator не найден или отсутствуют зависимости (speechbrain, torchaudio)")
+                except Exception as e:
+                    logger.error(f"Ошибка при попытке разделения речи: {e}")
+
         except Exception as e:
             logger.error(f"Ошибка при загрузке аудио файла {file_path}: {e}", exc_info=True)
             return None

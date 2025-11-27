@@ -18,6 +18,237 @@ import logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Семантические словари для определения ролей
+SEMANTIC_VOCAB = {
+    "manager": [
+        "сервис", "центр", "мастер", "приемщик", "компания", "бествей", "bestway",
+        "администратор", "запись", "записать", "свободное", "время", "дата",
+        "стоимость", "цена", "рублей", "диагностика", "осмотр", "ремонт",
+        "запчасти", "детали", "заказ", "ожидать", "готово", "забирать",
+        "документы", "подпишите", "касса", "оплата", "гарантия",
+        "алло", "здравствуйте", "добрый день", "добрый вечер", "доброе утро",
+        "узнаю", "перезвоню", "подсказать", "уточнить"
+    ],
+    "client": [
+        "я", "мне", "мое", "моя", "машина", "автомобиль", "стучит", "гремит",
+        "сломалась", "не едет", "глохнет", "шумит", "скрипит", "течет",
+        "пробег", "год", "модель", "марка", "вин", "номер",
+        "когда", "сколько", "можно", "приеду", "подъеду", "заберу",
+        "посмотрите", "проверьте", "сделайте", "поменяйте",
+        "лада", "гранта", "веста", "рио", "солярис", "киа", "хендай",
+        "тойота", "ниссан", "фольксваген", "шкода", "мазда", "форд",
+        "опель", "рено", "ситроен", "пежо", "хонда", "сузуки", "митсубиси",
+        "мерседес", "бмв", "ауди", "лексус", "инфинити", "вольво", "ленд ровер",
+        "ягуар", "порше", "субару", "фиат", "джип", "додж", "крайслер", "кадиллак",
+        "шевроле", "уаз", "газ", "ваз", "нива", "патриот", "ларгус", "веста", "иксрей",
+        "черри", "хавал", "джили", "чанган", "эксид", "омода"
+    ]
+}
+
+def apply_semantic_correction(speakers_data: List[Dict]) -> List[Dict]:
+    """
+    Применяет семантическую коррекцию диаризации на основе анализа текста.
+    1. Определяет роли спикеров (Менеджер/Клиент).
+    2. Исправляет очевидные ошибки атрибуции на основе ключевых слов.
+    3. Сглаживает короткие "вставки" (sandwich rule).
+    """
+    if not speakers_data:
+        return speakers_data
+
+    logger.info("Запуск семантической пост-обработки диаризации...")
+    
+    # 1. Определение ролей спикеров
+    speaker_scores = {
+        "SPEAKER_01": {"manager": 0, "client": 0},
+        "SPEAKER_02": {"manager": 0, "client": 0}
+    }
+    
+    # Анализируем первые 10 сегментов для определения ролей (приветствие и суть)
+    # и весь диалог для общей статистики
+    for i, segment in enumerate(speakers_data):
+        text = segment.get("text", "").lower()
+        speaker = segment.get("speaker")
+        
+        # Вес слов в начале диалога выше (представление)
+        weight = 2.0 if i < 5 else 1.0
+        
+        for word in SEMANTIC_VOCAB["manager"]:
+            if word in text:
+                speaker_scores[speaker]["manager"] += weight
+                
+        for word in SEMANTIC_VOCAB["client"]:
+            if word in text:
+                speaker_scores[speaker]["client"] += weight
+
+    # Определяем, кто есть кто
+    s1_m_score = speaker_scores["SPEAKER_01"]["manager"]
+    s2_m_score = speaker_scores["SPEAKER_02"]["manager"]
+    
+    manager_id = "SPEAKER_01" if s1_m_score >= s2_m_score else "SPEAKER_02"
+    client_id = "SPEAKER_02" if manager_id == "SPEAKER_01" else "SPEAKER_01"
+    
+    logger.info(f"Семантический анализ ролей: Менеджер={manager_id} (score={max(s1_m_score, s2_m_score)}), Клиент={client_id}")
+
+    corrected_data = []
+    changes_count = 0
+    
+    # 2. Якорная коррекция и разделение смешанных сегментов
+    new_corrected_data = []
+    
+    for i, segment in enumerate(speakers_data):
+        text = segment.get("text", "").lower()
+        current_speaker = segment.get("speaker")
+        original_speaker = current_speaker
+        start_time = segment.get("start_time")
+        end_time = segment.get("end_time")
+        
+        # Проверяем, не является ли сегмент смешанным (диалог внутри одного сегмента)
+        # Паттерн: Вопрос (менеджер) -> Ответ (клиент) или наоборот
+        # Пример: "какой автомобиль у вас а какие спекта седьмой год" -> "какой автомобиль у вас" (М) + "а какие спекта седьмой год" (К)
+        
+        # Список разделителей фраз
+        split_phrases = [
+            "какой автомобиль", "какая машина", "какой год", "какой пробег",
+            "как вас зовут", "на какое время", "когда удобно"
+        ]
+        
+        is_split = False
+        
+        # Если текущий спикер - Клиент, но в тексте есть явный вопрос Менеджера
+        if current_speaker == client_id:
+             for phrase in split_phrases:
+                 if phrase in text:
+                     # Ищем позицию фразы
+                     idx = text.find(phrase)
+                     if idx > 5: # Если фраза не в самом начале (иначе это просто ошибка атрибуции всего сегмента)
+                         # Разделяем сегмент
+                         split_point_time = start_time + (end_time - start_time) * (idx / len(text))
+                         
+                         # Первая часть (до вопроса) - Клиент
+                         part1_text = segment["text"][:idx].strip()
+                         part1 = segment.copy()
+                         part1["text"] = part1_text
+                         part1["end_time"] = split_point_time
+                         part1["speaker"] = client_id
+                         
+                         # Вторая часть (вопрос) - Менеджер
+                         part2_text = segment["text"][idx:].strip()
+                         part2 = segment.copy()
+                         part2["text"] = part2_text
+                         part2["start_time"] = split_point_time
+                         part2["speaker"] = manager_id
+                         
+                         new_corrected_data.append(part1)
+                         new_corrected_data.append(part2)
+                         logger.info(f"Разделение смешанного сегмента {i}: '{text}' -> '{part1_text}' (К) + '{part2_text}' (М)")
+                         is_split = True
+                         changes_count += 1
+                         break
+        
+        if is_split:
+            continue
+
+        # Считаем слова
+        m_words = sum(1 for w in SEMANTIC_VOCAB["manager"] if w in text)
+        c_words = sum(1 for w in SEMANTIC_VOCAB["client"] if w in text)
+        
+        # Если спикер Клиент, но говорит "Я перезвоню" или "Узнаю цену" -> Менеджер
+        if current_speaker == client_id:
+            if m_words >= 2 or \
+               ("узнаю" in text and "перезвоню" in text) or \
+               ("стоимость" in text and "рублей" in text and "?" not in text) or \
+               ("сервис" in text and "центр" in text) or \
+               ("какой автомобиль" in text): # Явный вопрос менеджера
+                current_speaker = manager_id
+                logger.debug(f"Коррекция сегмента {i}: {original_speaker} -> {manager_id} (strong manager keywords)")
+
+        # Если спикер Менеджер, но называет марку авто или спрашивает цену -> Клиент
+        elif current_speaker == manager_id:
+            if c_words >= 2 or \
+               any(brand in text for brand in SEMANTIC_VOCAB["client"][30:]) or \
+               ("сколько" in text and "стоит" in text) or \
+               ("подскажите" in text and "пожалуйста" in text) or \
+               ("седьмой год" in text): # Ответ про год
+                current_speaker = client_id
+                logger.debug(f"Коррекция сегмента {i}: {original_speaker} -> {client_id} (strong client keywords)")
+        
+        # Сохраняем (возможно измененный) сегмент
+        new_segment = segment.copy()
+        new_segment["speaker"] = current_speaker
+        new_corrected_data.append(new_segment)
+        
+        if current_speaker != original_speaker:
+            changes_count += 1
+
+    # Используем новый список сегментов для следующего этапа
+    corrected_data = new_corrected_data
+    
+    # 3. Сглаживание (Sandwich rule) и коррекция коротких ответов
+    # Ищем паттерны A -> B (коротко) -> A и меняем B на A, если B семантически пуст
+    final_data = []
+    if corrected_data:
+        final_data.append(corrected_data[0])
+        
+        for i in range(1, len(corrected_data) - 1):
+            prev_seg = final_data[-1] # Уже обработанный предыдущий
+            curr_seg = corrected_data[i]
+            next_seg = corrected_data[i+1]
+            
+            prev_spk = prev_seg["speaker"]
+            curr_spk = curr_seg["speaker"]
+            next_spk = next_seg["speaker"]
+            
+            # Если сегмент "зажат" другим спикером
+            if prev_spk == next_spk and curr_spk != prev_spk:
+                text = curr_seg.get("text", "").lower().strip()
+                words_count = len(text.split())
+                duration = curr_seg["end_time"] - curr_seg["start_time"]
+                
+                # Условия "незначительности" сегмента:
+                # 1. Очень короткий (< 1.5 сек)
+                # 2. Мало слов (< 3)
+                # 3. Нет явных ключевых слов "чужого" типа
+                is_short = duration < 1.5 or words_count <= 3
+                is_neutral = True
+                
+                # Проверяем, не содержит ли он важных слов СВОЕГО (текущего) типа
+                curr_role_vocab = SEMANTIC_VOCAB["manager"] if curr_spk == manager_id else SEMANTIC_VOCAB["client"]
+                for w in curr_role_vocab:
+                    if w in text:
+                        is_neutral = False
+                        break
+                
+                if is_short and is_neutral:
+                    # Проверяем контекст вопроса
+                    # Если предыдущий спикер задал вопрос, а текущий коротко ответил "да/нет",
+                    # то текущий спикер должен быть ДРУГИМ.
+                    # Если sandwich rule пытается сделать их ОДНИМ, это ошибка.
+                    
+                    # Но если это просто пауза/вдох/шум, который ошибочно приписан другому, то sandwich rule верен.
+                    
+                    # В данном случае, доверяем sandwich rule для "схлопывания" мусорных сегментов
+                    logger.debug(f"Сглаживание сегмента {i}: {curr_spk} -> {prev_spk} (sandwich rule: '{text}')")
+                    curr_seg["speaker"] = prev_spk
+                    changes_count += 1
+            
+            # Дополнительное правило: короткие ответы "да/нет/хорошо" после длинной фразы другого спикера
+            # должны оставаться у другого спикера (т.е. это диалог), а не прилипать (если это не sandwich)
+            elif prev_spk != curr_spk:
+                 text = curr_seg.get("text", "").lower().strip()
+                 words = text.split()
+                 if len(words) <= 3 and any(w in text for w in ["да", "нет", "ага", "хорошо", "ладно", "угу", "спасибо", "пожалуйста"]):
+                     # Это похоже на валидный ответ, не меняем спикера
+                     pass
+            
+            final_data.append(curr_seg)
+        
+        final_data.append(corrected_data[-1])
+    else:
+        final_data = corrected_data
+
+    logger.info(f"Семантическая коррекция завершена: {changes_count} изменений")
+    return final_data
+
 def extract_voice_features(audio_segment: AudioSegment, start_time: float, end_time: float) -> Dict:
     """
     Извлекает характеристики голоса из аудио сегмента (поддержка стерео)
@@ -104,13 +335,32 @@ def extract_voice_features(audio_segment: AudioSegment, start_time: float, end_t
         # MFCC для левого канала
         mfcc_left = librosa.feature.mfcc(y=segment_samples, sr=sample_rate, n_mfcc=13)
         
+        # Spectral Contrast для левого канала (добавляем для улучшения моно диаризации)
+        try:
+            contrast_left = librosa.feature.spectral_contrast(y=segment_samples, sr=sample_rate)
+            contrast_mean_left = np.mean(contrast_left)
+        except Exception:
+            contrast_mean_left = 0
+
         # MFCC для правого канала (если есть)
         mfcc_right = np.zeros_like(mfcc_left)
+        contrast_mean_right = 0
         if right_segment_samples is not None and len(right_segment_samples) > 0:
             mfcc_right = librosa.feature.mfcc(y=right_segment_samples, sr=sample_rate, n_mfcc=13)
+            try:
+                contrast_right = librosa.feature.spectral_contrast(y=right_segment_samples, sr=sample_rate)
+                contrast_mean_right = np.mean(contrast_right)
+            except Exception:
+                contrast_mean_right = 0
         
-        # Используем средние значения MFCC
+        # Используем средние значения MFCC и Contrast
         mfcc = (np.mean(mfcc_left, axis=1) + np.mean(mfcc_right, axis=1)) / 2
+        
+        # Если правый канал есть, берем среднее, иначе только левый
+        if right_segment_samples is not None and len(right_segment_samples) > 0:
+            spectral_contrast = (contrast_mean_left + contrast_mean_right) / 2
+        else:
+            spectral_contrast = contrast_mean_left
         
         # Энергия для обоих каналов
         energy_left = np.sum(segment_samples ** 2)
@@ -127,6 +377,7 @@ def extract_voice_features(audio_segment: AudioSegment, start_time: float, end_t
             "fundamental_frequency": float(fundamental_freq),
             "spectral_centroid": float(spectral_centroid),
             "spectral_rolloff": float(spectral_rolloff),
+            "spectral_contrast": float(spectral_contrast),
             "zero_crossing_rate": float(zero_crossing_rate),
             "mfcc": [float(x) for x in mfcc],
             "energy": float(energy),
@@ -162,6 +413,7 @@ def analyze_speaker_voice_profile(voice_features: List[Dict]) -> Dict:
     avg_f0 = np.mean([f["fundamental_frequency"] for f in voice_features])
     avg_spectral_centroid = np.mean([f["spectral_centroid"] for f in voice_features])
     avg_spectral_rolloff = np.mean([f["spectral_rolloff"] for f in voice_features])
+    avg_spectral_contrast = np.mean([f.get("spectral_contrast", 0) for f in voice_features])
     avg_zcr = np.mean([f["zero_crossing_rate"] for f in voice_features])
     avg_energy = np.mean([f["energy"] for f in voice_features])
     
@@ -203,6 +455,7 @@ def analyze_speaker_voice_profile(voice_features: List[Dict]) -> Dict:
         "avg_fundamental_frequency": avg_f0,
         "avg_spectral_centroid": avg_spectral_centroid,
         "avg_spectral_rolloff": avg_spectral_rolloff,
+        "avg_spectral_contrast": avg_spectral_contrast,
         "avg_zero_crossing_rate": avg_zcr,
         "avg_energy": avg_energy,
         "avg_stereo_balance": avg_stereo_balance,
@@ -240,6 +493,14 @@ def identify_speaker_by_voice(voice_features: Dict, known_speakers: List[Dict]) 
         
         spectral_diff = abs(voice_features["spectral_centroid"] - avg_spectral)
         spectral_score = 1.0 / (1.0 + spectral_diff / 1000)
+
+        # Вычисляем схожесть по спектральному контрасту
+        avg_contrast = speaker.get("avg_spectral_contrast", 0)
+        if avg_contrast == 0:
+             avg_contrast = np.mean([f.get("spectral_contrast", 0) for f in speaker.get("voice_features", [])]) if speaker.get("voice_features") else 0
+        
+        contrast_diff = abs(voice_features.get("spectral_contrast", 0) - avg_contrast)
+        contrast_score = 1.0 / (1.0 + contrast_diff / 5)
         
         # Вычисляем схожесть по MFCC
         mfcc_diff = np.linalg.norm(
@@ -263,13 +524,14 @@ def identify_speaker_by_voice(voice_features: Dict, known_speakers: List[Dict]) 
                    voice_features.get("channel_difference", 0) == 0)
         
         if is_mono:
-            # Для моно: используем только голосовые характеристики (F0, spectral, MFCC)
-            # Перераспределяем веса: F0 и MFCC более важны для различения голосов
-            total_score = (f0_score * 0.4 + spectral_score * 0.25 + mfcc_score * 0.35)
+            # Для моно: используем голосовые характеристики (F0, spectral, MFCC, contrast)
+            # Перераспределяем веса: F0 и MFCC более важны, добавляем Contrast
+            # Увеличиваем вес MFCC и F0, так как они наиболее надежны для идентификации голоса
+            total_score = (f0_score * 0.35 + spectral_score * 0.1 + mfcc_score * 0.35 + contrast_score * 0.2)
         else:
             # Для стерео: используем все характеристики
-            total_score = (f0_score * 0.3 + spectral_score * 0.2 + mfcc_score * 0.2 + 
-                          stereo_score * 0.2 + channel_score * 0.1)
+            total_score = (f0_score * 0.2 + spectral_score * 0.1 + mfcc_score * 0.15 + contrast_score * 0.1 +
+                          stereo_score * 0.25 + channel_score * 0.2)
         
         if total_score > best_score:
             best_score = total_score
@@ -385,19 +647,35 @@ def tbank_with_voice_analysis_diarization(transcript_data: Dict, audio_file: str
                 speaker_id = "SPEAKER_02"
                 confidence = 0.5
             else:
-                # Если уже есть 2 спикера, ВСЕГДА используем чередование для моно
-                # Это гарантирует, что все записи будут разделены на 2 спикера
+                # Если уже есть 2 спикера, используем полноценный анализ голоса вместо принудительного чередования
+                best_match, score = identify_speaker_by_voice(voice_features, known_speakers)
+                
+                # Логика "инерции" разговора:
+                # Если скор не очень высокий, отдаем небольшое предпочтение предыдущему спикеру
+                # (люди редко говорят по одной короткой фразе, часто говорят блоками)
                 if len(speakers_data) > 0:
-                    last_speaker = speakers_data[-1].get("speaker", "SPEAKER_01")
-                    # Чередуем спикеров - если последний был SPEAKER_01, текущий SPEAKER_02 и наоборот
-                    speaker_id = "SPEAKER_02" if last_speaker == "SPEAKER_01" else "SPEAKER_01"
-                    confidence = 0.7
-                    logger.debug(f"Сегмент {i+1} моно: чередование -> {speaker_id} (предыдущий: {last_speaker})")
-                else:
-                    # Если нет предыдущих сегментов, используем первый спикер
-                    speaker_id = "SPEAKER_01"
-                    confidence = 0.5
-                    logger.debug(f"Сегмент {i+1} моно: первый сегмент -> {speaker_id}")
+                    last_speaker = speakers_data[-1].get("speaker")
+                    
+                    # Получаем характеристики последнего сегмента этого спикера для сравнения
+                    # Это помогает понять, продолжается ли та же фраза/мысль
+                    
+                    # Если алгоритм предлагает сменить спикера
+                    if last_speaker != best_match:
+                        # Вводим штраф за переключение спикера ("инерция")
+                        # Если уверенность в смене спикера низкая (score < 0.65), оставляем старого
+                        if score < 0.65:
+                            logger.debug(f"Сегмент {i+1} моно: удержание спикера {last_speaker} (score смены {score:.2f} < 0.65)")
+                            best_match = last_speaker
+                            # Снижаем уверенность, так как мы пошли против алгоритма
+                            score = max(0.4, score * 0.8)
+                    
+                    # Если алгоритм предлагает того же спикера
+                    if last_speaker == best_match:
+                        score += 0.15 # Повышенный бонус за непрерывность
+                
+                speaker_id = best_match
+                confidence = score
+                logger.debug(f"Сегмент {i+1} моно: анализ -> {speaker_id} (score={score:.2f})")
         
         # Обновляем профиль спикера
         speaker_profile = None
@@ -431,6 +709,13 @@ def tbank_with_voice_analysis_diarization(transcript_data: Dict, audio_file: str
     # Анализируем профили спикеров
     for speaker in known_speakers:
         speaker.update(analyze_speaker_voice_profile(speaker["voice_features"]))
+    
+    # Применяем семантическую пост-обработку
+    try:
+        speakers_data = apply_semantic_correction(speakers_data)
+    except Exception as e:
+        logger.error(f"Ошибка семантической коррекции: {e}", exc_info=True)
+        # Не прерываем работу, если семантика упала
     
     return {
         "success": True,
