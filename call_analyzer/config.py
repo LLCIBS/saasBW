@@ -21,13 +21,8 @@ PROFILE_USER_ID = os.getenv("CALL_ANALYZER_USER_ID")
 PROFILE_USERNAME = os.getenv("CALL_ANALYZER_USERNAME", "")
 PROFILE_LABEL = PROFILE_USERNAME or (PROFILE_USER_ID and f'user-{PROFILE_USER_ID}') or "global"
 
-# Speechmatics (legacy - можно удалить, если не используется)
-SPEECHMATICS_API_KEY = os.getenv("SPEECHMATICS_API_KEY", "KIVJjrMXkscitztOMfnw8iKSWEJjwXX1")
-
-# T-Bank VoiceKit
-TBANK_API_KEY = os.getenv("TBANK_API_KEY", "LEc1tAfU1qDrn6chWuo/Lau2pJCyHyC/e6FtjquWidM=")
-TBANK_SECRET_KEY = os.getenv("TBANK_SECRET_KEY", "YLWjm7DGJZSZzuJcoaNZTFWDADKtMfuOdrU4rsCRQmU=")
-TBANK_STEREO_ENABLED = os.getenv("TBANK_STEREO_ENABLED", "True").lower() == "true"  # При True используем стерео-алгоритм (2 спикера)
+# Internal Transcription Service
+INTERNAL_TRANSCRIPTION_URL = os.getenv("INTERNAL_TRANSCRIPTION_URL", "http://192.168.101.59:8000/transcribe")
 
 # TheB.ai
 THEBAI_API_KEY = os.getenv("THEBAI_API_KEY", "sk-c2e6e3c3f0964c6780bcf4db6cc6c644")
@@ -70,9 +65,6 @@ STATION_MAPPING = {
 
 
 
-
-# Язык для Speechmatics (по умолчанию "ru")
-SPEECHMATICS_LANGUAGE = "ru"
 
 # Список кодов станций, относящихся к Нижегородскому региону.
 NIZH_STATION_CODES = [
@@ -184,11 +176,11 @@ def _apply_profile_overrides():
 
 def _apply_profile_dict(profile_data):
     global BASE_RECORDS_PATH, PROMPTS_FILE, ADDITIONAL_VOCAB_FILE, SCRIPT_PROMPT_8_PATH
-    global SPEECHMATICS_API_KEY, TELEGRAM_BOT_TOKEN
+    global TELEGRAM_BOT_TOKEN
     global ALERT_CHAT_ID, LEGAL_ENTITY_CHAT_ID, TG_CHANNEL_NIZH, TG_CHANNEL_OTHER
     global STATION_NAMES, STATION_CHAT_IDS, STATION_MAPPING
     global NIZH_STATION_CODES, LEGAL_ENTITY_KEYWORDS, EMPLOYEE_BY_EXTENSION
-    global TBANK_STEREO_ENABLED, ALLOWED_STATIONS, PROFILE_SETTINGS
+    global ALLOWED_STATIONS, PROFILE_SETTINGS
 
     PROFILE_SETTINGS = profile_data or {}
 
@@ -203,8 +195,6 @@ def _apply_profile_dict(profile_data):
         SCRIPT_PROMPT_8_PATH = Path(paths['script_prompt_file'])
 
     api_keys = (profile_data or {}).get('api_keys') or {}
-    if api_keys.get('speechmatics_api_key'):
-        SPEECHMATICS_API_KEY = api_keys['speechmatics_api_key']
     if api_keys.get('telegram_bot_token'):
         TELEGRAM_BOT_TOKEN = api_keys['telegram_bot_token']
 
@@ -224,10 +214,6 @@ def _apply_profile_dict(profile_data):
     STATION_MAPPING = (profile_data or {}).get('station_mapping') or STATION_MAPPING
     NIZH_STATION_CODES = (profile_data or {}).get('nizh_station_codes') or NIZH_STATION_CODES
     LEGAL_ENTITY_KEYWORDS = (profile_data or {}).get('legal_entity_keywords') or LEGAL_ENTITY_KEYWORDS
-
-    transcription_cfg = (profile_data or {}).get('transcription') or {}
-    if 'tbank_stereo_enabled' in transcription_cfg:
-        TBANK_STEREO_ENABLED = bool(transcription_cfg.get('tbank_stereo_enabled', False))
 
     ALLOWED_STATIONS = profile_data.get('allowed_stations')
 

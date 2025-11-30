@@ -11,10 +11,9 @@ import config
 
 try:
     from call_analyzer.utils import send_alert, normalize_phone_number  # type: ignore
-    from call_analyzer.services import TranscriptionService, TheBaiAnalyzer  # type: ignore
+    # services.py больше не используется
 except ImportError:
     from utils import send_alert, normalize_phone_number
-    from services import TranscriptionService, TheBaiAnalyzer
 # Импорты удалены - функционал ReTruck больше не используется
 
 logger = logging.getLogger(__name__)
@@ -278,25 +277,26 @@ def check_new_call_for_recall(phone_number: str, new_station: str, new_call_time
                     return True
     return False
 
-# сервисы для транскрипции (если нужно)
-transcription_service = TranscriptionService(api_key=config.SPEECHMATICS_API_KEY)
-analyzer = TheBaiAnalyzer(api_key=config.THEBAI_API_KEY, model=config.THEBAI_MODEL)
+try:
+    from call_analyzer.internal_transcription import transcribe_audio_with_internal_service
+    from call_analyzer.call_handler import thebai_analyze
+except ImportError:
+    try:
+        from internal_transcription import transcribe_audio_with_internal_service
+        from call_handler import thebai_analyze
+    except ImportError:
+        pass
 
 def get_transcript_via_service(file_path: Path) -> str:
     try:
-        vocab = config.ADDITIONAL_VOCAB if hasattr(config, "ADDITIONAL_VOCAB") else []
-        job_id = transcription_service.start_transcription(file_path, vocab)
-        if not job_id:
-            return ""
-        transcript_json = transcription_service.get_transcription(job_id)
-        return format_transcript(transcript_json)
+        return transcribe_audio_with_internal_service(file_path)
     except Exception as e:
         logger.error(f"Ошибка при транскрипции для {file_path}: {e}")
         return ""
 
 def analyze_with_recall_prompt(transcript: str, recall_prompt: str) -> str:
     try:
-        return analyzer.analyze(transcript, recall_prompt)
+        return thebai_analyze(transcript, recall_prompt)
     except Exception as e:
         logger.error(f"Ошибка при анализе перезвона: {e}")
         return "Ошибка анализа перезвона"

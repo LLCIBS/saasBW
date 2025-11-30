@@ -70,17 +70,10 @@ try:
 except ImportError:
     from exental_alert import run_exental_alert
 
-# Безопасный импорт tbank_transcription (может быть недоступен из-за проблем с зависимостями)
 try:
-    from call_analyzer.tbank_transcription import transcribe_audio_with_tbank  # type: ignore
-    TBANK_AVAILABLE = True
-except (ImportError, ModuleNotFoundError) as e:
-    logging.warning(f"T-Bank транскрипция недоступна: {e}. Сервис будет работать без транскрипции.")
-    TBANK_AVAILABLE = False
-    def transcribe_audio_with_tbank(file_path):
-        """Заглушка для транскрипции, если модуль недоступен"""
-        logging.warning("T-Bank транскрипция недоступна")
-        return None
+    from call_analyzer.internal_transcription import transcribe_audio_with_internal_service
+except ImportError:
+    from internal_transcription import transcribe_audio_with_internal_service
 
 from concurrent.futures import ThreadPoolExecutor
 executor = ThreadPoolExecutor(max_workers=4)
@@ -129,8 +122,8 @@ def transcribe_and_analyze(file_path: Path, station_code: str):
     # 1. Сразу парсим phone_number, station_code_parsed, call_time
     phone_number, station_code_parsed, call_time = parse_filename(filename)
 
-    # 2. Отправляем файл на транскрипцию (T-Bank VoiceKit)
-    transcript_text = transcribe_audio_with_tbank(file_path)
+    # 2. Отправляем файл на транскрипцию (Internal Service)
+    transcript_text = transcribe_audio_with_internal_service(file_path)
     if not transcript_text:
         logger.error(f"Транскрипт не получен для файла {filename}.")
         return
@@ -570,81 +563,6 @@ def parse_datetime_from_string(date_str: str) -> datetime:
     return datetime.strptime(date_str, "%Y-%m-%d-%H-%M-%S")
 
 
-def speechmatics_send_file(file_path: Path, config_data: dict) -> str:
-    """
-    Отправка файла в Speechmatics -> job_id
-    """
-    url = "https://asr.api.speechmatics.com/v2/jobs"
-    headers = {"Authorization": f"Bearer {config.SPEECHMATICS_API_KEY}"}
-    data_json = {"config": json.dumps(config_data)}
-
-    def generate_custom_filename() -> str:
-        now = datetime.now()
-        ordinal = random.randint(1, 660)  # порядковый номер дня
-        time_str = now.strftime("%H%M%S")   # время в часах, минутах, секундах
-        return f"day_{ordinal}_{time_str}.mp3"
-
-    def _request():
-        with file_path.open("rb") as f:
-            custom_filename = generate_custom_filename()
-            files = {"data_file": (custom_filename, f)}
-            return requests.post(url, headers=headers, data=data_json, files=files, timeout=30)
-
-    resp = make_request_with_retries(_request, max_retries=3, delay=5)
-    if not resp or resp.status_code != 201:
-        logger.error(f"[Speechmatics] Ошибка загрузки {file_path.name}: "
-                     f"{resp.status_code if resp else 'NoResp'} {resp.text if resp else ''}")
-        return None
-
-    job_id = resp.json().get("id")
-    logger.info(f"Speechmatics: Файл {file_path.name} загружен, job_id={job_id}")
-    return job_id
-
-
-def speechmatics_wait_transcript(job_id: str, max_retries=30, delay=15) -> str:
-    """
-    Ждём готовность -> возвращаем текст (Speaker: content)
-    """
-    url = f"https://asr.api.speechmatics.com/v2/jobs/{job_id}/transcript"
-    headers = {"Authorization": f"Bearer {config.SPEECHMATICS_API_KEY}"}
-
-    for attempt in range(max_retries):
-        resp = requests.get(url, headers=headers)
-        if resp.status_code == 200:
-            data = resp.json()
-            return format_transcript(data)
-        elif resp.status_code == 404:
-            logger.info(f"Транскрипция не готова, попытка {attempt+1}/{max_retries}, ждем {delay} сек.")
-            time.sleep(delay)
-        else:
-            logger.error(f"Speechmatics: неожиданный ответ: {resp.status_code}, {resp.text}")
-            time.sleep(delay)
-    return ""
-
-
-def format_transcript(resp_json: dict) -> str:
-    if "results" not in resp_json:
-        return ""
-    results = resp_json["results"]
-    lines = []
-    current_speaker = None
-    buffer_words = []
-    for item in results:
-        alt = item["alternatives"][0]
-        spk = alt.get("speaker", "Unknown")
-        word = alt.get("content", "")
-        if spk != current_speaker:
-            if buffer_words:
-                lines.append(f"{current_speaker}: {' '.join(buffer_words)}")
-            current_speaker = spk
-            buffer_words = [word]
-        else:
-            buffer_words.append(word)
-    if buffer_words:
-        lines.append(f"{current_speaker}: {' '.join(buffer_words)}")
-    return "\n".join(lines)
-
-
 def thebai_analyze(transcript: str, prompt: str) -> str:
     """
     Отправляем запрос к TheB.ai
@@ -741,8 +659,6 @@ def save_transcript_analysis(file_path: Path, transcript_text: str, analysis_tex
     except Exception as e:
         logger.error(f"Ошибка при сохранении {result_file}: {e}")
     return result_file
-
-
 
 
 def is_target_call(analysis_text: str) -> bool:

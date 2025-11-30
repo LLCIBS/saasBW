@@ -12,10 +12,9 @@ import config
 
 try:
     from call_analyzer.utils import send_alert, normalize_phone_number  # type: ignore
-    from call_analyzer.services import TranscriptionService, TheBaiAnalyzer  # type: ignore
+    # services.py больше не используется, так как transcription_service заменен на internal_transcription
 except ImportError:
     from utils import send_alert, normalize_phone_number
-    from services import TranscriptionService, TheBaiAnalyzer
 # Импорты удалены - функционал ReTruck больше не используется
 
 logger = logging.getLogger(__name__)
@@ -372,22 +371,23 @@ def check_new_call_for_transfer(phone_number: str, new_station: str, new_call_ti
     logger.debug(f"Не найден перевод для {phone_number} с новой станцией {new_station} и временем {new_call_time}")
     return False
 
-# Создаём экземпляры сервисов для транскрипции и анализа
-transcription_service = TranscriptionService(api_key=config.SPEECHMATICS_API_KEY)
-analyzer = TheBaiAnalyzer(api_key=config.THEBAI_API_KEY, model=config.THEBAI_MODEL)
+try:
+    from call_analyzer.internal_transcription import transcribe_audio_with_internal_service
+    from call_analyzer.call_handler import thebai_analyze
+except ImportError:
+    try:
+        from internal_transcription import transcribe_audio_with_internal_service
+        from call_handler import thebai_analyze
+    except ImportError:
+        # Fallback if call_handler imports cause issues (circular import)
+        pass
 
 def get_transcript_via_service(file_path: Path) -> str:
     """
     Получает транскрипт для файла через сервис транскрипции.
     """
     try:
-        vocab = config.ADDITIONAL_VOCAB if hasattr(config, "ADDITIONAL_VOCAB") else []
-        job_id = transcription_service.start_transcription(file_path, vocab)
-        if not job_id:
-            return ""
-        transcript_json = transcription_service.get_transcription(job_id)
-        transcript_text = format_transcript(transcript_json)
-        return transcript_text
+        return transcribe_audio_with_internal_service(file_path)
     except Exception as e:
         logger.error(f"Ошибка при получении транскрипта для {file_path}: {e}")
         return ""
@@ -397,7 +397,7 @@ def analyze_with_special_prompt(transcript: str, special_prompt: str) -> str:
     Анализирует транскрипт с использованием специального промпта через сервис TheBaiAnalyzer.
     """
     try:
-        return analyzer.analyze(transcript, special_prompt)
+        return thebai_analyze(transcript, special_prompt)
     except Exception as e:
         logger.error(f"Ошибка при специальном анализе: {e}")
         return "Ошибка специального анализа"
