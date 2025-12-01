@@ -53,6 +53,83 @@ def _is_probable_russian_name(token: str) -> bool:
         return False
     return True
 
+def detect_manager_speaker(dialog_text: str) -> str:
+    """
+    Автоматически определяет, какой спикер является менеджером.
+    Возвращает 'SPEAKER_00' или 'SPEAKER_01' (или 'SPEAKER_01' по умолчанию).
+    
+    Критерии определения менеджера:
+    1. Первый спикер, который приветствует
+    2. Спикер, который называет компанию/магазин
+    3. Спикер, который представляется по имени
+    4. Спикер, который говорит фразы типа "слушаю", "чем могу помочь"
+    """
+    if not dialog_text:
+        return "SPEAKER_01"  # По умолчанию
+    
+    lines = dialog_text.splitlines()
+    speaker_00_score = 0
+    speaker_01_score = 0
+    
+    # Признаки менеджера
+    greeting_words = ["добрый день", "доброе утро", "добрый вечер", "здравствуйте", "здравствуй"]
+    company_words = ["магазин", "компания", "автосервис", "сервис", "автовектор", "фокус"]
+    service_phrases = ["слушаю", "чем могу помочь", "готов вас выслушать", "спрос", "слушаю вас"]
+    name_patterns = [r"меня зовут", r"я\s+\w+", r"это\s+\w+"]
+    
+    # Анализируем первые 10 реплик каждого спикера
+    speaker_00_first_lines = []
+    speaker_01_first_lines = []
+    
+    for line in lines[:30]:  # Первые 30 строк обычно содержат приветствие
+        line_lower = line.lower().strip()
+        if line_lower.startswith("speaker_00:") or line_lower.startswith("speaker_0:"):
+            text = line.split(":", 1)[1].strip().lower() if ":" in line else ""
+            speaker_00_first_lines.append(text)
+        elif line_lower.startswith("speaker_01:") or line_lower.startswith("speaker_1:"):
+            text = line.split(":", 1)[1].strip().lower() if ":" in line else ""
+            speaker_01_first_lines.append(text)
+    
+    # Объединяем первые реплики для анализа
+    speaker_00_text = " ".join(speaker_00_first_lines[:5])
+    speaker_01_text = " ".join(speaker_01_first_lines[:5])
+    
+    # Проверяем SPEAKER_00
+    for word in greeting_words:
+        if word in speaker_00_text:
+            speaker_00_score += 2
+    for word in company_words:
+        if word in speaker_00_text:
+            speaker_00_score += 3
+    for phrase in service_phrases:
+        if phrase in speaker_00_text:
+            speaker_00_score += 2
+    for pattern in name_patterns:
+        if re.search(pattern, speaker_00_text):
+            speaker_00_score += 1
+    
+    # Проверяем SPEAKER_01
+    for word in greeting_words:
+        if word in speaker_01_text:
+            speaker_01_score += 2
+    for word in company_words:
+        if word in speaker_01_text:
+            speaker_01_score += 3
+    for phrase in service_phrases:
+        if phrase in speaker_01_text:
+            speaker_01_score += 2
+    for pattern in name_patterns:
+        if re.search(pattern, speaker_01_text):
+            speaker_01_score += 1
+    
+    # Если SPEAKER_00 набрал больше баллов, он менеджер
+    if speaker_00_score > speaker_01_score:
+        logger.info(f"[exental_alert] Определен менеджер: SPEAKER_00 (баллы: {speaker_00_score} vs {speaker_01_score})")
+        return "SPEAKER_00"
+    else:
+        logger.info(f"[exental_alert] Определен менеджер: SPEAKER_01 (баллы: {speaker_01_score} vs {speaker_00_score})")
+        return "SPEAKER_01"
+
 def run_exental_alert(txt_path: str, station_code: str, phone_number: str, date_str: str):
     """
     Точка входа для расширенного анализа и отправки сообщения,
@@ -108,15 +185,19 @@ prompt: |
         logger.warning("[exental_alert] Пустой prompt_8, завершаем.")
         return
 
+    # Автоматически определяем, кто является менеджером
+    manager_speaker = detect_manager_speaker(dialog_text)
+    logger.info(f"[exental_alert] Используется менеджер: {manager_speaker}")
+
     # Дополним общий промпт подсказками по каждому пункту чек-листа,
     # чтобы модели было проще детектировать признаки выполнения.
     if checklist_titles:
         hints_lines = [
             "Правила оценивания (строго соблюдать):",
-            "1) Учитывай ТОЛЬКО реплики менеджера (SPEAKER_01).",
+            f"1) Учитывай ТОЛЬКО реплики менеджера ({manager_speaker}).",
             "2) Если признаков недостаточно или сомневаешься — ставь [ОТВЕТ: НЕТ].",
             "3) Формат ответа — одна строка на пункт в порядке 1..N:",
-            "   'i. <Название пункта> [ОТВЕТ: ДА|НЕТ] [ОБОСНОВАНИЕ: кратко, цитаты/парафразы SPEAKER_01]'.",
+            f"   'i. <Название пункта> [ОТВЕТ: ДА|НЕТ] [ОБОСНОВАНИЕ: кратко, цитаты/парафразы {manager_speaker}]'.",
             "4) Для 'Выявление потребности' считай ДА только если есть ≥2 вопроса менеджера и ≥1 открытый вопрос или перефраз ('правильно понимаю...').",
             "5) Для 'Инициативность менеджера' считай ДА только если есть явное предложение следующего шага ('предлагаю/давайте/могу/забронирую/созвонимся/назначим/оформим' и т.п.).",
             "Подсказки по пунктам (ориентиры, не отменяют правила):"
@@ -137,8 +218,9 @@ prompt: |
         logger.warning("[exental_alert] TheB.ai вернул пустой результат.")
         return
 
+    # Передаем определенного менеджера в функцию парсинга
     caption, raw_analysis, qa_text, overall = parse_answers_and_form_message(
-        new_analysis, station_code, phone_number, date_str, checklist_titles, dialog_text, checklist_prompts
+        new_analysis, station_code, phone_number, date_str, checklist_titles, dialog_text, checklist_prompts, manager_speaker
     )
     if not caption:
         logger.warning("[exental_alert] Недостаточно ответов для формирования сообщения.")
@@ -179,11 +261,11 @@ def extract_dialog_from_txt(txt_path: str) -> str:
 def extract_operator_name_from_transcript(dialog_text: str, station_code: str = None) -> str:
     """
     Извлекает имя оператора из транскрипции разговора, когда консультант представляется.
-    Ищет в первых репликах SPEAKER_01 фразы с представлением.
+    Автоматически определяет менеджера и ищет в его первых репликах фразы с представлением.
     Если имя не найдено, возвращает None.
     
     Args:
-        dialog_text: Текст диалога с репликами вида "SPEAKER_01: текст"
+        dialog_text: Текст диалога с репликами вида "SPEAKER_XX: текст"
         station_code: Код станции для fallback (опционально)
     
     Returns:
@@ -192,14 +274,22 @@ def extract_operator_name_from_transcript(dialog_text: str, station_code: str = 
     if not dialog_text:
         return None
     
-    # Ищем первые 5 реплик SPEAKER_01 (обычно там происходит представление)
+    # Автоматически определяем менеджера
+    manager_speaker = detect_manager_speaker(dialog_text)
+    
+    # Ищем первые 5 реплик менеджера (обычно там происходит представление)
     lines = dialog_text.splitlines()
     manager_first_lines = []
     count = 0
+    manager_patterns = [
+        manager_speaker + ":",
+        manager_speaker.lower() + ":",
+        manager_speaker.replace("_", "_0") + ":" if "_0" not in manager_speaker else manager_speaker + ":"
+    ]
     for line in lines:
         line_stripped = line.strip()
-        if (line_stripped.startswith("SPEAKER_01:") or line_stripped.startswith("Speaker_01:")) and count < 5:
-            # Извлекаем текст после "SPEAKER_01:"
+        if any(line_stripped.startswith(pattern) for pattern in manager_patterns) and count < 5:
+            # Извлекаем текст после "SPEAKER_XX:"
             text = line_stripped.split(":", 1)[1].strip() if ":" in line_stripped else line_stripped
             manager_first_lines.append(text)
             count += 1
@@ -365,9 +455,12 @@ def call_theb_ai(dialog_text: str, script_prompt: str) -> str:
         logger.error(f"[exental_alert] Сетевая ошибка при запросе к TheB.ai: {e}")
         return ""
 
-def parse_answers_and_form_message(analysis_text: str, station_code: str, phone_number: str, date_str: str, checklist_titles, dialog_text: str = None, checklist_prompts=None):
+def parse_answers_and_form_message(analysis_text: str, station_code: str, phone_number: str, date_str: str, checklist_titles, dialog_text: str = None, checklist_prompts=None, manager_speaker: str = "SPEAKER_01"):
     """
     Ищем [ОТВЕТ: ДА/НЕТ] по количеству пунктов чек-листа. Если ответов нет — возвращаем (None, None).
+    
+    Args:
+        manager_speaker: Спикер, который является менеджером (SPEAKER_00 или SPEAKER_01)
     """
     # Нормируем количество вопросов
     total_q = max(1, len(checklist_titles) if checklist_titles else len(DEFAULT_QUESTIONS))
@@ -391,12 +484,18 @@ def parse_answers_and_form_message(analysis_text: str, station_code: str, phone_
     try:
         if dialog_text and checklist_titles:
             text_lower = dialog_text.lower()
-            # Реплики менеджера (SPEAKER_01)
+            # Реплики менеджера (используем определенного спикера)
             manager_lines = []
+            manager_patterns = [
+                manager_speaker + ":",
+                manager_speaker.lower() + ":",
+                manager_speaker.replace("_", "_0") + ":" if "_0" not in manager_speaker else manager_speaker + ":"
+            ]
             for line in dialog_text.splitlines():
                 ls = line.strip()
-                if ls.startswith("SPEAKER_01:") or ls.startswith("Speaker_01:"):
-                    manager_lines.append(ls.split(":", 1)[1].strip().lower())
+                # Проверяем все возможные варианты написания спикера
+                if any(ls.startswith(pattern) for pattern in manager_patterns):
+                    manager_lines.append(ls.split(":", 1)[1].strip().lower() if ":" in ls else ls.lower())
             manager_text = "\n".join(manager_lines) if manager_lines else text_lower
 
             for i, title in enumerate(checklist_titles[:len(answers)]):
