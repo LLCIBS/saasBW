@@ -387,7 +387,14 @@ def get_transcript_via_service(file_path: Path) -> str:
     Получает транскрипт для файла через сервис транскрипции.
     """
     try:
-        return transcribe_audio_with_internal_service(file_path)
+        # Читаем настройку стерео/моно из профиля пользователя
+        stereo_mode = False
+        if hasattr(config, 'PROFILE_SETTINGS') and config.PROFILE_SETTINGS:
+            transcription_cfg = config.PROFILE_SETTINGS.get('transcription') or {}
+            stereo_mode = bool(transcription_cfg.get('tbank_stereo_enabled', False))
+        else:
+            stereo_mode = getattr(config, 'TBANK_STEREO_ENABLED', False)
+        return transcribe_audio_with_internal_service(file_path, stereo_mode=stereo_mode)
     except Exception as e:
         logger.error(f"Ошибка при получении транскрипта для {file_path}: {e}")
         return ""

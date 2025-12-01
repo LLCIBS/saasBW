@@ -123,7 +123,16 @@ def transcribe_and_analyze(file_path: Path, station_code: str):
     phone_number, station_code_parsed, call_time = parse_filename(filename)
 
     # 2. Отправляем файл на транскрипцию (Internal Service)
-    transcript_text = transcribe_audio_with_internal_service(file_path)
+    # Передаем режим стерео/моно из профиля пользователя
+    # Сначала пытаемся прочитать из PROFILE_SETTINGS (для worker процессов)
+    # Если нет, то из глобального TBANK_STEREO_ENABLED
+    stereo_mode = False
+    if hasattr(config, 'PROFILE_SETTINGS') and config.PROFILE_SETTINGS:
+        transcription_cfg = config.PROFILE_SETTINGS.get('transcription') or {}
+        stereo_mode = bool(transcription_cfg.get('tbank_stereo_enabled', False))
+    else:
+        stereo_mode = getattr(config, 'TBANK_STEREO_ENABLED', False)
+    transcript_text = transcribe_audio_with_internal_service(file_path, stereo_mode=stereo_mode)
     if not transcript_text:
         logger.error(f"Транскрипт не получен для файла {filename}.")
         return

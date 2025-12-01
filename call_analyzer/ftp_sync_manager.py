@@ -258,6 +258,16 @@ def sync_ftp_connection(connection_id: int):
             try:
                 filename = file_info['name']
                 relative_path = file_info.get('relative_path') or filename
+                file_size = file_info.get('size', 0)
+
+                # Пропускаем слишком маленькие файлы (до 1 КБ включительно) —
+                # это почти всегда обрывки / заглушки.
+                if file_size is not None and file_size <= 1024:
+                    logger.info(
+                        f"FTP: файл {filename} имеет размер {file_size} байт (<= 1 КБ), "
+                        f"считается служебным/обрезанным и пропускается."
+                    )
+                    continue
                 
                 # Исправление дублирования путей: сохраняем файл в папку, соответствующую дате звонка
                 # Извлекаем дату из имени файла, если возможно
@@ -305,7 +315,7 @@ def sync_ftp_connection(connection_id: int):
                 )
                 valid_extensions = ['.mp3', '.wav']
                 is_valid_ext = any(filename_lower.endswith(ext) for ext in valid_extensions)
-                
+
                 if not is_valid_name or not is_valid_ext:
                     # Для out- файлов может быть много ложных срабатываний в мониторинге,
                     # но мы добавили out- в разрешенные, поэтому warning будет только на совсем левые файлы

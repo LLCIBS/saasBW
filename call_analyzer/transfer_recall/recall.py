@@ -14,6 +14,16 @@ try:
     # services.py больше не используется
 except ImportError:
     from utils import send_alert, normalize_phone_number
+
+# Используем ту же логику привязки подстанций, что и в call_handler,
+# чтобы не было расхождений в определении основной станции.
+try:
+    from call_analyzer.call_handler import get_main_station_code  # type: ignore
+except ImportError:
+    try:
+        from call_handler import get_main_station_code  # type: ignore
+    except ImportError:
+        get_main_station_code = None  # fallback, не должен использоваться в нормальной работе
 # Импорты удалены - функционал ReTruck больше не используется
 
 logger = logging.getLogger(__name__)
@@ -97,13 +107,23 @@ def extract_recall_when(analysis: str) -> str | None:
 def normalize_station_code(station_code):
     """
     Приводит дочерний код станции к родительскому.
+    Использует ту же функцию, что и основной обработчик звонков,
+    чтобы результат был идентичным (никаких расхождений 401/407/408 и т.п.).
     """
-    if station_code in config.STATION_NAMES:
-        return station_code  # Уже родительский
-    for parent, children in config.STATION_MAPPING.items():
-        if station_code in children:
-            return parent
-    return None  # Неизвестный код станции
+    if get_main_station_code is None:
+        # Fallback на старую логику, если по какой-то причине импорт не удался
+        if station_code in config.STATION_NAMES:
+            return station_code
+        for parent, children in config.STATION_MAPPING.items():
+            if station_code in children:
+                return parent
+        # Если маппинга нет, считаем код уже основным
+        return station_code
+
+    main = get_main_station_code(station_code)
+    # Если get_main_station_code не нашёл отдельного родителя, считаем,
+    # что передан уже основной код станции и работаем с ним.
+    return main or station_code
 
 def get_station_name(station_code: str) -> str:
     """
@@ -289,7 +309,14 @@ except ImportError:
 
 def get_transcript_via_service(file_path: Path) -> str:
     try:
-        return transcribe_audio_with_internal_service(file_path)
+        # Читаем настройку стерео/моно из профиля пользователя
+        stereo_mode = False
+        if hasattr(config, 'PROFILE_SETTINGS') and config.PROFILE_SETTINGS:
+            transcription_cfg = config.PROFILE_SETTINGS.get('transcription') or {}
+            stereo_mode = bool(transcription_cfg.get('tbank_stereo_enabled', False))
+        else:
+            stereo_mode = getattr(config, 'TBANK_STEREO_ENABLED', False)
+        return transcribe_audio_with_internal_service(file_path, stereo_mode=stereo_mode)
     except Exception as e:
         logger.error(f"Ошибка при транскрипции для {file_path}: {e}")
         return ""

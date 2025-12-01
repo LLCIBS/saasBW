@@ -159,6 +159,7 @@ FILENAME_FORMATS = {
 }
 ALLOWED_STATIONS = None
 PROFILE_SETTINGS = {}
+TBANK_STEREO_ENABLED = False  # По умолчанию моно режим
 
 
 def _apply_profile_overrides():
@@ -180,7 +181,7 @@ def _apply_profile_dict(profile_data):
     global ALERT_CHAT_ID, LEGAL_ENTITY_CHAT_ID, TG_CHANNEL_NIZH, TG_CHANNEL_OTHER
     global STATION_NAMES, STATION_CHAT_IDS, STATION_MAPPING
     global NIZH_STATION_CODES, LEGAL_ENTITY_KEYWORDS, EMPLOYEE_BY_EXTENSION
-    global ALLOWED_STATIONS, PROFILE_SETTINGS
+    global ALLOWED_STATIONS, PROFILE_SETTINGS, TBANK_STEREO_ENABLED
 
     PROFILE_SETTINGS = profile_data or {}
 
@@ -216,6 +217,10 @@ def _apply_profile_dict(profile_data):
     LEGAL_ENTITY_KEYWORDS = (profile_data or {}).get('legal_entity_keywords') or LEGAL_ENTITY_KEYWORDS
 
     ALLOWED_STATIONS = profile_data.get('allowed_stations')
+    
+    # Читаем настройку стерео/моно из профиля пользователя
+    transcription_cfg = (profile_data or {}).get('transcription') or {}
+    TBANK_STEREO_ENABLED = bool(transcription_cfg.get('tbank_stereo_enabled', False))
 
 
 _apply_profile_overrides()
