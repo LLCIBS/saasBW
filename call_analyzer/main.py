@@ -92,6 +92,48 @@ def main():
         schedule_watchers(path)
         observer.start()
         logger.info(f"[MAIN] Начат мониторинг папки: {path}")
+        
+        # Обработка существующих файлов при запуске
+        logger.info(f"[MAIN] Сканирование существующих файлов в папке: {path}")
+        try:
+            from types import SimpleNamespace
+            existing_files = list(Path(path).glob("*.mp3")) + list(Path(path).glob("*.wav"))
+            processed_count = 0
+            for file_path in existing_files:
+                name_lower = file_path.name.lower()
+                # Проверяем те же условия, что и в CallHandler
+                # Файлы формата out-* пропускаются
+                if not (
+                    name_lower.startswith("fs_") or 
+                    name_lower.startswith("external-") or 
+                    name_lower.startswith("вход_")
+                ):
+                    continue
+                
+                # Пропускаем файлы с хвостами .wav-out. и .wav-in. для external-*
+                if name_lower.startswith("external-"):
+                    if ".wav-out." in name_lower or ".wav-in." in name_lower:
+                        continue
+                
+                # Проверяем расширение
+                if file_path.suffix.lower() not in ['.mp3', '.wav']:
+                    continue
+                
+                # Обрабатываем файл
+                try:
+                    mock_event = SimpleNamespace(
+                        src_path=str(file_path.resolve()),
+                        is_directory=False
+                    )
+                    event_handler.on_created(mock_event)
+                    processed_count += 1
+                    logger.info(f"[MAIN] Обработан существующий файл: {file_path.name}")
+                except Exception as e:
+                    logger.error(f"[MAIN] Ошибка обработки файла {file_path.name}: {e}", exc_info=True)
+            
+            logger.info(f"[MAIN] Обработано существующих файлов: {processed_count} из {len(existing_files)}")
+        except Exception as e:
+            logger.error(f"[MAIN] Ошибка при сканировании существующих файлов: {e}", exc_info=True)
 
         # Запуск FTP синхронизации (только в глобальном режиме, так как service_manager запускает его сам)
         if getattr(profile_config, 'PROFILE_LABEL', 'global') == 'global':

@@ -142,7 +142,23 @@ def run_exental_alert(txt_path: str, station_code: str, phone_number: str, date_
         logger.warning("[exental_alert] Диалог пуст, завершаем.")
         return
 
-    script_prompt_8 = config.SCRIPT_PROMPT_8_PATH  # Пусть в config.py будет SCRIPT_PROMPT_8_PATH
+    # Получаем путь к script_prompt_8.yaml из конфигурации пользователя
+    # Приоритет: 1) PROFILE_SETTINGS, 2) SCRIPT_PROMPT_8_PATH из config
+    script_prompt_8 = None
+    if hasattr(config, 'PROFILE_SETTINGS') and config.PROFILE_SETTINGS:
+        paths_cfg = config.PROFILE_SETTINGS.get('paths') or {}
+        script_prompt_file = paths_cfg.get('script_prompt_file')
+        if script_prompt_file:
+            script_prompt_8 = Path(script_prompt_file)
+            logger.debug(f"[exental_alert] Используется script_prompt_file из PROFILE_SETTINGS: {script_prompt_8}")
+    
+    if not script_prompt_8 or not script_prompt_8.exists():
+        # Fallback на SCRIPT_PROMPT_8_PATH из config
+        script_prompt_8 = config.SCRIPT_PROMPT_8_PATH
+        logger.debug(f"[exental_alert] Используется SCRIPT_PROMPT_8_PATH из config: {script_prompt_8}")
+    
+    # Логируем, какой файл будет использоваться
+    logger.info(f"[exental_alert] Используется файл чек-листа: {script_prompt_8} (существует: {script_prompt_8.exists()})")
     
     # Автоматическое создание файла промпта, если он отсутствует
     if not script_prompt_8.exists():

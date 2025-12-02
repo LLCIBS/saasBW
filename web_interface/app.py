@@ -1258,8 +1258,11 @@ def api_generate_prompt():
         if not title:
             return jsonify({'success': False, 'message': 'Название пункта не может быть пустым'})
 
-        # Используем простой и конкретный промпт
-        context = f"Сгенерируй ключевую суть для пункта чек листа {title}, чтобы использовать это как описание для поиска в диалоге признаков выполнения этого пункта. не пиши ничего лишнего верни только суть"
+        # Генерируем короткий промпт в формате двух предложений
+        context = f"""Сгенерируй КОРОТКИЙ текстовый промпт для пункта чек-листа: "{title}".
+Формат ответа ДОЛЖЕН быть строго таким (ровно одно-два предложения в одну строку, без переносов и списков):
+Считать [ОТВЕТ: ДА], если ... . Считать [ОТВЕТ: НЕТ], если ... .
+Опиши критерии простым языком, без лишних деталей и без кавычек вокруг всего текста. Не добавляй ничего кроме этих двух предложений."""
 
         import requests
         runtime_cfg = build_user_runtime_config()
@@ -1276,7 +1279,7 @@ def api_generate_prompt():
             "messages": [
                 {
                     "role": "system",
-                    "content": "���< ���?�?�?�%�?��� �?�>�? �?�?���?���?��? ��?���'���: �?����?���?��� ���?�?��'�?�? �ؐ��-�>��?�'��. �?�'�?��ؐ��� �'�?�>�?��? �?�?�'�?, �+��� �>��?�?��: �?�>�?�?.",
+                    "content": "Ты эксперт по созданию инструкций для оценки качества телефонных звонков в автосервисе. Твоя задача - создавать четкие, реалистичные и подробные критерии оценки.",
                 },
                 {
                     "role": "user",
@@ -1284,42 +1287,78 @@ def api_generate_prompt():
                 },
             ],
             "temperature": 0.3,
-            "max_tokens": 200,
+            "max_tokens": 800,  # Увеличено для подробных промптов
         }
 
-        response = requests.post(
-            thebai_url,
-            headers={
-                'Authorization': f'Bearer {thebai_api_key}',
-                'Content-Type': 'application/json',
-            },
-            json=prompt_request,
-            timeout=30,
-        )
-        if response.status_code == 200:
-            result = response.json()
-            app.logger.info(f"Ответ API: {result}")
-            
-            # Проверяем структуру ответа
-            if not result.get('choices') or len(result['choices']) == 0:
-                app.logger.error("Пустой ответ от API")
-                return jsonify({'success': False, 'message': 'Пустой ответ от API'})
-            
-            generated_prompt = (result.get('choices', [{}])[0]
-                                    .get('message', {})
-                                    .get('content', '')).strip()
-            
-            if not generated_prompt:
-                app.logger.error("Пустой промпт в ответе")
-                return jsonify({'success': False, 'message': 'Пустой промпт в ответе'})
-            
-            generated_prompt = generated_prompt.replace('"', '').replace("'", '').strip()
-            
-            app.logger.info(f"Сгенерирован промпт для '{title}': {generated_prompt}")
-            return jsonify({'success': True, 'prompt': generated_prompt})
-
-        app.logger.error(f"Ошибка DeepSeek API: {response.status_code} - {response.text}")
-        return jsonify({'success': False, 'message': f'Ошибка API: {response.status_code}'}), 502
+        # Retry логика для надежности
+        max_retries = 3
+        timeout = 90  # Увеличенный таймаут для генерации промпта
+        response = None
+        last_error = None
+        
+        for attempt in range(max_retries):
+            try:
+                response = requests.post(
+                    thebai_url,
+                    headers={
+                        'Authorization': f'Bearer {thebai_api_key}',
+                        'Content-Type': 'application/json',
+                    },
+                    json=prompt_request,
+                    timeout=timeout,
+                )
+                
+                if response.status_code == 200:
+                    result = response.json()
+                    app.logger.info(f"Ответ API: {result}")
+                    
+                    # Проверяем структуру ответа
+                    if not result.get('choices') or len(result['choices']) == 0:
+                        app.logger.error("Пустой ответ от API")
+                        return jsonify({'success': False, 'message': 'Пустой ответ от API'})
+                    
+                    generated_prompt = (result.get('choices', [{}])[0]
+                                            .get('message', {})
+                                            .get('content', '')).strip()
+                    
+                    if not generated_prompt:
+                        app.logger.error("Пустой промпт в ответе")
+                        return jsonify({'success': False, 'message': 'Пустой промпт в ответе'})
+                    
+                    # Удаляем только внешние кавычки, если они есть
+                    if generated_prompt.startswith('"') and generated_prompt.endswith('"'):
+                        generated_prompt = generated_prompt[1:-1].strip()
+                    elif generated_prompt.startswith("'") and generated_prompt.endswith("'"):
+                        generated_prompt = generated_prompt[1:-1].strip()
+                    
+                    app.logger.info(f"Сгенерирован промпт для '{title}': {generated_prompt}")
+                    return jsonify({'success': True, 'prompt': generated_prompt})
+                
+                # Если статус не 200, логируем и пробуем снова (если не последняя попытка)
+                app.logger.warning(f"Попытка {attempt + 1}/{max_retries}: Ошибка DeepSeek API: {response.status_code} - {response.text}")
+                if attempt < max_retries - 1:
+                    time.sleep(2)  # Небольшая задержка перед повтором
+                    continue
+                else:
+                    return jsonify({'success': False, 'message': f'Ошибка API: {response.status_code}'}), 502
+                    
+            except requests.exceptions.Timeout as e:
+                last_error = f"Таймаут запроса (>{timeout}с)"
+                app.logger.warning(f"Попытка {attempt + 1}/{max_retries}: {last_error}")
+                if attempt < max_retries - 1:
+                    time.sleep(2)
+                    continue
+            except requests.exceptions.RequestException as e:
+                last_error = f"Ошибка сети: {str(e)}"
+                app.logger.warning(f"Попытка {attempt + 1}/{max_retries}: {last_error}")
+                if attempt < max_retries - 1:
+                    time.sleep(2)
+                    continue
+        
+        # Если все попытки исчерпаны
+        error_message = last_error or "Неизвестная ошибка"
+        app.logger.error(f"Все попытки исчерпаны. Последняя ошибка: {error_message}")
+        return jsonify({'success': False, 'message': f'Ошибка генерации после {max_retries} попыток: {error_message}'}), 500
 
     except Exception as e:
         app.logger.error(f"Ошибка генерации промпта: {e}")

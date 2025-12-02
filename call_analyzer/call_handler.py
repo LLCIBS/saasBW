@@ -430,12 +430,20 @@ class CallHandler(FileSystemEventHandler):
         
         name_lower = file_path.name.lower()
         # Принимаем стандартные записи fs_*, external-* и новый формат вход_*; расширения из конфигурации
+        # Файлы формата out-* пропускаются
         if not (
             name_lower.startswith("fs_") or 
             name_lower.startswith("external-") or 
             name_lower.startswith("вход_")
         ):
             return
+        
+        # Для формата external-* пропускаем файлы с хвостами .wav-out. и .wav-in.
+        if name_lower.startswith("external-"):
+            if ".wav-out." in name_lower or ".wav-in." in name_lower:
+                logger.debug(f"Пропускаем файл с хвостом .wav-out. или .wav-in.: {file_path.name}")
+                return
+        
         if file_path.suffix and file_path.suffix.lower() not in config.FILENAME_PATTERNS['supported_extensions']:
             return
 

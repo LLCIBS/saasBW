@@ -307,18 +307,23 @@ def sync_ftp_connection(connection_id: int):
                 
                 # Проверяем формат имени файла
                 filename_lower = filename.lower()
+                # Файлы формата out-* пропускаются
                 is_valid_name = (
                     filename_lower.startswith("fs_") or 
                     filename_lower.startswith("external-") or 
-                    filename_lower.startswith("вход_") or
-                    filename_lower.startswith("out-")
+                    filename_lower.startswith("вход_")
                 )
+                
+                # Для формата external-* пропускаем файлы с хвостами .wav-out. и .wav-in.
+                if filename_lower.startswith("external-"):
+                    if ".wav-out." in filename_lower or ".wav-in." in filename_lower:
+                        logger.debug(f"Пропускаем файл с хвостом .wav-out. или .wav-in.: {filename}")
+                        continue
+                
                 valid_extensions = ['.mp3', '.wav']
                 is_valid_ext = any(filename_lower.endswith(ext) for ext in valid_extensions)
 
                 if not is_valid_name or not is_valid_ext:
-                    # Для out- файлов может быть много ложных срабатываний в мониторинге,
-                    # но мы добавили out- в разрешенные, поэтому warning будет только на совсем левые файлы
                     logger.warning(f"Файл {filename} не соответствует формату. Пропускаем.")
                     continue
                 
