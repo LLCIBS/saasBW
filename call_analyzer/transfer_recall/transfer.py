@@ -394,7 +394,22 @@ def get_transcript_via_service(file_path: Path) -> str:
             stereo_mode = bool(transcription_cfg.get('tbank_stereo_enabled', False))
         else:
             stereo_mode = getattr(config, 'TBANK_STEREO_ENABLED', False)
-        return transcribe_audio_with_internal_service(file_path, stereo_mode=stereo_mode)
+        
+        # Загружаем дополнительный словарь для транскрипции
+        additional_vocab = []
+        try:
+            if hasattr(config, 'ADDITIONAL_VOCAB_FILE') and config.ADDITIONAL_VOCAB_FILE and config.ADDITIONAL_VOCAB_FILE.exists():
+                with config.ADDITIONAL_VOCAB_FILE.open("r", encoding="utf-8") as f:
+                    data = yaml.safe_load(f)
+                    additional_vocab = data.get("additional_vocab", []) if data else []
+        except Exception as e:
+            logger.debug(f"Не удалось загрузить словарь для транскрипции: {e}")
+        
+        return transcribe_audio_with_internal_service(
+            file_path, 
+            stereo_mode=stereo_mode,
+            additional_vocab=additional_vocab if additional_vocab else None
+        )
     except Exception as e:
         logger.error(f"Ошибка при получении транскрипта для {file_path}: {e}")
         return ""

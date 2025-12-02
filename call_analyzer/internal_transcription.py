@@ -2,11 +2,12 @@ import logging
 import os
 import time
 import requests
+import json
 import config
 
 logger = logging.getLogger(__name__)
 
-def transcribe_audio_with_internal_service(file_path, stereo_mode=None):
+def transcribe_audio_with_internal_service(file_path, stereo_mode=None, additional_vocab=None):
     """
     Транскрибирует аудио файл используя внутренний сервис Whisper/PyAnnote.
     Возвращает отформатированный текст транскрипции или None в случае ошибки.
@@ -15,6 +16,7 @@ def transcribe_audio_with_internal_service(file_path, stereo_mode=None):
         file_path: Путь к аудио файлу
         stereo_mode: Если True - стерео режим (2 спикера, диаризация по каналам),
                      Если False - моно режим. Если None - берется из config.TBANK_STEREO_ENABLED
+        additional_vocab: Список дополнительных слов для улучшения распознавания (опционально)
     """
     if not os.path.exists(file_path):
         logger.error(f"Файл '{file_path}' не найден.")
@@ -36,6 +38,13 @@ def transcribe_audio_with_internal_service(file_path, stereo_mode=None):
             files = {"file": f}
             # Передаем флаг стерео/моно через data параметр
             data = {"stereo": "true" if stereo_mode else "false"}
+            
+            # Передаем дополнительный словарь, если он указан
+            if additional_vocab and isinstance(additional_vocab, list) and len(additional_vocab) > 0:
+                # Преобразуем список в JSON строку для передачи
+                data["vocab"] = json.dumps(additional_vocab, ensure_ascii=False)
+                logger.debug(f"Передаем словарь из {len(additional_vocab)} слов на сервер транскрипции")
+            
             logger.info(f"Отправка файла на сервер (режим: {mode_str})...")
             
             # timeout=600 (10 минут) - достаточно для большинства файлов

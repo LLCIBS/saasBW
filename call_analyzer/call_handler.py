@@ -132,7 +132,13 @@ def transcribe_and_analyze(file_path: Path, station_code: str):
         stereo_mode = bool(transcription_cfg.get('tbank_stereo_enabled', False))
     else:
         stereo_mode = getattr(config, 'TBANK_STEREO_ENABLED', False)
-    transcript_text = transcribe_audio_with_internal_service(file_path, stereo_mode=stereo_mode)
+    
+    # Передаем дополнительный словарь для улучшения распознавания
+    transcript_text = transcribe_audio_with_internal_service(
+        file_path, 
+        stereo_mode=stereo_mode,
+        additional_vocab=additional_vocab
+    )
     if not transcript_text:
         logger.error(f"Транскрипт не получен для файла {filename}.")
         return
