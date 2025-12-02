@@ -43,7 +43,9 @@ def transcribe_audio_with_internal_service(file_path, stereo_mode=None, addition
             if additional_vocab and isinstance(additional_vocab, list) and len(additional_vocab) > 0:
                 # Преобразуем список в JSON строку для передачи
                 data["vocab"] = json.dumps(additional_vocab, ensure_ascii=False)
-                logger.debug(f"Передаем словарь из {len(additional_vocab)} слов на сервер транскрипции")
+                logger.info(f"Передаем словарь из {len(additional_vocab)} слов на сервер транскрипции: {', '.join(additional_vocab[:5])}{'...' if len(additional_vocab) > 5 else ''}")
+            else:
+                logger.debug("Словарь не передан (пустой или не указан)")
             
             logger.info(f"Отправка файла на сервер (режим: {mode_str})...")
             

@@ -342,6 +342,35 @@ def write_prompts_file(prompts_data, user=None):
         app.logger.error("Не удалось сохранить prompts-файл %s: %s", path, exc)
 
 
+def get_user_vocabulary_file_path(user=None):
+    """Возвращает путь к файлу словаря пользователя"""
+    runtime_cfg = build_user_runtime_config(user=user)
+    paths = runtime_cfg.get('paths', {})
+    vocab_file = paths.get('additional_vocab_file')
+    if vocab_file:
+        return Path(vocab_file)
+    return None
+
+
+def write_vocabulary_file(vocab_data, user=None):
+    """Сохраняет словарь в YAML файл"""
+    path = get_user_vocabulary_file_path(user=user)
+    if not path:
+        return
+    
+    # Формируем структуру для YAML
+    payload = {
+        'additional_vocab': vocab_data.get('additional_vocab', [])
+    }
+    
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open('w', encoding='utf-8') as handler:
+            yaml.safe_dump(payload, handler, allow_unicode=True, sort_keys=False, default_flow_style=False)
+    except Exception as exc:
+        app.logger.error("Не удалось сохранить vocabulary файл %s: %s", path, exc)
+
+
 def get_user_script_prompt_path(user=None):
     runtime_cfg = build_user_runtime_config(user=user)
     script_file = (runtime_cfg.get('paths') or {}).get('script_prompt_file')
@@ -1503,12 +1532,17 @@ def api_vocabulary():
 @app.route('/api/vocabulary/save', methods=['POST'])
 @login_required
 def api_vocabulary_save():
-    """API ??? ?????????? ????????????????? ???????."""
+    """API для сохранения словаря."""
     try:
         data = request.get_json() or {}
         save_user_vocabulary_data(data)
-        append_user_log('??????? ????????', module='vocabulary')
-        return jsonify({'success': True, 'message': '??????? ????????'})
+        # Синхронизируем словарь из БД в файл
+        try:
+            write_vocabulary_file(data)
+        except Exception as file_error:
+            app.logger.error("Не удалось сохранить vocabulary файл: %s", file_error)
+        append_user_log('Словарь сохранен', module='vocabulary')
+        return jsonify({'success': True, 'message': 'Словарь сохранен'})
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)})
 

@@ -400,19 +400,38 @@ def load_prompts():
 
 station_prompts = load_prompts()
 
-# Загружаем дополнительный словарь для Speechmatics
+# Загружаем дополнительный словарь для транскрипции
 def load_additional_vocab():
-    if not config.ADDITIONAL_VOCAB_FILE or not config.ADDITIONAL_VOCAB_FILE.exists():
-        return []
-    try:
-        with config.ADDITIONAL_VOCAB_FILE.open("r", encoding="utf-8") as f:
-            data = yaml.safe_load(f)
-            return data.get("additional_vocab", [])
-    except Exception as e:
-        logger.error(f"Ошибка при загрузке словаря: {e}")
-        return []
+    vocab_list = []
+    
+    # Пытаемся загрузить из файла
+    if config.ADDITIONAL_VOCAB_FILE and config.ADDITIONAL_VOCAB_FILE.exists():
+        try:
+            with config.ADDITIONAL_VOCAB_FILE.open("r", encoding="utf-8") as f:
+                data = yaml.safe_load(f)
+                vocab_list = data.get("additional_vocab", []) if data else []
+                if vocab_list:
+                    logger.info(f"Загружен словарь из файла {config.ADDITIONAL_VOCAB_FILE}: {len(vocab_list)} слов")
+                else:
+                    logger.warning(f"Файл словаря {config.ADDITIONAL_VOCAB_FILE} существует, но пуст")
+        except Exception as e:
+            logger.error(f"Ошибка при загрузке словаря из файла {config.ADDITIONAL_VOCAB_FILE}: {e}")
+    else:
+        if config.ADDITIONAL_VOCAB_FILE:
+            logger.warning(f"Файл словаря не существует: {config.ADDITIONAL_VOCAB_FILE}")
+        else:
+            logger.warning("Путь к файлу словаря не указан в конфигурации")
+    
+    if not vocab_list:
+        logger.warning(f"Словарь не загружен. Словарь не будет использоваться при транскрипции.")
+    
+    return vocab_list
 
 additional_vocab = load_additional_vocab()
+if additional_vocab:
+    logger.info(f"Словарь готов к использованию: {len(additional_vocab)} слов")
+else:
+    logger.warning("Словарь пуст - транскрипция будет выполняться без дополнительного словаря")
 
 class CallHandler(FileSystemEventHandler):
     """
