@@ -115,6 +115,12 @@ def transcribe_and_analyze(file_path: Path, station_code: str):
     filename = file_path.name
     logger.info(f"Начало обработки файла {filename} (станция {station_code}).")
 
+    # 0. Проверяем, не был ли файл уже обработан
+    result_file = get_result_file_path(file_path)
+    if result_file.exists():
+        logger.info(f"Файл {filename} уже обработан (результат: {result_file}). Пропускаем обработку.")
+        return
+
     # 1. Сразу парсим phone_number, station_code_parsed, call_time
     phone_number, station_code_parsed, call_time = parse_filename(filename)
 
@@ -622,13 +628,12 @@ def thebai_analyze(transcript: str, prompt: str) -> str:
         return "Ошибка анализа"
 
 
-def save_transcript_analysis(file_path: Path, transcript_text: str, analysis_text: str) -> Path:
+def get_result_file_path(file_path: Path) -> Path:
     """
-    Сохраняет транскрипт и анализ в папку transcriptions относительно исходного файла.
-    Это гарантирует, что файлы сохраняются в правильной папке пользователя.
+    Определяет путь к файлу результата транскрипции на основе пути к исходному файлу.
+    Не создает директорию, только возвращает путь.
+    Используется для проверки, был ли файл уже обработан.
     """
-    # Определяем путь относительно исходного файла, а не используем общий BASE_RECORDS_PATH
-    # Это важно для многопользовательского режима, когда файлы могут быть в /var/calls/users/1/
     try:
         # Нормализуем путь исходного файла
         file_path = file_path.resolve()
@@ -666,11 +671,21 @@ def save_transcript_analysis(file_path: Path, transcript_text: str, analysis_tex
     else:
         today_subdir = datetime.now().strftime("%Y/%m/%d")
         trans_dir = config.BASE_RECORDS_PATH / today_subdir / "transcriptions"
-        logger.debug(f"Файл не в структуре дня (путь: {file_parent}), используем fallback: {trans_dir}")
+    
+    result_file = trans_dir / f"{file_path.stem}.txt"
+    return result_file
+
+
+def save_transcript_analysis(file_path: Path, transcript_text: str, analysis_text: str) -> Path:
+    """
+    Сохраняет транскрипт и анализ в папку transcriptions относительно исходного файла.
+    Это гарантирует, что файлы сохраняются в правильной папке пользователя.
+    """
+    # Используем общую функцию для определения пути
+    result_file = get_result_file_path(file_path)
     
     # Создаем директорию используя метод Path (не os.makedirs, так как trans_dir это Path объект)
-    trans_dir.mkdir(parents=True, exist_ok=True)
-    result_file = trans_dir / f"{file_path.stem}.txt"
+    result_file.parent.mkdir(parents=True, exist_ok=True)
 
     if result_file.exists():
         logger.info(f"Файл-результат уже существует: {result_file}")

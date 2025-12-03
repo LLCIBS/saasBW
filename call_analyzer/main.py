@@ -97,8 +97,10 @@ def main():
         logger.info(f"[MAIN] Сканирование существующих файлов в папке: {path}")
         try:
             from types import SimpleNamespace
+            from call_analyzer.call_handler import get_result_file_path
             existing_files = list(Path(path).glob("*.mp3")) + list(Path(path).glob("*.wav"))
             processed_count = 0
+            skipped_count = 0
             for file_path in existing_files:
                 name_lower = file_path.name.lower()
                 # Проверяем те же условия, что и в CallHandler
@@ -119,6 +121,13 @@ def main():
                 if file_path.suffix.lower() not in ['.mp3', '.wav']:
                     continue
                 
+                # Проверяем, не был ли файл уже обработан
+                result_file = get_result_file_path(file_path)
+                if result_file.exists():
+                    skipped_count += 1
+                    logger.debug(f"[MAIN] Файл {file_path.name} уже обработан, пропускаем")
+                    continue
+                
                 # Обрабатываем файл
                 try:
                     mock_event = SimpleNamespace(
@@ -131,7 +140,7 @@ def main():
                 except Exception as e:
                     logger.error(f"[MAIN] Ошибка обработки файла {file_path.name}: {e}", exc_info=True)
             
-            logger.info(f"[MAIN] Обработано существующих файлов: {processed_count} из {len(existing_files)}")
+            logger.info(f"[MAIN] Обработано существующих файлов: {processed_count} из {len(existing_files)}, пропущено уже обработанных: {skipped_count}")
         except Exception as e:
             logger.error(f"[MAIN] Ошибка при сканировании существующих файлов: {e}", exc_info=True)
 
