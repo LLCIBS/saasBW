@@ -22,7 +22,15 @@ PROFILE_USERNAME = os.getenv("CALL_ANALYZER_USERNAME", "")
 PROFILE_LABEL = PROFILE_USERNAME or (PROFILE_USER_ID and f'user-{PROFILE_USER_ID}') or "global"
 
 # Internal Transcription Service
-INTERNAL_TRANSCRIPTION_URL = os.getenv("INTERNAL_TRANSCRIPTION_URL", "http://192.168.101.59:8000/transcribe")
+# Автоматически подбираем дефолтный URL в зависимости от окружения,
+# чтобы при деплое с dev на prod не приходилось править код.
+_env = os.getenv("APP_ENV") or os.getenv("FLASK_ENV") or "development"
+if _env.lower() in ("production", "prod"):
+    _default_transcribe_url = "http://10.8.0.2:8000/transcribe"
+else:
+    _default_transcribe_url = "http://192.168.101.59:8000/transcribe"
+
+INTERNAL_TRANSCRIPTION_URL = os.getenv("INTERNAL_TRANSCRIPTION_URL", _default_transcribe_url)
 
 # TheB.ai
 THEBAI_API_KEY = os.getenv("THEBAI_API_KEY", "sk-c2e6e3c3f0964c6780bcf4db6cc6c644")

@@ -66,7 +66,17 @@ class Config:
     TBANK_SECRET_KEY = os.getenv('TBANK_SECRET_KEY', '')
     TBANK_STEREO_ENABLED = os.getenv('TBANK_STEREO_ENABLED', 'True').lower() == 'true'
     
-    INTERNAL_TRANSCRIPTION_URL = os.getenv("INTERNAL_TRANSCRIPTION_URL", "http://192.168.101.59:8000/transcribe")
+    # URL сервиса транскрипции.
+    # По умолчанию зависит от окружения, чтобы при деплое код не менять:
+    # - development:  http://192.168.101.59:8000/transcribe
+    # - production:   http://10.8.0.2:8000/transcribe
+    _env = os.getenv("APP_ENV") or os.getenv("FLASK_ENV") or "development"
+    if _env.lower() in ("production", "prod"):
+        _default_transcribe_url = "http://10.8.0.2:8000/transcribe"
+    else:
+        _default_transcribe_url = "http://192.168.101.59:8000/transcribe"
+
+    INTERNAL_TRANSCRIPTION_URL = os.getenv("INTERNAL_TRANSCRIPTION_URL", _default_transcribe_url)
     
     THEBAI_API_KEY = os.getenv('THEBAI_API_KEY', '')
     THEBAI_URL = os.getenv('THEBAI_URL', 'https://api.deepseek.com/v1/chat/completions')
