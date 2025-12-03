@@ -541,7 +541,9 @@ def parse_answers_and_form_message(analysis_text: str, station_code: str, phone_
     qa_lines = []
     for i in range(total_q):
         title = checklist_titles[i] if i < len(checklist_titles) else f"Пункт {i+1}"
-        qa_lines.append(f"{i+1}. {title} — {answers[i]}")
+        # Добавляем эмодзи в зависимости от ответа
+        emoji = "🟢" if answers[i] == "ДА" else "🔴"
+        qa_lines.append(f"{i+1}. {emoji} {title} — {answers[i]}")
     qa_text = "\n".join(qa_lines)
 
     yes_count = sum(1 for a in answers if a == "ДА")

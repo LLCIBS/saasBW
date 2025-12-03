@@ -135,11 +135,15 @@ def transcribe_and_analyze(file_path: Path, station_code: str):
     else:
         stereo_mode = getattr(config, 'TBANK_STEREO_ENABLED', False)
     
+    # Загружаем дополнительный словарь для улучшения распознавания (с учетом текущих настроек)
+    # Словарь загружается динамически, чтобы учитывать изменения настроек USE_ADDITIONAL_VOCAB
+    additional_vocab_current = load_additional_vocab()
+    
     # Передаем дополнительный словарь для улучшения распознавания
     transcript_text = transcribe_audio_with_internal_service(
         file_path, 
         stereo_mode=stereo_mode,
-        additional_vocab=additional_vocab
+        additional_vocab=additional_vocab_current
     )
     if not transcript_text:
         logger.error(f"Транскрипт не получен для файла {filename}.")
@@ -392,6 +396,17 @@ station_prompts = load_prompts()
 
 # Загружаем дополнительный словарь для транскрипции
 def load_additional_vocab():
+    # Проверяем, включено ли использование дополнительного словаря
+    # Используем getattr с дефолтным значением True для обратной совместимости
+    use_vocab = getattr(config, "USE_ADDITIONAL_VOCAB", True)
+    
+    if not use_vocab:
+        logger.info(
+            "Использование дополнительного словаря отключено в профиле. "
+            "Словарь не будет загружаться и передаваться на сервер транскрипции."
+        )
+        return []
+    
     vocab_list = []
     
     # Пытаемся загрузить из файла
@@ -403,25 +418,22 @@ def load_additional_vocab():
                 if vocab_list:
                     logger.info(f"Загружен словарь из файла {config.ADDITIONAL_VOCAB_FILE}: {len(vocab_list)} слов")
                 else:
-                    logger.warning(f"Файл словаря {config.ADDITIONAL_VOCAB_FILE} существует, но пуст")
+                    logger.warning(f"Файл словаря {config.ADDITIONAL_VOCAB_FILE} существует, но не содержит additional_vocab")
         except Exception as e:
             logger.error(f"Ошибка при загрузке словаря из файла {config.ADDITIONAL_VOCAB_FILE}: {e}")
     else:
         if config.ADDITIONAL_VOCAB_FILE:
             logger.warning(f"Файл словаря не существует: {config.ADDITIONAL_VOCAB_FILE}")
         else:
-            logger.warning("Путь к файлу словаря не указан в конфигурации")
-    
+            logger.warning("Путь к файлу словаря не указан в конфигурации (ADDITIONAL_VOCAB_FILE)")
+
     if not vocab_list:
-        logger.warning(f"Словарь не загружен. Словарь не будет использоваться при транскрипции.")
+        logger.warning("Словарь не загружен. Транскрипция будет выполняться без дополнительного словаря.")
     
     return vocab_list
 
-additional_vocab = load_additional_vocab()
-if additional_vocab:
-    logger.info(f"Словарь готов к использованию: {len(additional_vocab)} слов")
-else:
-    logger.warning("Словарь пуст - транскрипция будет выполняться без дополнительного словаря")
+# Примечание: словарь теперь загружается динамически в transcribe_and_analyze()
+# для учета текущих настроек USE_ADDITIONAL_VOCAB
 
 class CallHandler(FileSystemEventHandler):
     """

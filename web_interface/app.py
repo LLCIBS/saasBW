@@ -549,6 +549,7 @@ def legacy_config_override(runtime_cfg):
 
         transcription_cfg = runtime_cfg.get('transcription') or {}
         _set_attr('TBANK_STEREO_ENABLED', bool(transcription_cfg.get('tbank_stereo_enabled', False)))
+        _set_attr('USE_ADDITIONAL_VOCAB', bool(transcription_cfg.get('use_additional_vocab', True)))
 
         _set_attr('EMPLOYEE_BY_EXTENSION', deepcopy(runtime_cfg.get('employee_by_extension') or {}))
         _set_attr('STATION_NAMES', deepcopy(runtime_cfg.get('stations') or {}))
@@ -1529,6 +1530,26 @@ def api_vocabulary_save():
     try:
         data = request.get_json() or {}
         save_user_vocabulary_data(data)
+        
+        # Синхронизируем vocabulary.enabled с transcription.use_additional_vocab
+        if 'enabled' in data:
+            vocab_enabled = bool(data.get('enabled', True))
+            # Получаем текущие настройки транскрипции
+            config_data = get_user_config_data()
+            transcription_cfg = config_data.get('transcription') or {}
+            transcription_cfg['use_additional_vocab'] = vocab_enabled
+            config_data['transcription'] = transcription_cfg
+            save_user_config_data(config_data)
+            # Обновляем runtime конфигурацию и применяем к config модулю
+            runtime_cfg = build_user_runtime_config()
+            # Применяем конфигурацию к call_analyzer.config
+            try:
+                from call_analyzer import config as legacy_config
+                if hasattr(legacy_config, '_apply_profile_dict'):
+                    legacy_config._apply_profile_dict(runtime_cfg.get('config_data', {}))
+            except ImportError:
+                pass
+        
         # Синхронизируем словарь из БД в файл
         try:
             write_vocabulary_file(data)

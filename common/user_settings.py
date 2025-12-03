@@ -139,6 +139,16 @@ def build_runtime_config(project_config, config_data=None, user_id=None):
     }
     config_data['paths'] = paths_cfg
 
+    # Синхронизируем vocabulary.enabled с transcription.use_additional_vocab
+    vocabulary_cfg = config_data.get('vocabulary') or {}
+    vocab_enabled = vocabulary_cfg.get('enabled', True)  # По умолчанию True
+    
+    transcription_cfg = config_data.get('transcription') or {}
+    # Если use_additional_vocab не задан явно, берем из vocabulary.enabled
+    if 'use_additional_vocab' not in transcription_cfg:
+        transcription_cfg['use_additional_vocab'] = vocab_enabled
+        changed = True
+    
     runtime = {
         'api_keys': runtime_api_keys,
         'paths': runtime_paths,
@@ -152,10 +162,14 @@ def build_runtime_config(project_config, config_data=None, user_id=None):
         'station_chat_ids': config_data.get('station_chat_ids') or deepcopy(getattr(project_config, 'STATION_CHAT_IDS', {})),
         'station_mapping': config_data.get('station_mapping') or deepcopy(getattr(project_config, 'STATION_MAPPING', {})),
         'nizh_station_codes': config_data.get('nizh_station_codes') or list(getattr(project_config, 'NIZH_STATION_CODES', [])),
-        'transcription': config_data.get('transcription') or {
-            'tbank_stereo_enabled': bool(getattr(project_config, 'TBANK_STEREO_ENABLED', False))
+        'transcription': transcription_cfg if transcription_cfg else {
+            'tbank_stereo_enabled': bool(getattr(project_config, 'TBANK_STEREO_ENABLED', False)),
+            'use_additional_vocab': vocab_enabled
         },
         'allowed_stations': config_data.get('allowed_stations')
     }
+    
+    # Обновляем config_data для сохранения синхронизации
+    config_data['transcription'] = runtime['transcription']
 
     return runtime, config_data, changed
