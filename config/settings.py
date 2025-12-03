@@ -138,4 +138,3 @@ def get_config():
     """Получить конфигурацию на основе FLASK_ENV"""
     env = os.getenv('FLASK_ENV', 'development')
     return config_map.get(env, DevelopmentConfig)
-

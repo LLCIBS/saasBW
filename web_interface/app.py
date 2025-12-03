@@ -218,11 +218,35 @@ def save_user_prompts_data(prompts_data, user=None):
 
 
 def get_user_vocabulary_data(user=None):
-    return get_user_settings_section('vocabulary', default_vocabulary_template, user=user)
+    """
+    Возвращает словарь пользователя.
+    Структура:
+    {
+        "enabled": True/False,
+        "additional_vocab": [ ... ]
+    }
+    """
+    vocab = get_user_settings_section('vocabulary', default_vocabulary_template, user=user)
+    # Гарантируем наличие ключей даже для старых записей в БД
+    if 'enabled' not in vocab:
+        vocab['enabled'] = True
+    if 'additional_vocab' not in vocab or vocab['additional_vocab'] is None:
+        vocab['additional_vocab'] = []
+    return vocab
 
 
 def save_user_vocabulary_data(vocab_data, user=None):
-    return save_user_settings_section('vocabulary', vocab_data, user=user)
+    """
+    Сохраняет словарь пользователя (включая флаг enabled).
+    """
+    # Нормализуем структуру
+    enabled = bool(vocab_data.get('enabled', True))
+    additional_vocab = vocab_data.get('additional_vocab') or []
+    payload = {
+        'enabled': enabled,
+        'additional_vocab': additional_vocab,
+    }
+    return save_user_settings_section('vocabulary', payload, user=user)
 
 
 def get_user_logs(user=None):
@@ -1535,9 +1559,27 @@ def api_vocabulary_save():
     """API для сохранения словаря."""
     try:
         data = request.get_json() or {}
+        # 1. Сохраняем словарь (слова + флаг enabled) в секцию vocabulary
         save_user_vocabulary_data(data)
-        # Синхронизируем словарь из БД в файл
+
+        # 2. Обновляем конфигурацию пользователя (секция transcription)
+        #    чтобы worker-процессы Call Analyzer знали, включен ли словарь.
         try:
+            config_data = get_user_config_data()
+            transcription_cfg = config_data.get('transcription') or {}
+            transcription_cfg['tbank_stereo_enabled'] = bool(
+                transcription_cfg.get('tbank_stereo_enabled', False)
+            )
+            # Флаг использования словаря берём из data.enabled (по умолчанию True)
+            transcription_cfg['use_additional_vocab'] = bool(data.get('enabled', True))
+            config_data['transcription'] = transcription_cfg
+            save_user_config_data(config_data)
+        except Exception as cfg_error:
+            app.logger.error("Не удалось обновить transcription.use_additional_vocab: %s", cfg_error)
+        # 3. Синхронизируем словарь из БД в файл (если включен)
+        try:
+            # Даже если словарь временно отключён, файл всё равно храним,
+            # чтобы при повторном включении не потерять слова.
             write_vocabulary_file(data)
         except Exception as file_error:
             app.logger.error("Не удалось сохранить vocabulary файл: %s", file_error)

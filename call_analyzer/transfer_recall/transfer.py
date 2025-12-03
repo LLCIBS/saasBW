@@ -395,13 +395,16 @@ def get_transcript_via_service(file_path: Path) -> str:
         else:
             stereo_mode = getattr(config, 'TBANK_STEREO_ENABLED', False)
         
-        # Загружаем дополнительный словарь для транскрипции
+        # Загружаем дополнительный словарь для транскрипции (если не отключен в профиле)
         additional_vocab = []
         try:
-            if hasattr(config, 'ADDITIONAL_VOCAB_FILE') and config.ADDITIONAL_VOCAB_FILE and config.ADDITIONAL_VOCAB_FILE.exists():
-                with config.ADDITIONAL_VOCAB_FILE.open("r", encoding="utf-8") as f:
-                    data = yaml.safe_load(f)
-                    additional_vocab = data.get("additional_vocab", []) if data else []
+            if getattr(config, "USE_ADDITIONAL_VOCAB", True):
+                if hasattr(config, 'ADDITIONAL_VOCAB_FILE') and config.ADDITIONAL_VOCAB_FILE and config.ADDITIONAL_VOCAB_FILE.exists():
+                    with config.ADDITIONAL_VOCAB_FILE.open("r", encoding="utf-8") as f:
+                        data = yaml.safe_load(f)
+                        additional_vocab = data.get("additional_vocab", []) if data else []
+            else:
+                logger.info("USE_ADDITIONAL_VOCAB=False: словарь для транскрипции переводов не используется")
         except Exception as e:
             logger.debug(f"Не удалось загрузить словарь для транскрипции: {e}")
         

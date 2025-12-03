@@ -402,8 +402,16 @@ station_prompts = load_prompts()
 
 # Загружаем дополнительный словарь для транскрипции
 def load_additional_vocab():
+    # Если в профиле явно отключено использование словаря — просто выходим
+    if hasattr(config, "USE_ADDITIONAL_VOCAB") and not getattr(config, "USE_ADDITIONAL_VOCAB"):
+        logger.info(
+            "Использование дополнительного словаря отключено в профиле. "
+            "Словарь не будет загружаться и передаваться на сервер транскрипции."
+        )
+        return []
+
     vocab_list = []
-    
+
     # Пытаемся загрузить из файла
     if config.ADDITIONAL_VOCAB_FILE and config.ADDITIONAL_VOCAB_FILE.exists():
         try:
@@ -411,27 +419,31 @@ def load_additional_vocab():
                 data = yaml.safe_load(f)
                 vocab_list = data.get("additional_vocab", []) if data else []
                 if vocab_list:
-                    logger.info(f"Загружен словарь из файла {config.ADDITIONAL_VOCAB_FILE}: {len(vocab_list)} слов")
+                    logger.info(
+                        f"Загружен словарь из файла {config.ADDITIONAL_VOCAB_FILE}: {len(vocab_list)} слов"
+                    )
                 else:
-                    logger.warning(f"Файл словаря {config.ADDITIONAL_VOCAB_FILE} существует, но пуст")
+                    logger.warning(
+                        f"Файл словаря {config.ADDITIONAL_VOCAB_FILE} существует, но не содержит additional_vocab"
+                    )
         except Exception as e:
             logger.error(f"Ошибка при загрузке словаря из файла {config.ADDITIONAL_VOCAB_FILE}: {e}")
     else:
         if config.ADDITIONAL_VOCAB_FILE:
             logger.warning(f"Файл словаря не существует: {config.ADDITIONAL_VOCAB_FILE}")
         else:
-            logger.warning("Путь к файлу словаря не указан в конфигурации")
-    
+            logger.warning("Путь к файлу словаря не указан в конфигурации (ADDITIONAL_VOCAB_FILE)")
+
     if not vocab_list:
-        logger.warning(f"Словарь не загружен. Словарь не будет использоваться при транскрипции.")
-    
+        logger.warning("Словарь не загружен. Транскрипция будет выполняться без дополнительного словаря.")
+
     return vocab_list
 
 additional_vocab = load_additional_vocab()
 if additional_vocab:
     logger.info(f"Словарь готов к использованию: {len(additional_vocab)} слов")
 else:
-    logger.warning("Словарь пуст - транскрипция будет выполняться без дополнительного словаря")
+    logger.warning("Словарь пуст или отключён - транскрипция выполняется без дополнительного словаря")
 
 class CallHandler(FileSystemEventHandler):
     """

@@ -32,7 +32,10 @@ def default_config_template():
         'nizh_station_codes': [],
         'legal_entity_keywords': [],
         'transcription': {
-            'tbank_stereo_enabled': False
+            'tbank_stereo_enabled': False,
+            # Использовать ли дополнительный словарь при транскрипции
+            # По умолчанию включено
+            'use_additional_vocab': True,
         },
         'allowed_stations': []
     }
@@ -48,6 +51,10 @@ def default_prompts_template():
 
 def default_vocabulary_template():
     return {
+        # Флаг: использовать ли дополнительный словарь при транскрипции
+        # True  - словарь подключается и передаётся на сервер транскрипций
+        # False - словарь игнорируется, но слова остаются сохранёнными
+        'enabled': True,
         'additional_vocab': []
     }
 

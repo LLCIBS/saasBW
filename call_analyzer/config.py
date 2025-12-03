@@ -167,7 +167,11 @@ FILENAME_FORMATS = {
 }
 ALLOWED_STATIONS = None
 PROFILE_SETTINGS = {}
+# Включен ли стерео режим для T-Bank (по умолчанию False)
 TBANK_STEREO_ENABLED = False  # По умолчанию моно режим
+# Использовать ли дополнительный словарь транскрипции (ADDITIONAL_VOCAB_FILE)
+# По умолчанию включено, чтобы не ломать существующее поведение.
+USE_ADDITIONAL_VOCAB = True
 
 
 def _apply_profile_overrides():
@@ -189,7 +193,7 @@ def _apply_profile_dict(profile_data):
     global ALERT_CHAT_ID, LEGAL_ENTITY_CHAT_ID, TG_CHANNEL_NIZH, TG_CHANNEL_OTHER
     global STATION_NAMES, STATION_CHAT_IDS, STATION_MAPPING
     global NIZH_STATION_CODES, LEGAL_ENTITY_KEYWORDS, EMPLOYEE_BY_EXTENSION
-    global ALLOWED_STATIONS, PROFILE_SETTINGS, TBANK_STEREO_ENABLED
+    global ALLOWED_STATIONS, PROFILE_SETTINGS, TBANK_STEREO_ENABLED, USE_ADDITIONAL_VOCAB
 
     PROFILE_SETTINGS = profile_data or {}
 
@@ -225,10 +229,12 @@ def _apply_profile_dict(profile_data):
     LEGAL_ENTITY_KEYWORDS = (profile_data or {}).get('legal_entity_keywords') or LEGAL_ENTITY_KEYWORDS
 
     ALLOWED_STATIONS = profile_data.get('allowed_stations')
-    
-    # Читаем настройку стерео/моно из профиля пользователя
+
+    # Читаем настройки транскрипции из профиля пользователя
     transcription_cfg = (profile_data or {}).get('transcription') or {}
     TBANK_STEREO_ENABLED = bool(transcription_cfg.get('tbank_stereo_enabled', False))
+    # Если флаг не задан в профиле, по умолчанию используем словарь
+    USE_ADDITIONAL_VOCAB = bool(transcription_cfg.get('use_additional_vocab', True))
 
 
 _apply_profile_overrides()

@@ -93,7 +93,15 @@
             <main class="col-md-9 col-lg-10 main-content">
                 <div class="p-4">
                     <div class="d-flex justify-content-between align-items-center mb-4">
-                        <h1 class="h3 mb-0">Управление словарем</h1>
+                        <div>
+                            <h1 class="h3 mb-1">Управление словарем</h1>
+                            <div class="form-check form-switch mt-2">
+                                <input class="form-check-input" type="checkbox" id="vocabEnabledSwitch" onchange="toggleVocabEnabled(this)">
+                                <label class="form-check-label" for="vocabEnabledSwitch">
+                                    Использовать дополнительный словарь при транскрипции
+                                </label>
+                            </div>
+                        </div>
                         <button class="btn btn-save" onclick="saveVocabulary()">
                             <i class="fas fa-save me-2"></i>Сохранить словарь
                         </button>
@@ -181,6 +189,7 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         let vocabularyData = [];
+        let vocabularyEnabled = true;
 
         // Загрузка словаря при старте
         document.addEventListener('DOMContentLoaded', function() {
@@ -192,11 +201,35 @@
                 const response = await fetch('/api/vocabulary');
                 const data = await response.json();
                 vocabularyData = data.additional_vocab || [];
+                vocabularyEnabled = (data.enabled !== undefined) ? !!data.enabled : true;
+                applyVocabEnabledState();
                 renderVocabulary();
             } catch (error) {
                 console.error('Ошибка загрузки словаря:', error);
                 showAlert('Ошибка загрузки словаря', 'danger');
             }
+        }
+
+        function applyVocabEnabledState() {
+            const switchEl = document.getElementById('vocabEnabledSwitch');
+            const inputNew = document.getElementById('newVocabularyItem');
+            const addButton = inputNew?.nextElementSibling;
+
+            if (switchEl) {
+                switchEl.checked = vocabularyEnabled;
+            }
+
+            if (inputNew) {
+                inputNew.disabled = !vocabularyEnabled;
+            }
+            if (addButton) {
+                addButton.disabled = !vocabularyEnabled;
+            }
+        }
+
+        function toggleVocabEnabled(checkbox) {
+            vocabularyEnabled = !!checkbox.checked;
+            applyVocabEnabledState();
         }
 
         function renderVocabulary() {
@@ -243,6 +276,7 @@
         async function saveVocabulary() {
             try {
                 const vocabularyDataToSave = {
+                    enabled: vocabularyEnabled,
                     additional_vocab: vocabularyData
                 };
 
