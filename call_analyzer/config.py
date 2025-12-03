@@ -156,6 +156,10 @@ TBANK_STEREO_ENABLED = False  # По умолчанию моно режим
 # Использовать ли дополнительный словарь транскрипции (ADDITIONAL_VOCAB_FILE)
 # По умолчанию включено, чтобы не ломать существующее поведение.
 USE_ADDITIONAL_VOCAB = True
+# Автоматическое определение имени оператора из транскрипции
+# True - пытаться извлечь имя из транскрипции, затем из таблицы
+# False - сразу брать из таблицы EMPLOYEE_BY_EXTENSION
+AUTO_DETECT_OPERATOR_NAME = True
 
 
 def _apply_profile_overrides():
@@ -177,7 +181,7 @@ def _apply_profile_dict(profile_data):
     global ALERT_CHAT_ID, TG_CHANNEL_NIZH, TG_CHANNEL_OTHER
     global STATION_NAMES, STATION_CHAT_IDS, STATION_MAPPING
     global NIZH_STATION_CODES, EMPLOYEE_BY_EXTENSION
-    global ALLOWED_STATIONS, PROFILE_SETTINGS, TBANK_STEREO_ENABLED, USE_ADDITIONAL_VOCAB
+    global ALLOWED_STATIONS, PROFILE_SETTINGS, TBANK_STEREO_ENABLED, USE_ADDITIONAL_VOCAB, AUTO_DETECT_OPERATOR_NAME
 
     PROFILE_SETTINGS = profile_data or {}
 
@@ -216,6 +220,8 @@ def _apply_profile_dict(profile_data):
     TBANK_STEREO_ENABLED = bool(transcription_cfg.get('tbank_stereo_enabled', False))
     # Если флаг не задан в профиле, по умолчанию используем словарь
     USE_ADDITIONAL_VOCAB = bool(transcription_cfg.get('use_additional_vocab', True))
+    # Автоматическое определение имени оператора (по умолчанию включено)
+    AUTO_DETECT_OPERATOR_NAME = bool(transcription_cfg.get('auto_detect_operator_name', True))
 
 
 _apply_profile_overrides()

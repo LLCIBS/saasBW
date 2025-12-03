@@ -279,11 +279,16 @@
                         <h3 class="config-title">
                             <i class="fas fa-wave-square me-2"></i>Транскрипция
                         </h3>
-                        <div class="form-check form-switch">
+                        <div class="form-check form-switch mb-3">
                             <input class="form-check-input" type="checkbox" id="tbankStereoEnabled">
                             <label class="form-check-label" for="tbankStereoEnabled">Стерео режим (2 спикера, диаризация по каналам)</label>
                         </div>
-                        <div class="form-text mt-2">При включении используется стерео алгоритм из T‑Bank с анализом голосов; при выключении — стандартный моно режим.</div>
+                        <div class="form-text mb-3">При включении используется стерео алгоритм из T‑Bank с анализом голосов; при выключении — стандартный моно режим.</div>
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="autoDetectOperatorName">
+                            <label class="form-check-label" for="autoDetectOperatorName">Автоматическое определение имени оператора</label>
+                        </div>
+                        <div class="form-text mt-2">При включении система пытается извлечь имя оператора из транскрипции (когда консультант представляется), затем использует таблицу привязки. При выключении сразу берет имя из таблицы EMPLOYEE_BY_EXTENSION.</div>
                     </div>
 
                     <!-- Коды станций Нижегородского региона -->
@@ -432,6 +437,8 @@
                 // Транскрипция
                 const stereo = configData.transcription?.tbank_stereo_enabled === true;
                 document.getElementById('tbankStereoEnabled').checked = stereo;
+                const autoDetectOperator = configData.transcription?.auto_detect_operator_name !== false; // По умолчанию true
+                document.getElementById('autoDetectOperatorName').checked = autoDetectOperator;
                 
                 // Загружаем коды станций
                 loadStationCodes(configData.nizh_station_codes || []);
@@ -562,7 +569,8 @@
 
                 // Сохраняем настройки транскрипции
                 await saveConfigSection('transcription', {
-                    tbank_stereo_enabled: document.getElementById('tbankStereoEnabled').checked
+                    tbank_stereo_enabled: document.getElementById('tbankStereoEnabled').checked,
+                    auto_detect_operator_name: document.getElementById('autoDetectOperatorName').checked
                 });
                 
                 // Сохраняем коды станций

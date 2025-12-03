@@ -391,8 +391,8 @@ def extract_operator_name_from_transcript(dialog_text: str, station_code: str = 
 def get_operator_name(dialog_text: str = None, station_code: str = None) -> str:
     """
     Получает имя оператора по приоритету:
-    1. Из транскрипции (когда консультант представляется)
-    2. Из таблицы EMPLOYEE_BY_EXTENSION по коду станции
+    1. Если включено автоматическое определение: из транскрипции (когда консультант представляется), затем из таблицы
+    2. Если выключено: сразу из таблицы EMPLOYEE_BY_EXTENSION по коду станции
     
     Args:
         dialog_text: Текст диалога (опционально)
@@ -401,13 +401,16 @@ def get_operator_name(dialog_text: str = None, station_code: str = None) -> str:
     Returns:
         Имя оператора или 'Не указано'
     """
-    # Первично: пытаемся извлечь из транскрипции
-    if dialog_text:
+    # Проверяем настройку автоматического определения имени оператора
+    auto_detect = getattr(config, 'AUTO_DETECT_OPERATOR_NAME', True)
+    
+    # Если автоматическое определение включено, пытаемся извлечь из транскрипции
+    if auto_detect and dialog_text:
         name_from_transcript = extract_operator_name_from_transcript(dialog_text, station_code)
         if name_from_transcript:
             return name_from_transcript
     
-    # Вторично: берем из таблицы привязки
+    # Берем из таблицы привязки (всегда как fallback или если автоматическое определение выключено)
     if station_code:
         employee_full = config.EMPLOYEE_BY_EXTENSION.get(station_code)
         if employee_full:

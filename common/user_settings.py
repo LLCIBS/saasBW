@@ -34,6 +34,10 @@ def default_config_template():
             # Использовать ли дополнительный словарь при транскрипции
             # По умолчанию включено
             'use_additional_vocab': True,
+            # Автоматическое определение имени оператора из транскрипции
+            # True - пытаться извлечь имя из транскрипции, затем из таблицы
+            # False - сразу брать из таблицы EMPLOYEE_BY_EXTENSION
+            'auto_detect_operator_name': True,
         },
         'allowed_stations': []
     }
