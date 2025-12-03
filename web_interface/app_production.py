@@ -48,7 +48,6 @@ except ImportError:
         THEBAI_API_KEY = ''
         TELEGRAM_BOT_TOKEN = ''
         ALERT_CHAT_ID = ''
-        LEGAL_ENTITY_CHAT_ID = ''
         TG_CHANNEL_NIZH = ''
         TG_CHANNEL_OTHER = ''
         BASE_RECORDS_PATH = ''
@@ -58,7 +57,6 @@ except ImportError:
         STATION_CHAT_IDS = {}
         STATION_MAPPING = {}
         NIZH_STATION_CODES = []
-        LEGAL_ENTITY_KEYWORDS = []
     project_config = MockConfig()
 
 def reload_project_config():

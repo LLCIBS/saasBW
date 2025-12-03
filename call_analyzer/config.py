@@ -40,7 +40,6 @@ THEBAI_MODEL = os.getenv("THEBAI_MODEL", "deepseek-reasoner")
 # Telegram
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "7990616547:AAG-4jvHgWhR6JtR6pk3wOxzeWmreHnzMyY")
 ALERT_CHAT_ID = os.getenv("ALERT_CHAT_ID", "-1002413323859")
-LEGAL_ENTITY_CHAT_ID = os.getenv("LEGAL_ENTITY_CHAT_ID", "-1002413323859")  # Чат для уведомлений о звонках от юридических лиц
 
 # Пути к файлам (читаем из .env или используем значения по умолчанию)
 _script_prompt_8_default = Path("D:\\ООО ИБС\\Бествей\\Система чек листов коммерция BW\\monv2_безRerTruck web5\\script_prompt_8.yaml")
@@ -86,21 +85,6 @@ TG_CHANNEL_NIZH = os.getenv("TG_CHANNEL_NIZH", '-1002413323859')  # Здесь �
 
 # Для остальных станций (те, которых нет в списке NIZH_STATION_CODES) используем другой канал:
 TG_CHANNEL_OTHER = os.getenv("TG_CHANNEL_OTHER", '-1002413323859')  # ID или username канала для остальных станций
-
-# Ключевые слова для определения звонков от юридических лиц
-LEGAL_ENTITY_KEYWORDS = [
-    "компания",
-    "компании",
-    "компаний",
-    "организация",
-    "организации",
-    "организаций",
-    "ип",
-    "индивидуальный предприниматель",
-    "по счету",
-    "от юр лица",
-    "по расчетному счету",
-]
 
 # Привязка внутренних номеров (станций и подстанций) к сотрудникам
 # Ключ: строка кода станции/подстанции (например, "202" или "403")
@@ -190,9 +174,9 @@ def _apply_profile_overrides():
 def _apply_profile_dict(profile_data):
     global BASE_RECORDS_PATH, PROMPTS_FILE, ADDITIONAL_VOCAB_FILE, SCRIPT_PROMPT_8_PATH
     global TELEGRAM_BOT_TOKEN
-    global ALERT_CHAT_ID, LEGAL_ENTITY_CHAT_ID, TG_CHANNEL_NIZH, TG_CHANNEL_OTHER
+    global ALERT_CHAT_ID, TG_CHANNEL_NIZH, TG_CHANNEL_OTHER
     global STATION_NAMES, STATION_CHAT_IDS, STATION_MAPPING
-    global NIZH_STATION_CODES, LEGAL_ENTITY_KEYWORDS, EMPLOYEE_BY_EXTENSION
+    global NIZH_STATION_CODES, EMPLOYEE_BY_EXTENSION
     global ALLOWED_STATIONS, PROFILE_SETTINGS, TBANK_STEREO_ENABLED, USE_ADDITIONAL_VOCAB
 
     PROFILE_SETTINGS = profile_data or {}
@@ -214,8 +198,6 @@ def _apply_profile_dict(profile_data):
     telegram_cfg = (profile_data or {}).get('telegram') or {}
     if telegram_cfg.get('alert_chat_id'):
         ALERT_CHAT_ID = telegram_cfg['alert_chat_id']
-    if telegram_cfg.get('legal_entity_chat_id'):
-        LEGAL_ENTITY_CHAT_ID = telegram_cfg['legal_entity_chat_id']
     if telegram_cfg.get('tg_channel_nizh'):
         TG_CHANNEL_NIZH = telegram_cfg['tg_channel_nizh']
     if telegram_cfg.get('tg_channel_other'):
@@ -226,7 +208,6 @@ def _apply_profile_dict(profile_data):
     STATION_CHAT_IDS = (profile_data or {}).get('station_chat_ids') or STATION_CHAT_IDS
     STATION_MAPPING = (profile_data or {}).get('station_mapping') or STATION_MAPPING
     NIZH_STATION_CODES = (profile_data or {}).get('nizh_station_codes') or NIZH_STATION_CODES
-    LEGAL_ENTITY_KEYWORDS = (profile_data or {}).get('legal_entity_keywords') or LEGAL_ENTITY_KEYWORDS
 
     ALLOWED_STATIONS = profile_data.get('allowed_stations')
 

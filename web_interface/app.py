@@ -64,7 +64,6 @@ class MockConfig:
     THEBAI_API_KEY = ''
     TELEGRAM_BOT_TOKEN = ''
     ALERT_CHAT_ID = ''
-    LEGAL_ENTITY_CHAT_ID = ''
     TG_CHANNEL_NIZH = ''
     TG_CHANNEL_OTHER = ''
     BASE_RECORDS_PATH = ''
@@ -74,7 +73,6 @@ class MockConfig:
     STATION_CHAT_IDS = {}
     STATION_MAPPING = {}
     NIZH_STATION_CODES = []
-    LEGAL_ENTITY_KEYWORDS = []
 
 
 def load_legacy_project_config():
@@ -218,35 +216,11 @@ def save_user_prompts_data(prompts_data, user=None):
 
 
 def get_user_vocabulary_data(user=None):
-    """
-    Возвращает словарь пользователя.
-    Структура:
-    {
-        "enabled": True/False,
-        "additional_vocab": [ ... ]
-    }
-    """
-    vocab = get_user_settings_section('vocabulary', default_vocabulary_template, user=user)
-    # Гарантируем наличие ключей даже для старых записей в БД
-    if 'enabled' not in vocab:
-        vocab['enabled'] = True
-    if 'additional_vocab' not in vocab or vocab['additional_vocab'] is None:
-        vocab['additional_vocab'] = []
-    return vocab
+    return get_user_settings_section('vocabulary', default_vocabulary_template, user=user)
 
 
 def save_user_vocabulary_data(vocab_data, user=None):
-    """
-    Сохраняет словарь пользователя (включая флаг enabled).
-    """
-    # Нормализуем структуру
-    enabled = bool(vocab_data.get('enabled', True))
-    additional_vocab = vocab_data.get('additional_vocab') or []
-    payload = {
-        'enabled': enabled,
-        'additional_vocab': additional_vocab,
-    }
-    return save_user_settings_section('vocabulary', payload, user=user)
+    return save_user_settings_section('vocabulary', vocab_data, user=user)
 
 
 def get_user_logs(user=None):
@@ -570,7 +544,6 @@ def legacy_config_override(runtime_cfg):
 
         telegram_cfg = runtime_cfg.get('telegram') or {}
         _set_attr('ALERT_CHAT_ID', telegram_cfg.get('alert_chat_id', ''))
-        _set_attr('LEGAL_ENTITY_CHAT_ID', telegram_cfg.get('legal_entity_chat_id', ''))
         _set_attr('TG_CHANNEL_NIZH', telegram_cfg.get('tg_channel_nizh', ''))
         _set_attr('TG_CHANNEL_OTHER', telegram_cfg.get('tg_channel_other', ''))
 
@@ -582,7 +555,6 @@ def legacy_config_override(runtime_cfg):
         _set_attr('STATION_CHAT_IDS', deepcopy(runtime_cfg.get('station_chat_ids') or {}))
         _set_attr('STATION_MAPPING', deepcopy(runtime_cfg.get('station_mapping') or {}))
         _set_attr('NIZH_STATION_CODES', list(runtime_cfg.get('nizh_station_codes') or []))
-        _set_attr('LEGAL_ENTITY_KEYWORDS', list(runtime_cfg.get('legal_entity_keywords') or []))
 
         # Возвращаем первый конфиг для совместимости (хотя yield может и не использоваться)
         yield configs_to_patch[0] if configs_to_patch else None
@@ -1156,9 +1128,6 @@ def api_stations_save():
         if 'nizh_station_codes' in data:
             config_data['nizh_station_codes'] = data.get('nizh_station_codes') or []
 
-        if 'legal_entity_keywords' in data:
-            config_data['legal_entity_keywords'] = data.get('legal_entity_keywords') or []
-
         config_data['stations'] = stations
         config_data['station_chat_ids'] = station_chat_ids
         config_data['station_mapping'] = station_mapping
@@ -1559,27 +1528,9 @@ def api_vocabulary_save():
     """API для сохранения словаря."""
     try:
         data = request.get_json() or {}
-        # 1. Сохраняем словарь (слова + флаг enabled) в секцию vocabulary
         save_user_vocabulary_data(data)
-
-        # 2. Обновляем конфигурацию пользователя (секция transcription)
-        #    чтобы worker-процессы Call Analyzer знали, включен ли словарь.
+        # Синхронизируем словарь из БД в файл
         try:
-            config_data = get_user_config_data()
-            transcription_cfg = config_data.get('transcription') or {}
-            transcription_cfg['tbank_stereo_enabled'] = bool(
-                transcription_cfg.get('tbank_stereo_enabled', False)
-            )
-            # Флаг использования словаря берём из data.enabled (по умолчанию True)
-            transcription_cfg['use_additional_vocab'] = bool(data.get('enabled', True))
-            config_data['transcription'] = transcription_cfg
-            save_user_config_data(config_data)
-        except Exception as cfg_error:
-            app.logger.error("Не удалось обновить transcription.use_additional_vocab: %s", cfg_error)
-        # 3. Синхронизируем словарь из БД в файл (если включен)
-        try:
-            # Даже если словарь временно отключён, файл всё равно храним,
-            # чтобы при повторном включении не потерять слова.
             write_vocabulary_file(data)
         except Exception as file_error:
             app.logger.error("Не удалось сохранить vocabulary файл: %s", file_error)
@@ -2718,7 +2669,6 @@ def api_config_save():
             config_data['station_chat_ids'] = config_payload.get('station_chat_ids', {})
             config_data['station_mapping'] = config_payload.get('station_mapping', {})
             config_data['nizh_station_codes'] = config_payload.get('nizh_station_codes', [])
-            config_data['legal_entity_keywords'] = config_payload.get('legal_entity_keywords', [])
         else:
             return jsonify({'success': False, 'message': f'??????????? ??? ????????????: {config_type}'}), 400
 
@@ -2817,12 +2767,6 @@ def update_telegram(content, data):
         content = re.sub(
             r'ALERT_CHAT_ID = "[^"]*"',
             f'ALERT_CHAT_ID = "{data["alert_chat_id"]}"',
-            content
-        )
-    if 'legal_entity_chat_id' in data:
-        content = re.sub(
-            r'LEGAL_ENTITY_CHAT_ID = "[^"]*"',
-            f'LEGAL_ENTITY_CHAT_ID = "{data["legal_entity_chat_id"]}"',
             content
         )
     if 'tg_channel_nizh' in data:
@@ -3006,22 +2950,6 @@ def update_stations(content, data):
         content = re.sub(
             r'STATION_MAPPING = \{.*?\}',
             mapping_str,
-            content,
-            flags=re.DOTALL
-        )
-    
-    if 'legal_entity_keywords' in data:
-        # Формируем новый список ключевых слов
-        keywords = data['legal_entity_keywords']
-        keywords_str = "LEGAL_ENTITY_KEYWORDS = [\n"
-        for keyword in keywords:
-            keywords_str += f'    "{keyword}",\n'
-        keywords_str += "]"
-        
-        # Заменяем старый список
-        content = re.sub(
-            r'LEGAL_ENTITY_KEYWORDS = \[.*?\]',
-            keywords_str,
             content,
             flags=re.DOTALL
         )

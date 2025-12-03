@@ -13,7 +13,6 @@ def default_config_template():
         },
         'telegram': {
             'alert_chat_id': '',
-            'legal_entity_chat_id': '',
             'tg_channel_nizh': '',
             'tg_channel_other': ''
         },
@@ -30,7 +29,6 @@ def default_config_template():
         'station_chat_ids': {},
         'station_mapping': {},
         'nizh_station_codes': [],
-        'legal_entity_keywords': [],
         'transcription': {
             'tbank_stereo_enabled': False,
             # Использовать ли дополнительный словарь при транскрипции
@@ -142,7 +140,6 @@ def build_runtime_config(project_config, config_data=None, user_id=None):
         'paths': runtime_paths,
         'telegram': config_data.get('telegram') or {
             'alert_chat_id': _fallback('ALERT_CHAT_ID', ''),
-            'legal_entity_chat_id': _fallback('LEGAL_ENTITY_CHAT_ID', ''),
             'tg_channel_nizh': _fallback('TG_CHANNEL_NIZH', ''),
             'tg_channel_other': _fallback('TG_CHANNEL_OTHER', '')
         },
@@ -151,7 +148,6 @@ def build_runtime_config(project_config, config_data=None, user_id=None):
         'station_chat_ids': config_data.get('station_chat_ids') or deepcopy(getattr(project_config, 'STATION_CHAT_IDS', {})),
         'station_mapping': config_data.get('station_mapping') or deepcopy(getattr(project_config, 'STATION_MAPPING', {})),
         'nizh_station_codes': config_data.get('nizh_station_codes') or list(getattr(project_config, 'NIZH_STATION_CODES', [])),
-        'legal_entity_keywords': config_data.get('legal_entity_keywords') or list(getattr(project_config, 'LEGAL_ENTITY_KEYWORDS', [])),
         'transcription': config_data.get('transcription') or {
             'tbank_stereo_enabled': bool(getattr(project_config, 'TBANK_STEREO_ENABLED', False))
         },

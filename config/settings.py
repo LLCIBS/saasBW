@@ -85,7 +85,6 @@ class Config:
     # Telegram
     TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN', '')
     ALERT_CHAT_ID = os.getenv('ALERT_CHAT_ID', '')
-    LEGAL_ENTITY_CHAT_ID = os.getenv('LEGAL_ENTITY_CHAT_ID', '')
     TG_CHANNEL_NIZH = os.getenv('TG_CHANNEL_NIZH', '')
     TG_CHANNEL_OTHER = os.getenv('TG_CHANNEL_OTHER', '')
     

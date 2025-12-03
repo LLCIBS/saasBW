@@ -172,14 +172,6 @@
                                     <div class="form-text">Основной чат для уведомлений об ошибках</div>
                                 </div>
                             </div>
-                            <div class="col-md-6">
-                                <div class="mb-3">
-                                    <label class="form-label">Legal Entity Chat ID</label>
-                                    <input type="text" class="form-control" id="legalEntityChatId" 
-                                           placeholder="ID чата для юр. лиц">
-                                    <div class="form-text">Чат для уведомлений о звонках от юридических лиц</div>
-                                </div>
-                            </div>
                         </div>
                         <div class="row">
                             <div class="col-md-6">
@@ -292,26 +284,6 @@
                             <label class="form-check-label" for="tbankStereoEnabled">Стерео режим (2 спикера, диаризация по каналам)</label>
                         </div>
                         <div class="form-text mt-2">При включении используется стерео алгоритм из T‑Bank с анализом голосов; при выключении — стандартный моно режим.</div>
-                    </div>
-
-                    <!-- Ключевые слова для юр.лиц -->
-                    <div class="config-section">
-                        <h3 class="config-title">
-                            <i class="fas fa-building me-2"></i>Ключевые слова для юридических лиц
-                        </h3>
-                        <div class="mb-3">
-                            <label class="form-label">Добавить ключевое слово</label>
-                            <div class="input-group">
-                                <input type="text" class="form-control" id="newKeyword" 
-                                       placeholder="Введите ключевое слово">
-                                <button class="btn btn-outline-primary" type="button" onclick="addKeyword()">
-                                    <i class="fas fa-plus"></i> Добавить
-                                </button>
-                            </div>
-                        </div>
-                        <div id="keywordsContainer">
-                            <!-- Ключевые слова будут загружены динамически -->
-                        </div>
                     </div>
 
                     <!-- Коды станций Нижегородского региона -->
@@ -431,7 +403,6 @@
                 document.getElementById('telegramBotToken').value = configData.api_keys?.telegram_bot_token || '';
                 
                 document.getElementById('alertChatId').value = configData.telegram?.alert_chat_id || '';
-                document.getElementById('legalEntityChatId').value = configData.telegram?.legal_entity_chat_id || '';
                 document.getElementById('tgChannelNizh').value = configData.telegram?.tg_channel_nizh || '';
                 document.getElementById('tgChannelOther').value = configData.telegram?.tg_channel_other || '';
                 
@@ -461,9 +432,6 @@
                 // Транскрипция
                 const stereo = configData.transcription?.tbank_stereo_enabled === true;
                 document.getElementById('tbankStereoEnabled').checked = stereo;
-
-                // Загружаем ключевые слова
-                loadKeywords(configData.legal_entity_keywords || []);
                 
                 // Загружаем коды станций
                 loadStationCodes(configData.nizh_station_codes || []);
@@ -474,26 +442,6 @@
                 console.error('Ошибка загрузки конфигурации:', error);
                 showAlert('Ошибка загрузки конфигурации', 'danger');
             }
-        }
-
-        function loadKeywords(keywords) {
-            const container = document.getElementById('keywordsContainer');
-            container.innerHTML = '';
-            
-            keywords.forEach(keyword => {
-                const tag = document.createElement('span');
-                tag.className = 'keyword-tag';
-                tag.innerHTML = `
-                    ${keyword}
-                    <span class="remove-keyword">×</span>
-                `;
-                
-                // Добавляем обработчик клика для удаления
-                const removeBtn = tag.querySelector('.remove-keyword');
-                removeBtn.addEventListener('click', () => removeKeyword(keyword));
-                
-                container.appendChild(tag);
-            });
         }
 
         function loadStationCodes(codes) {
@@ -509,22 +457,6 @@
                 `;
                 container.appendChild(tag);
             });
-        }
-
-        function addKeyword() {
-            const input = document.getElementById('newKeyword');
-            const keyword = input.value.trim();
-            
-            if (keyword && !configData.legal_entity_keywords.includes(keyword)) {
-                configData.legal_entity_keywords.push(keyword);
-                loadKeywords(configData.legal_entity_keywords);
-                input.value = '';
-            }
-        }
-
-        function removeKeyword(keyword) {
-            configData.legal_entity_keywords = configData.legal_entity_keywords.filter(k => k !== keyword);
-            loadKeywords(configData.legal_entity_keywords);
         }
 
         function addStationCode() {
@@ -601,7 +533,6 @@
                 // Сохраняем Telegram настройки
                 const telegramData = {
                     alert_chat_id: document.getElementById('alertChatId').value,
-                    legal_entity_chat_id: document.getElementById('legalEntityChatId').value,
                     tg_channel_nizh: document.getElementById('tgChannelNizh').value,
                     tg_channel_other: document.getElementById('tgChannelOther').value
                 };
@@ -633,15 +564,6 @@
                 await saveConfigSection('transcription', {
                     tbank_stereo_enabled: document.getElementById('tbankStereoEnabled').checked
                 });
-                
-                // Сохраняем ключевые слова
-                const keywordsData = {
-                    legal_entity_keywords: configData.legal_entity_keywords
-                };
-                
-                if (keywordsData.legal_entity_keywords.length > 0) {
-                    await saveConfigSection('stations', keywordsData);
-                }
                 
                 // Сохраняем коды станций
                 const stationCodesData = {
