@@ -144,14 +144,16 @@ def main():
         except Exception as e:
             logger.error(f"[MAIN] Ошибка при сканировании существующих файлов: {e}", exc_info=True)
 
-        # Запуск FTP синхронизации (только в глобальном режиме, так как service_manager запускает его сам)
-        if getattr(profile_config, 'PROFILE_LABEL', 'global') == 'global':
-            try:
-                from call_analyzer.ftp_sync_manager import start_all_active_ftp_syncs
-                logger.info("[MAIN] Запуск FTP синхронизации (глобальный режим)...")
-                start_all_active_ftp_syncs()
-            except Exception as e:
-                logger.error(f"[MAIN] Ошибка запуска FTP синхронизации: {e}")
+        # Запуск FTP синхронизации (всегда, независимо от режима)
+        # start_all_active_ftp_syncs() сама проверит активные подключения пользователей из БД
+        # и запустит только те, которые выбраны пользователями в их конфигурации
+        # start_ftp_sync() защищен от дубликатов - если поток уже запущен, просто вернется
+        try:
+            from call_analyzer.ftp_sync_manager import start_all_active_ftp_syncs
+            logger.info("[MAIN] Запуск FTP синхронизации...")
+            start_all_active_ftp_syncs()
+        except Exception as e:
+            logger.error(f"[MAIN] Ошибка запуска FTP синхронизации: {e}")
 
         # 3. Основной цикл
         while True:

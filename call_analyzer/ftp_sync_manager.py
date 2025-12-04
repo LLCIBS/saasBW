@@ -435,6 +435,9 @@ def _sync_worker(connection_id: int, sync_interval: int):
     """
     logger.info(f"_sync_worker: Запущен поток синхронизации для FTP {connection_id} (интервал {sync_interval} сек)")
     
+    consecutive_errors = 0
+    max_consecutive_errors = 5  # Максимум 5 ошибок подряд перед остановкой
+    
     while True:
         # Проверяем, не остановили ли нас
         if connection_id not in _sync_threads:
@@ -462,11 +465,31 @@ def _sync_worker(connection_id: int, sync_interval: int):
             
             sync_ftp_connection(connection_id)
             
+            # Сбрасываем счетчик ошибок при успешной синхронизации
+            consecutive_errors = 0
+            
             time.sleep(sync_interval)
             
+        except KeyboardInterrupt:
+            logger.info(f"Поток синхронизации FTP {connection_id} прерван пользователем")
+            break
         except Exception as e:
-            logger.error(f"Ошибка в потоке синхронизации FTP {connection_id}: {e}", exc_info=True)
-            time.sleep(60)
+            consecutive_errors += 1
+            logger.error(f"Ошибка в потоке синхронизации FTP {connection_id} (ошибка #{consecutive_errors}): {e}", exc_info=True)
+            
+            # Если слишком много ошибок подряд, останавливаем поток
+            if consecutive_errors >= max_consecutive_errors:
+                logger.error(f"Поток синхронизации FTP {connection_id} остановлен из-за {consecutive_errors} ошибок подряд")
+                # Удаляем поток из активных, чтобы он не перезапустился автоматически
+                with _sync_lock:
+                    if connection_id in _sync_threads:
+                        del _sync_threads[connection_id]
+                break
+            
+            # Экспоненциальная задержка при ошибках (60, 120, 240, 480 секунд)
+            error_delay = min(60 * (2 ** (consecutive_errors - 1)), 600)  # Максимум 10 минут
+            logger.info(f"Повторная попытка через {error_delay} секунд...")
+            time.sleep(error_delay)
 
 
 def start_ftp_sync(connection_id: int):
@@ -514,6 +537,57 @@ def start_ftp_sync(connection_id: int):
             
         except Exception as e:
             logger.error(f"start_ftp_sync: Ошибка запуска: {e}", exc_info=True)
+
+
+def _monitor_and_restart_threads():
+    """
+    Мониторинг потоков синхронизации и их автоматический перезапуск при падении
+    """
+    logger.info("Запущен мониторинг FTP потоков синхронизации")
+    
+    while True:
+        try:
+            time.sleep(30)  # Проверяем каждые 30 секунд
+            
+            # Сначала собираем список мертвых потоков (с блокировкой)
+            dead_threads = []
+            with _sync_lock:
+                for conn_id, thread in list(_sync_threads.items()):
+                    if not thread.is_alive():
+                        logger.warning(f"Обнаружен мертвый поток синхронизации для FTP {conn_id}, планируем перезапуск")
+                        dead_threads.append(conn_id)
+                        # Удаляем из словаря перед перезапуском
+                        del _sync_threads[conn_id]
+            
+            # Перезапускаем мертвые потоки (без блокировки, чтобы избежать deadlock)
+            for conn_id in dead_threads:
+                # Проверяем, что подключение все еще активно
+                try:
+                    from config.settings import get_config
+                    from sqlalchemy import create_engine, text
+                    config = get_config()
+                    engine = create_engine(config.SQLALCHEMY_DATABASE_URI)
+                    
+                    with engine.connect() as connection:
+                        sql = text("""
+                            SELECT id, name, is_active, sync_interval
+                            FROM ftp_connections
+                            WHERE id = :conn_id
+                        """)
+                        result = connection.execute(sql, {'conn_id': conn_id})
+                        row = result.fetchone()
+                        
+                        if row and row.is_active:
+                            logger.info(f"Перезапускаем поток синхронизации для FTP {conn_id} ({row.name})")
+                            start_ftp_sync(conn_id)
+                        else:
+                            logger.info(f"FTP подключение {conn_id} неактивно, не перезапускаем")
+                except Exception as e:
+                    logger.error(f"Ошибка при перезапуске потока FTP {conn_id}: {e}", exc_info=True)
+                        
+        except Exception as e:
+            logger.error(f"Ошибка в мониторе потоков FTP: {e}", exc_info=True)
+            time.sleep(60)
 
 
 def stop_ftp_sync(connection_id: int):
@@ -584,6 +658,17 @@ def start_all_active_ftp_syncs():
                             logger.error(f"Ошибка запуска синхронизации для FTP {conn_row.id}: {e}")
         
         logger.info(f"Запущена синхронизация для {started_count} FTP подключений (выбранных пользователями)")
+        
+        # Запускаем мониторинг потоков (только один раз)
+        if not hasattr(start_all_active_ftp_syncs, '_monitor_started'):
+            monitor_thread = threading.Thread(
+                target=_monitor_and_restart_threads,
+                daemon=True,
+                name="FtpSyncMonitor"
+            )
+            monitor_thread.start()
+            start_all_active_ftp_syncs._monitor_started = True
+            logger.info("Запущен мониторинг FTP потоков синхронизации")
         
     except Exception as e:
         logger.error(f"Ошибка запуска FTP синхронизаций: {e}", exc_info=True)
