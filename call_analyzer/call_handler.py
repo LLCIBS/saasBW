@@ -111,9 +111,20 @@ def get_main_station_code(station_code):
     return None
 
 @notify_on_error()
-def transcribe_and_analyze(file_path: Path, station_code: str):
+def transcribe_and_analyze(file_path: Path, station_code: str, original_station_code: str = None):
+    """
+    Обработка файла: транскрипция и анализ.
+    
+    Args:
+        file_path: Путь к файлу
+        station_code: Основной код станции (для группировки и отправки в чаты)
+        original_station_code: Оригинальный код станции из имени файла (может быть подстанцией, используется для определения оператора)
+    """
     filename = file_path.name
-    logger.info(f"Начало обработки файла {filename} (станция {station_code}).")
+    logger.info(f"Начало обработки файла {filename} (станция {station_code}, оригинальная: {original_station_code or station_code}).")
+    
+    # Используем оригинальный код станции для определения оператора, если он передан
+    operator_station_code = original_station_code if original_station_code else station_code
 
     # 0. Проверяем, не был ли файл уже обработан
     result_file = get_result_file_path(file_path)
@@ -170,11 +181,14 @@ def transcribe_and_analyze(file_path: Path, station_code: str):
     if "[ТИПЗВОНКА:ЦЕЛЕВОЙ]" in analysis_upper or "ПЕРВИЧНЫЙ" in analysis_upper:
         logger.info("Звонок определен как ЦЕЛЕВОЙ/ПЕРВИЧНЫЙ. Запускаем расширенный разбор (чек-лист).")
         if phone_number and call_time:
+            # Используем оригинальный код станции для определения оператора в Telegram сообщении
+            # Основной код станции будет использован для отправки в правильные чаты
             run_exental_alert(
                 txt_path=str(result_filename),
-                station_code=station_code,
+                station_code=station_code,  # Основная станция для отправки в чаты
                 phone_number=phone_number,
-                date_str=call_time.strftime("%Y-%m-%d-%H-%M-%S")
+                date_str=call_time.strftime("%Y-%m-%d-%H-%M-%S"),
+                operator_station_code=operator_station_code  # Оригинальная станция для определения оператора
             )
         else:
             logger.warning("Слишком мало данных (phone_number/call_time), не можем вызвать exental_alert.")
@@ -591,7 +605,8 @@ class CallHandler(FileSystemEventHandler):
                 logger.info(f"Станция {station_code} (основная: {main_station_code}) – локальная (Bestway). Запуск транскрипции + анализа.")
                 def _wrapped_process():
                     try:
-                        transcribe_and_analyze(file_path, main_station_code)
+                        # Передаем основную станцию для группировки, но оригинальную для определения оператора
+                        transcribe_and_analyze(file_path, main_station_code, original_station_code=station_code)
                     finally:
                         # снимаем lock после завершения обработки
                         _release_lock()

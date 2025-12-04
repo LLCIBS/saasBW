@@ -130,10 +130,17 @@ def detect_manager_speaker(dialog_text: str) -> str:
         logger.info(f"[exental_alert] Определен менеджер: SPEAKER_01 (баллы: {speaker_01_score} vs {speaker_00_score})")
         return "SPEAKER_01"
 
-def run_exental_alert(txt_path: str, station_code: str, phone_number: str, date_str: str):
+def run_exental_alert(txt_path: str, station_code: str, phone_number: str, date_str: str, operator_station_code: str = None):
     """
     Точка входа для расширенного анализа и отправки сообщения,
     заменяет exental_alert.exe.
+    
+    Args:
+        txt_path: Путь к файлу транскрипции
+        station_code: Основной код станции (для отправки в чаты)
+        phone_number: Номер телефона
+        date_str: Дата и время звонка
+        operator_station_code: Оригинальный код станции из имени файла (может быть подстанцией, используется для определения оператора)
     """
     logger.info(f"[exental_alert] Запуск. txt={txt_path}, station={station_code}, phone={phone_number}, date={date_str}")
 
@@ -234,9 +241,13 @@ prompt: |
         logger.warning("[exental_alert] TheB.ai вернул пустой результат.")
         return
 
+    # Используем оригинальный код станции для определения оператора, если он передан
+    operator_station = operator_station_code if operator_station_code else station_code
+    
     # Передаем определенного менеджера в функцию парсинга
+    # Используем operator_station для определения оператора в сообщении
     caption, raw_analysis, qa_text, overall = parse_answers_and_form_message(
-        new_analysis, station_code, phone_number, date_str, checklist_titles, dialog_text, checklist_prompts, manager_speaker
+        new_analysis, station_code, phone_number, date_str, checklist_titles, dialog_text, checklist_prompts, manager_speaker, operator_station_code=operator_station
     )
     if not caption:
         logger.warning("[exental_alert] Недостаточно ответов для формирования сообщения.")
@@ -474,12 +485,13 @@ def call_theb_ai(dialog_text: str, script_prompt: str) -> str:
         logger.error(f"[exental_alert] Сетевая ошибка при запросе к TheB.ai: {e}")
         return ""
 
-def parse_answers_and_form_message(analysis_text: str, station_code: str, phone_number: str, date_str: str, checklist_titles, dialog_text: str = None, checklist_prompts=None, manager_speaker: str = "SPEAKER_01"):
+def parse_answers_and_form_message(analysis_text: str, station_code: str, phone_number: str, date_str: str, checklist_titles, dialog_text: str = None, checklist_prompts=None, manager_speaker: str = "SPEAKER_01", operator_station_code: str = None):
     """
     Ищем [ОТВЕТ: ДА/НЕТ] по количеству пунктов чек-листа. Если ответов нет — возвращаем (None, None).
     
     Args:
         manager_speaker: Спикер, который является менеджером (SPEAKER_00 или SPEAKER_01)
+        operator_station_code: Оригинальный код станции для определения оператора (может быть подстанцией)
     """
     # Нормируем количество вопросов
     total_q = max(1, len(checklist_titles) if checklist_titles else len(DEFAULT_QUESTIONS))
@@ -561,7 +573,9 @@ def parse_answers_and_form_message(analysis_text: str, station_code: str, phone_
 
     station_name = config.STATION_NAMES.get(station_code, station_code)
     # Получаем имя оператора (приоритет: из транскрипции, затем из таблицы)
-    operator_name = get_operator_name(dialog_text, station_code)
+    # Используем оригинальный код станции для определения оператора, если он передан
+    operator_station = operator_station_code if operator_station_code else station_code
+    operator_name = get_operator_name(dialog_text, operator_station)
     
     # Короткий caption без общего вывода, чтобы не превышать лимит Telegram
     caption = (
