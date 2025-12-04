@@ -36,51 +36,62 @@ def sync_ftp_connection(connection_id: int):
         config = get_config()
         engine = create_engine(config.SQLALCHEMY_DATABASE_URI)
         
-        # Получаем данные подключения
-        with engine.connect() as connection:
-            sql = text("""
-                SELECT id,
-                       user_id,
-                       name,
-                       host,
-                       port,
-                       username,
-                       password,
-                       remote_path,
-                       protocol,
-                       is_active,
-                       sync_interval,
-                       start_from,
-                       last_processed_mtime,
-                       last_processed_filename
-                FROM ftp_connections
-                WHERE id = :conn_id
-            """)
-            result = connection.execute(sql, {'conn_id': connection_id})
-            row = result.fetchone()
-            
-            if not row:
-                logger.error(f"FTP подключение {connection_id} не найдено")
-                return
-            
-            if not row.is_active:
-                logger.info(f"FTP подключение {row.name} неактивно, пропускаем синхронизацию")
-                return
+        try:
+            # Получаем данные подключения
+            with engine.connect() as connection:
+                sql = text("""
+                    SELECT id,
+                           user_id,
+                           name,
+                           host,
+                           port,
+                           username,
+                           password,
+                           remote_path,
+                           protocol,
+                           is_active,
+                           sync_interval,
+                           start_from,
+                           last_processed_mtime,
+                           last_processed_filename
+                    FROM ftp_connections
+                    WHERE id = :conn_id
+                """)
+                result = connection.execute(sql, {'conn_id': connection_id})
+                row = result.fetchone()
+                
+                if not row:
+                    logger.error(f"FTP подключение {connection_id} не найдено")
+                    return
+                
+                if not row.is_active:
+                    logger.info(f"FTP подключение {row.name} неактивно, пропускаем синхронизацию")
+                    return
 
-            start_from = row.start_from
-            last_processed_mtime = row.last_processed_mtime
-            last_processed_filename = row.last_processed_filename or ''
+                start_from = row.start_from
+                last_processed_mtime = row.last_processed_mtime
+                last_processed_filename = row.last_processed_filename or ''
+                
+                # Получаем путь для сохранения файлов из настроек пользователя
+                user_settings_sql = text("""
+                    SELECT data
+                    FROM user_settings
+                    WHERE user_id = :user_id
+                """)
+                user_result = connection.execute(user_settings_sql, {'user_id': row.user_id})
+                user_row = user_result.fetchone()
             
-            # Получаем путь для сохранения файлов из настроек пользователя
-            user_settings_sql = text("""
-                SELECT data
-                FROM user_settings
-                WHERE user_id = :user_id
-            """)
-            user_result = connection.execute(user_settings_sql, {'user_id': row.user_id})
-            user_row = user_result.fetchone()
-        
-        # Закрываем первое соединение перед дальнейшей работой
+            # Закрываем engine после получения данных
+            engine.dispose()
+            engine = None
+        except Exception as e:
+            # Если ошибка при получении данных, закрываем engine и пробрасываем дальше
+            if engine is not None:
+                try:
+                    engine.dispose()
+                except Exception:
+                    pass
+            raise
         
         if user_row and user_row.data:
             if isinstance(user_row.data, str):
@@ -159,18 +170,28 @@ def sync_ftp_connection(connection_id: int):
         except Exception as e:
             error_msg = f"Ошибка получения списка файлов: {str(e)}"
             logger.error(f"FTP {row.name}: {error_msg}")
-            with engine.connect() as update_connection:
-                update_sql = text("""
-                    UPDATE ftp_connections
-                    SET last_error = :error, last_sync = :now
-                    WHERE id = :conn_id
-                """)
-                with update_connection.begin():
-                    update_connection.execute(update_sql, {
-                        'error': error_msg,
-                        'now': datetime.utcnow(),
-                        'conn_id': connection_id
-                    })
+            # Создаем новый engine для обновления ошибки
+            if engine is None:
+                from config.settings import get_config
+                from sqlalchemy import create_engine, text
+                config = get_config()
+                engine = create_engine(config.SQLALCHEMY_DATABASE_URI)
+            try:
+                with engine.connect() as update_connection:
+                    update_sql = text("""
+                        UPDATE ftp_connections
+                        SET last_error = :error, last_sync = :now
+                        WHERE id = :conn_id
+                    """)
+                    with update_connection.begin():
+                        update_connection.execute(update_sql, {
+                            'error': error_msg,
+                            'now': datetime.utcnow(),
+                            'conn_id': connection_id
+                        })
+            finally:
+                if engine is not None:
+                    engine.dispose()
             return
         
         # Нормализуем список файлов и применяем фильтры
@@ -246,12 +267,20 @@ def sync_ftp_connection(connection_id: int):
             if time.time() - last_db_check_time > 2.0:
                 last_db_check_time = time.time()
                 try:
-                    with engine.connect() as status_conn:
-                        status_sql = text("SELECT is_active FROM ftp_connections WHERE id = :id")
-                        res = status_conn.execute(status_sql, {"id": connection_id}).fetchone()
-                        if not res or not res.is_active:
-                            logger.info(f"Синхронизация FTP {connection_id} прервана (отключено в БД)")
-                            return
+                    # Создаем временный engine для проверки статуса
+                    from config.settings import get_config
+                    from sqlalchemy import create_engine, text
+                    config = get_config()
+                    status_engine = create_engine(config.SQLALCHEMY_DATABASE_URI)
+                    try:
+                        with status_engine.connect() as status_conn:
+                            status_sql = text("SELECT is_active FROM ftp_connections WHERE id = :id")
+                            res = status_conn.execute(status_sql, {"id": connection_id}).fetchone()
+                            if not res or not res.is_active:
+                                logger.info(f"Синхронизация FTP {connection_id} прервана (отключено в БД)")
+                                return
+                    finally:
+                        status_engine.dispose()
                 except Exception as e:
                     logger.warning(f"Не удалось проверить статус активности FTP: {e}")
 
@@ -384,36 +413,44 @@ def sync_ftp_connection(connection_id: int):
             except Exception as e:
                 logger.error(f"Ошибка инициализации CallHandler: {e}", exc_info=True)
         
-        # Обновляем статистику
-        with engine.connect() as update_connection:
-            update_sql = text("""
-                UPDATE ftp_connections
-                SET last_sync = :now,
-                    last_error = NULL,
-                    download_count = download_count + :downloaded,
-                    last_processed_mtime = :last_processed_mtime,
-                    last_processed_filename = :last_processed_filename
-                WHERE id = :conn_id
-            """)
-            with update_connection.begin():
-                update_connection.execute(update_sql, {
-                    'now': datetime.utcnow(),
-                    'downloaded': downloaded,
-                    'conn_id': connection_id,
-                    'last_processed_mtime': latest_processed_mtime,
-                    'last_processed_filename': latest_processed_name if latest_processed_mtime else None
-                })
+        # Обновляем статистику - создаем новый engine
+        from config.settings import get_config
+        from sqlalchemy import create_engine, text
+        config = get_config()
+        update_engine = create_engine(config.SQLALCHEMY_DATABASE_URI)
+        try:
+            with update_engine.connect() as update_connection:
+                update_sql = text("""
+                    UPDATE ftp_connections
+                    SET last_sync = :now,
+                        last_error = NULL,
+                        download_count = download_count + :downloaded,
+                        last_processed_mtime = :last_processed_mtime,
+                        last_processed_filename = :last_processed_filename
+                    WHERE id = :conn_id
+                """)
+                with update_connection.begin():
+                    update_connection.execute(update_sql, {
+                        'now': datetime.utcnow(),
+                        'downloaded': downloaded,
+                        'conn_id': connection_id,
+                        'last_processed_mtime': latest_processed_mtime,
+                        'last_processed_filename': latest_processed_name if latest_processed_mtime else None
+                    })
+        finally:
+            update_engine.dispose()
         
         logger.info(f"FTP синхронизация {row.name} завершена. Скачано файлов: {downloaded}")
             
     except Exception as e:
         logger.error(f"Ошибка синхронизации FTP подключения {connection_id}: {e}", exc_info=True)
+        error_engine = None
         try:
             from config.settings import get_config
             from sqlalchemy import create_engine, text
             config = get_config()
-            engine = create_engine(config.SQLALCHEMY_DATABASE_URI)
-            with engine.connect() as connection:
+            error_engine = create_engine(config.SQLALCHEMY_DATABASE_URI)
+            with error_engine.connect() as connection:
                 update_sql = text("""
                     UPDATE ftp_connections
                     SET last_error = :error, last_sync = :now
@@ -427,6 +464,9 @@ def sync_ftp_connection(connection_id: int):
                     })
         except Exception as inner_e:
             logger.error(f"Ошибка обновления статуса ошибки: {inner_e}")
+        finally:
+            if error_engine is not None:
+                error_engine.dispose()
 
 
 def _sync_worker(connection_id: int, sync_interval: int):
@@ -444,6 +484,7 @@ def _sync_worker(connection_id: int, sync_interval: int):
             logger.info(f"Поток синхронизации FTP {connection_id} остановлен (удален из активных)")
             break
 
+        engine = None
         try:
             from config.settings import get_config
             from sqlalchemy import create_engine, text
@@ -462,6 +503,10 @@ def _sync_worker(connection_id: int, sync_interval: int):
                 if not row or not row.is_active:
                     logger.info(f"FTP подключение {connection_id} неактивно, останавливаем синхронизацию")
                     break
+            
+            # Закрываем engine перед синхронизацией
+            engine.dispose()
+            engine = None
             
             sync_ftp_connection(connection_id)
             
@@ -490,6 +535,13 @@ def _sync_worker(connection_id: int, sync_interval: int):
             error_delay = min(60 * (2 ** (consecutive_errors - 1)), 600)  # Максимум 10 минут
             logger.info(f"Повторная попытка через {error_delay} секунд...")
             time.sleep(error_delay)
+        finally:
+            # Гарантируем закрытие engine даже при ошибке
+            if engine is not None:
+                try:
+                    engine.dispose()
+                except Exception:
+                    pass
 
 
 def start_ftp_sync(connection_id: int):
@@ -499,6 +551,7 @@ def start_ftp_sync(connection_id: int):
             logger.warning(f"start_ftp_sync: Синхронизация для FTP {connection_id} уже запущена (в списке активных)")
             return
         
+        engine = None
         try:
             from config.settings import get_config
             from sqlalchemy import create_engine, text
@@ -524,6 +577,10 @@ def start_ftp_sync(connection_id: int):
                 
                 sync_interval = row.sync_interval or 300
             
+            # Закрываем engine перед запуском потока
+            engine.dispose()
+            engine = None
+            
             thread = threading.Thread(
                 target=_sync_worker,
                 args=(connection_id, sync_interval),
@@ -537,6 +594,13 @@ def start_ftp_sync(connection_id: int):
             
         except Exception as e:
             logger.error(f"start_ftp_sync: Ошибка запуска: {e}", exc_info=True)
+        finally:
+            # Гарантируем закрытие engine
+            if engine is not None:
+                try:
+                    engine.dispose()
+                except Exception:
+                    pass
 
 
 def _monitor_and_restart_threads():
@@ -562,6 +626,7 @@ def _monitor_and_restart_threads():
             # Перезапускаем мертвые потоки (без блокировки, чтобы избежать deadlock)
             for conn_id in dead_threads:
                 # Проверяем, что подключение все еще активно
+                engine = None
                 try:
                     from config.settings import get_config
                     from sqlalchemy import create_engine, text
@@ -584,6 +649,12 @@ def _monitor_and_restart_threads():
                             logger.info(f"FTP подключение {conn_id} неактивно, не перезапускаем")
                 except Exception as e:
                     logger.error(f"Ошибка при перезапуске потока FTP {conn_id}: {e}", exc_info=True)
+                finally:
+                    if engine is not None:
+                        try:
+                            engine.dispose()
+                        except Exception:
+                            pass
                         
         except Exception as e:
             logger.error(f"Ошибка в мониторе потоков FTP: {e}", exc_info=True)
@@ -600,6 +671,7 @@ def stop_ftp_sync(connection_id: int):
 
 def start_all_active_ftp_syncs():
     """Запускает синхронизацию для FTP подключений, выбранных пользователями в конфигурации"""
+    engine = None
     try:
         from config.settings import get_config
         from sqlalchemy import create_engine, text
@@ -672,6 +744,13 @@ def start_all_active_ftp_syncs():
         
     except Exception as e:
         logger.error(f"Ошибка запуска FTP синхронизаций: {e}", exc_info=True)
+    finally:
+        # Гарантируем закрытие engine
+        if engine is not None:
+            try:
+                engine.dispose()
+            except Exception:
+                pass
 
 
 def stop_all_ftp_syncs():
