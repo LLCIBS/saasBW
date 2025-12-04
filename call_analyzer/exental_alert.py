@@ -59,10 +59,12 @@ def detect_manager_speaker(dialog_text: str) -> str:
     Возвращает 'SPEAKER_00' или 'SPEAKER_01' (или 'SPEAKER_01' по умолчанию).
     
     Критерии определения менеджера:
-    1. Первый спикер, который приветствует
-    2. Спикер, который называет компанию/магазин
-    3. Спикер, который представляется по имени
-    4. Спикер, который говорит фразы типа "слушаю", "чем могу помочь"
+    1. Первый спикер, который приветствует и называет компанию
+    2. Спикер, который называет компанию/магазин/сервис
+    3. Спикер, который называет должность (мастер приемщик, консультант и т.д.)
+    4. Спикер, который представляется по имени
+    5. Спикер, который говорит фразы типа "слушаю", "чем могу помочь"
+    6. Кто говорит первым (обычно менеджер отвечает на звонок)
     """
     if not dialog_text:
         return "SPEAKER_01"  # По умолчанию
@@ -73,9 +75,30 @@ def detect_manager_speaker(dialog_text: str) -> str:
     
     # Признаки менеджера
     greeting_words = ["добрый день", "доброе утро", "добрый вечер", "здравствуйте", "здравствуй"]
-    company_words = ["магазин", "компания", "автосервис", "сервис", "автовектор", "фокус"]
+    # Расширенный список слов компаний/сервисов
+    company_words = [
+        "магазин", "компания", "автосервис", "сервис", "автовектор", "фокус",
+        "сервисный центр", "попутчик", "автоцентр", "техцентр", "сто",
+        "автосалон", "дилер", "официальный дилер", "бествей"
+    ]
+    # Должности менеджеров/консультантов
+    position_words = [
+        "мастер приемщик", "мастер-приемщик", "приемщик", "консультант",
+        "менеджер", "специалист", "оператор", "администратор"
+    ]
     service_phrases = ["слушаю", "чем могу помочь", "готов вас выслушать", "спрос", "слушаю вас"]
     name_patterns = [r"меня зовут", r"я\s+\w+", r"это\s+\w+"]
+    
+    # Определяем, кто говорит первым (важный признак - менеджер обычно отвечает первым)
+    first_speaker = None
+    for line in lines[:10]:
+        line_lower = line.lower().strip()
+        if line_lower.startswith("speaker_00:") or line_lower.startswith("speaker_0:"):
+            first_speaker = "SPEAKER_00"
+            break
+        elif line_lower.startswith("speaker_01:") or line_lower.startswith("speaker_1:"):
+            first_speaker = "SPEAKER_01"
+            break
     
     # Анализируем первые 10 реплик каждого спикера
     speaker_00_first_lines = []
@@ -90,37 +113,81 @@ def detect_manager_speaker(dialog_text: str) -> str:
             text = line.split(":", 1)[1].strip().lower() if ":" in line else ""
             speaker_01_first_lines.append(text)
     
-    # Объединяем первые реплики для анализа
-    speaker_00_text = " ".join(speaker_00_first_lines[:5])
-    speaker_01_text = " ".join(speaker_01_first_lines[:5])
+    # Объединяем первые реплики для анализа (берем первые 3 реплики для более точного анализа)
+    speaker_00_text = " ".join(speaker_00_first_lines[:3])
+    speaker_01_text = " ".join(speaker_01_first_lines[:3])
     
     # Проверяем SPEAKER_00
+    has_greeting_00 = False
+    has_company_00 = False
+    has_position_00 = False
+    has_name_00 = False
+    
     for word in greeting_words:
         if word in speaker_00_text:
             speaker_00_score += 2
+            has_greeting_00 = True
     for word in company_words:
         if word in speaker_00_text:
-            speaker_00_score += 3
+            speaker_00_score += 4  # Увеличиваем вес
+            has_company_00 = True
+    for word in position_words:
+        if word in speaker_00_text:
+            speaker_00_score += 5  # Должность - очень сильный признак
+            has_position_00 = True
     for phrase in service_phrases:
         if phrase in speaker_00_text:
             speaker_00_score += 2
     for pattern in name_patterns:
         if re.search(pattern, speaker_00_text):
-            speaker_00_score += 1
+            speaker_00_score += 2
+            has_name_00 = True
+    
+    # Бонус за комбинацию признаков (компания + приветствие + имя = очень сильный признак)
+    if has_company_00 and has_greeting_00:
+        speaker_00_score += 3
+    if has_company_00 and has_greeting_00 and has_name_00:
+        speaker_00_score += 5  # Максимальный бонус за полное представление
+    
+    # Бонус за то, что говорит первым (если при этом есть приветствие или компания)
+    if first_speaker == "SPEAKER_00" and (has_greeting_00 or has_company_00):
+        speaker_00_score += 3
     
     # Проверяем SPEAKER_01
+    has_greeting_01 = False
+    has_company_01 = False
+    has_position_01 = False
+    has_name_01 = False
+    
     for word in greeting_words:
         if word in speaker_01_text:
             speaker_01_score += 2
+            has_greeting_01 = True
     for word in company_words:
         if word in speaker_01_text:
-            speaker_01_score += 3
+            speaker_01_score += 4
+            has_company_01 = True
+    for word in position_words:
+        if word in speaker_01_text:
+            speaker_01_score += 5
+            has_position_01 = True
     for phrase in service_phrases:
         if phrase in speaker_01_text:
             speaker_01_score += 2
     for pattern in name_patterns:
         if re.search(pattern, speaker_01_text):
-            speaker_01_score += 1
+            speaker_01_score += 2
+            has_name_01 = True
+    
+    # Бонус за комбинацию признаков
+    if has_company_01 and has_greeting_01:
+        speaker_01_score += 3
+    if has_company_01 and has_greeting_01 and has_name_01:
+        speaker_01_score += 5
+    
+    # Бонус за то, что говорит первым
+    if first_speaker == "SPEAKER_01" and (has_greeting_01 or has_company_01):
+        speaker_01_score += 3
     
     # Если SPEAKER_00 набрал больше баллов, он менеджер
     if speaker_00_score > speaker_01_score:
