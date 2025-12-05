@@ -1186,12 +1186,25 @@ def api_prompts():
 def api_prompts_save():
     """Сохраняет промпты (якоря + станции) и обновляет файл пользователя."""
     try:
+        user = current_user if hasattr(current_user, 'is_authenticated') and current_user.is_authenticated else None
         data = request.get_json() or {}
         normalized = normalize_prompts_payload(data)
-        save_user_prompts_data(normalized)
-        write_prompts_file(normalized)
+        save_user_prompts_data(normalized, user=user)
+        write_prompts_file(normalized, user=user)
+        
+        # Синхронизация с конфигом (добавление/удаление станций)
+        sync_prompts_from_config(user=user)
+        
+        # Запрос перезапуска воркера для применения изменений
+        if user and hasattr(user, 'id'):
+            try:
+                request_reload(user.id)
+                app.logger.info(f"Запрошен перезапуск воркера для пользователя {user.id} после изменения промптов")
+            except Exception as exc:
+                app.logger.warning(f"Не удалось запросить перезапуск воркера: {exc}")
+        
         append_user_log('Промпты обновлены', module='prompts')
-        return jsonify({'success': True, 'message': 'Промпты сохранены'})
+        return jsonify({'success': True, 'message': 'Промпты сохранены и применены. Воркер будет перезапущен автоматически.'})
     except Exception as e:
         app.logger.error(f"Ошибка сохранения промптов: {e}")
         return jsonify({'success': False, 'message': str(e)})

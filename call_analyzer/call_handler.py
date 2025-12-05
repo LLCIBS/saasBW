@@ -161,7 +161,9 @@ def transcribe_and_analyze(file_path: Path, station_code: str, original_station_
         return
 
     # 3. Анализ через TheB.ai
-    station_prompt = station_prompts.get(station_code, station_prompts.get("default", "Определи результат разговора."))
+    # Используем динамическую загрузку промптов для применения изменений без перезапуска
+    station_prompts_current = get_station_prompts()
+    station_prompt = station_prompts_current.get(station_code, station_prompts_current.get("default", "Определи результат разговора."))
     analysis_text = thebai_analyze(transcript_text, station_prompt)
     analysis_upper = analysis_text.upper()
 
@@ -406,6 +408,41 @@ def load_prompts():
         send_alert(msg)
         return {}
 
+# Кэш промптов с временем модификации файла для динамической перезагрузки
+_prompts_cache = {
+    'data': {},
+    'mtime': 0,
+    'file_path': None
+}
+
+def get_station_prompts():
+    """
+    Получает промпты для станций с автоматической перезагрузкой при изменении файла.
+    Это позволяет применять изменения промптов без перезапуска процесса.
+    """
+    global _prompts_cache
+    
+    current_file = config.PROMPTS_FILE
+    current_mtime = 0
+    
+    if current_file.exists():
+        try:
+            current_mtime = current_file.stat().st_mtime
+        except OSError:
+            pass
+    
+    # Если файл изменился или кэш пуст, перезагружаем
+    if (_prompts_cache['file_path'] != current_file or 
+        _prompts_cache['mtime'] != current_mtime or 
+        not _prompts_cache['data']):
+        _prompts_cache['data'] = load_prompts()
+        _prompts_cache['mtime'] = current_mtime
+        _prompts_cache['file_path'] = current_file
+        logger.info(f"Промпты перезагружены из {current_file}")
+    
+    return _prompts_cache['data']
+
+# Для обратной совместимости оставляем старую переменную (загружается при старте)
 station_prompts = load_prompts()
 
 # Загружаем дополнительный словарь для транскрипции
