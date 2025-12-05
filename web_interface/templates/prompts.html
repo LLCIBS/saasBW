@@ -374,8 +374,28 @@
                         </div>
                         <label class="form-label text-muted small mb-1">Текст промпта</label>
                         <textarea class="form-control prompt-textarea"
+                                  id="anchor-prompt-${encodedName}"
                                   oninput="updateAnchorPrompt('${encodedName}', this.value)"
                                   placeholder="Введите промпт для якоря...">${escapeHtml(anchorPrompt)}</textarea>
+                        <div class="mt-3">
+                            <label class="form-label text-muted small mb-1">
+                                <i class="fas fa-magic me-1"></i>Доработать промпт через AI
+                            </label>
+                            <div class="input-group">
+                                <input type="text"
+                                       class="form-control"
+                                       id="additional-condition-${encodedName}"
+                                       placeholder="Введите дополнительное условие или требование (например: добавить проверку на вежливость)..."
+                                       onkeypress="if(event.key === 'Enter') { event.preventDefault(); regenerateAnchorPrompt('${encodedName}'); }">
+                                <button type="button"
+                                        class="btn btn-outline-primary"
+                                        onclick="regenerateAnchorPrompt('${encodedName}')"
+                                        id="regenerate-btn-${encodedName}">
+                                    <i class="fas fa-sync-alt me-1"></i>Перегенерировать
+                                </button>
+                            </div>
+                            <small class="text-muted">Введите новое условие и нажмите "Перегенерировать" для доработки промпта через AI</small>
+                        </div>
                     </div>
                 `;
             }).join('');
@@ -512,6 +532,85 @@
             });
 
             renderStations();
+        }
+
+        async function regenerateAnchorPrompt(encodedName) {
+            const name = decodeKey(encodedName);
+            if (!name) {
+                return;
+            }
+
+            const conditionInput = document.getElementById(`additional-condition-${encodedName}`);
+            const regenerateBtn = document.getElementById(`regenerate-btn-${encodedName}`);
+            const promptTextarea = document.getElementById(`anchor-prompt-${encodedName}`);
+
+            if (!conditionInput || !regenerateBtn || !promptTextarea) {
+                showAlert('Ошибка: не найдены элементы интерфейса', 'danger');
+                return;
+            }
+
+            const additionalCondition = (conditionInput.value || '').trim();
+            if (!additionalCondition) {
+                showAlert('Введите дополнительное условие или требование', 'warning');
+                conditionInput.focus();
+                return;
+            }
+
+            const currentPrompt = (promptTextarea.value || '').trim();
+            if (!currentPrompt) {
+                showAlert('Текущий промпт не может быть пустым', 'warning');
+                return;
+            }
+
+            // Сохраняем оригинальное содержимое кнопки
+            const originalContent = regenerateBtn.innerHTML;
+            regenerateBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Генерация...';
+            regenerateBtn.disabled = true;
+
+            try {
+                const response = await fetch('/api/regenerate-anchor-prompt', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        current_prompt: currentPrompt,
+                        additional_condition: additionalCondition
+                    })
+                });
+
+                // Проверяем статус ответа перед парсингом JSON
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    console.error('Ошибка сервера:', response.status, errorText);
+                    showAlert(`Ошибка сервера (${response.status}). Возможно, веб-сервер не перезагрузился после изменений.`, 'danger');
+                    return;
+                }
+
+                const result = await response.json();
+
+                if (result.success && result.prompt) {
+                    // Обновляем промпт в textarea
+                    promptTextarea.value = result.prompt;
+                    // Обновляем данные в памяти
+                    updateAnchorPrompt(encodedName, result.prompt);
+                    // Очищаем поле условия
+                    conditionInput.value = '';
+                    showAlert('Промпт успешно доработан через AI', 'success');
+                } else {
+                    showAlert(result.message || 'Ошибка при перегенерации промпта', 'danger');
+                }
+            } catch (error) {
+                console.error('Ошибка при перегенерации промпта:', error);
+                if (error instanceof SyntaxError && error.message.includes('JSON')) {
+                    showAlert('Ошибка: сервер вернул не JSON ответ. Возможно, веб-сервер не перезагрузился. Перезапустите веб-сервер и попробуйте снова.', 'danger');
+                } else {
+                    showAlert('Ошибка соединения при перегенерации промпта: ' + error.message, 'danger');
+                }
+            } finally {
+                regenerateBtn.innerHTML = originalContent;
+                regenerateBtn.disabled = false;
+            }
         }
 
         function removeAnchor(encodedName) {

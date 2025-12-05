@@ -33,27 +33,40 @@ def main():
     svc_process = multiprocessing.Process(
         target=service_manager.main,
         name="call_analyzer_service_manager",
-        daemon=True,
+        daemon=False,  # Изменено на False для корректной остановки
     )
     svc_process.start()
 
     def _shutdown_service_manager():
         if svc_process.is_alive():
+            print("\nОстановка сервис-менеджера...")
             svc_process.terminate()
             try:
-                svc_process.join(10)
-            except Exception:
-                pass
+                svc_process.join(timeout=5)
+                if svc_process.is_alive():
+                    print("Принудительное завершение сервис-менеджера...")
+                    svc_process.kill()
+                    svc_process.join(timeout=2)
+            except Exception as e:
+                print(f"Ошибка при остановке сервис-менеджера: {e}")
 
     def _signal_handler(signum, frame):
+        print("\nПолучен сигнал остановки...")
         _shutdown_service_manager()
         sys.exit(0)
 
-    signal.signal(signal.SIGINT, _signal_handler)
-    signal.signal(signal.SIGTERM, _signal_handler)
+    # Регистрируем обработчики сигналов
+    if sys.platform != 'win32':
+        # В Linux/Unix используем сигналы
+        signal.signal(signal.SIGINT, _signal_handler)
+        signal.signal(signal.SIGTERM, _signal_handler)
+    # В Windows сигналы обрабатываются через KeyboardInterrupt
 
     try:
         run_web()
+    except KeyboardInterrupt:
+        print("\nПолучен KeyboardInterrupt (Ctrl+C)...")
+        _shutdown_service_manager()
     finally:
         _shutdown_service_manager()
 

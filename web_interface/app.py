@@ -1523,6 +1523,136 @@ def api_generate_anchor_prompt():
             return jsonify({'success': False, 'message': 'Превышено время ожидания ответа от API. Попробуйте еще раз.'}), 504
         return jsonify({'success': False, 'message': f'Ошибка генерации: {error_msg}'}), 500
 
+@app.route('/api/regenerate-anchor-prompt', methods=['POST'])
+@login_required
+def api_regenerate_anchor_prompt():
+    """API для доработки существующего промпта якоря с добавлением нового условия"""
+    try:
+        data = request.get_json()
+        current_prompt = (data.get('current_prompt') or '').strip()
+        additional_condition = (data.get('additional_condition') or '').strip()
+
+        if not current_prompt:
+            return jsonify({'success': False, 'message': 'Текущий промпт не может быть пустым'}), 400
+        
+        if not additional_condition:
+            return jsonify({'success': False, 'message': 'Дополнительное условие не может быть пустым'}), 400
+
+        # Системный промпт для доработки промпта
+        system_instruction = """Ты — эксперт по улучшению системных промптов (инструкций) для AI-анализа телефонных разговоров.
+Твоя задача: Доработать существующий промпт, добавив в него новое условие или требование, указанное пользователем.
+
+Важные требования:
+1. Сохрани всю структуру и логику существующего промпта.
+2. Интегрируй новое условие естественным образом, не нарушая существующую логику.
+3. Если новое условие конфликтует со старым, приоритет отдай новому, но сохрани остальные части промпта.
+4. Промпт должен оставаться структурированным и четким.
+5. Обязательно сохрани формат вывода с тегами [ТИПЗВОНКА:...], [КЛАСС:...], [РЕЗУЛЬТАТ:...] если они были в оригинале.
+
+Верни только доработанный промпт, без дополнительных комментариев."""
+
+        import requests
+        runtime_cfg = build_user_runtime_config()
+        api_keys = runtime_cfg.get('api_keys', {})
+        thebai_api_key = api_keys.get('thebai_api_key')
+        thebai_url = api_keys.get('thebai_url') or 'https://api.deepseek.com/v1/chat/completions'
+        thebai_model = api_keys.get('thebai_model') or 'deepseek-reasoner'
+
+        if not thebai_api_key:
+            return jsonify({'success': False, 'message': 'Укажите DeepSeek/TheB.ai API key в настройках профиля'}), 400
+
+        user_message = f"""Текущий промпт:
+{current_prompt}
+
+Новое условие или требование, которое нужно добавить:
+{additional_condition}
+
+Доработай промпт, интегрировав новое условие в существующую структуру."""
+
+        prompt_request = {
+            "model": thebai_model,
+            "messages": [
+                {
+                    "role": "system",
+                    "content": system_instruction
+                },
+                {
+                    "role": "user",
+                    "content": user_message
+                },
+            ],
+            "temperature": 0.6,
+        }
+
+        # Retry логика для надежности
+        max_retries = 3
+        timeout = 120
+        response = None
+        last_error = None
+        
+        for attempt in range(max_retries):
+            try:
+                response = requests.post(
+                    thebai_url,
+                    headers={
+                        'Authorization': f'Bearer {thebai_api_key}',
+                        'Content-Type': 'application/json',
+                    },
+                    json=prompt_request,
+                    timeout=timeout,
+                )
+                break
+            except (requests.exceptions.Timeout, requests.exceptions.ConnectionError, requests.exceptions.RequestException) as e:
+                last_error = e
+                if attempt < max_retries - 1:
+                    wait_time = (attempt + 1) * 2
+                    app.logger.warning(f"Попытка {attempt + 1}/{max_retries} не удалась, повтор через {wait_time} сек: {e}")
+                    time.sleep(wait_time)
+                else:
+                    app.logger.error(f"Все {max_retries} попытки не удались: {e}")
+                    raise
+        
+        if not response:
+            return jsonify({'success': False, 'message': 'Не удалось получить ответ от API после всех попыток'}), 503
+        
+        if response.status_code == 200:
+            result = response.json()
+            if not result.get('choices') or len(result['choices']) == 0:
+                return jsonify({'success': False, 'message': 'Пустой ответ от API'})
+            
+            regenerated_prompt = (result.get('choices', [{}])[0]
+                                    .get('message', {})
+                                    .get('content', '')).strip()
+            
+            # Убираем markdown code blocks если они есть
+            if regenerated_prompt.startswith("```") and regenerated_prompt.endswith("```"):
+                lines = regenerated_prompt.split('\n')
+                if lines[0].startswith("```"):
+                    lines = lines[1:]
+                if lines[-1].startswith("```"):
+                    lines = lines[:-1]
+                regenerated_prompt = '\n'.join(lines)
+            elif regenerated_prompt.startswith("```"):
+                 regenerated_prompt = regenerated_prompt.replace("```yaml", "").replace("```", "")
+            
+            return jsonify({'success': True, 'prompt': regenerated_prompt.strip()})
+
+        app.logger.error(f"Ошибка API при перегенерации якоря: {response.status_code} - {response.text}")
+        return jsonify({'success': False, 'message': f'Ошибка API: {response.status_code}'}), 502
+
+    except requests.exceptions.Timeout:
+        app.logger.error("Таймаут при перегенерации якоря (превышено время ожидания ответа от API)")
+        return jsonify({'success': False, 'message': 'Превышено время ожидания ответа от API. Попробуйте еще раз.'}), 504
+    except requests.exceptions.ConnectionError as e:
+        app.logger.error(f"Ошибка соединения при перегенерации якоря: {e}")
+        return jsonify({'success': False, 'message': 'Ошибка соединения с API. Проверьте интернет-соединение и попробуйте еще раз.'}), 503
+    except Exception as e:
+        app.logger.error(f"Ошибка перегенерации якоря: {e}", exc_info=True)
+        error_msg = str(e)
+        if 'timeout' in error_msg.lower() or 'timed out' in error_msg.lower():
+            return jsonify({'success': False, 'message': 'Превышено время ожидания ответа от API. Попробуйте еще раз.'}), 504
+        return jsonify({'success': False, 'message': f'Ошибка перегенерации: {error_msg}'}), 500
+
 @app.route('/vocabulary')
 @login_required
 def vocabulary_page():
@@ -3019,6 +3149,7 @@ if __name__ == '__main__':
     
     print("Запуск веб-интерфейса Call Analyzer...")
     print("Откройте браузер и перейдите по адресу: http://localhost:5000")
+    print("Для остановки нажмите Ctrl+C")
     
     # Выполняем инициализацию перед запуском
     initialize_app()
@@ -3027,4 +3158,8 @@ if __name__ == '__main__':
     port = int(os.getenv('FLASK_PORT', 5000))
     debug = app.config.get('DEBUG', False)
 
-    app.run(host=host, port=port, debug=debug, use_reloader=False)
+    try:
+        app.run(host=host, port=port, debug=debug, use_reloader=False)
+    except KeyboardInterrupt:
+        print("\nОстановка веб-интерфейса...")
+        sys.exit(0)
