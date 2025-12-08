@@ -1,4 +1,4 @@
-﻿# database/models.py
+# database/models.py
 """
 �?�?�?��>�� �+�����< �?���?�?�<�: �?�>? Call Analyzer
 �?�?���?�>�?���?��'�?�? SQLAlchemy �?�>? �?���+�?�'< �? PostgreSQL
@@ -37,6 +37,12 @@ class User(UserMixin, db.Model):
     transfer_cases = db.relationship('TransferCase', back_populates='user', lazy='dynamic')
     recall_cases = db.relationship('RecallCase', back_populates='user', lazy='dynamic')
     system_logs = db.relationship('SystemLog', back_populates='user', lazy='dynamic')
+    profile_data = db.relationship(
+        'UserProfileData',
+        back_populates='user',
+        uselist=False,
+        cascade='all, delete-orphan'
+    )
 
     def set_password(self, password):
         """�?�?�'���?�?�?��'? �����?�?�>? (�:�?�?��?�?�?���?���)"""
@@ -218,3 +224,41 @@ class UserSettings(db.Model):
 
     def __repr__(self):
         return f'<UserSettings user_id={self.user_id}>'
+
+
+class UserProfileData(db.Model):
+    """Модель для данных профиля пользователя (юридическое/физическое лицо)."""
+    __tablename__ = 'user_profile_data'
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), unique=True, nullable=False, index=True)
+    entity_type = db.Column(db.String(20), nullable=True)  # 'legal' или 'physical'
+    
+    # Поля для юридического лица
+    legal_name = db.Column(db.String(500), nullable=True)  # Название организации
+    legal_inn = db.Column(db.String(20), nullable=True)  # ИНН
+    legal_kpp = db.Column(db.String(20), nullable=True)  # КПП
+    legal_ogrn = db.Column(db.String(20), nullable=True)  # ОГРН
+    legal_address = db.Column(Text, nullable=True)  # Юридический адрес
+    actual_address = db.Column(Text, nullable=True)  # Фактический адрес
+    
+    # Поля для физического лица
+    physical_full_name = db.Column(db.String(200), nullable=True)  # ФИО
+    physical_inn = db.Column(db.String(20), nullable=True)  # ИНН
+    passport_series = db.Column(db.String(10), nullable=True)  # Серия паспорта
+    passport_number = db.Column(db.String(20), nullable=True)  # Номер паспорта
+    registration_address = db.Column(Text, nullable=True)  # Адрес регистрации
+    
+    # Служебные поля
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    __table_args__ = (
+        Index('idx_profile_user', 'user_id'),
+        Index('idx_profile_entity_type', 'entity_type'),
+    )
+
+    user = db.relationship('User', back_populates='profile_data')
+
+    def __repr__(self):
+        return f'<UserProfileData user_id={self.user_id} entity_type={self.entity_type}>'

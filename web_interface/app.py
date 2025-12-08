@@ -44,7 +44,7 @@ from common.user_settings import (
 )
 
 from config.settings import get_config
-from database.models import db, User, UserSettings, FtpConnection
+from database.models import db, User, UserSettings, UserProfileData, FtpConnection
 from auth import login_manager
 from auth.routes import auth_bp
 try:
@@ -1065,10 +1065,35 @@ def settings_page():
 @login_required
 def api_settings_load():
     """API для получения данных текущего пользователя."""
-    return jsonify({
+    result = {
         'username': current_user.username,
-        'email': current_user.email or ''
-    })
+        'email': current_user.email or '',
+        'entity_type': 'legal',  # По умолчанию
+        'legal_entity': {},
+        'physical_entity': {}
+    }
+    
+    # Загружаем данные о типе лица из UserProfileData
+    profile_data = UserProfileData.query.filter_by(user_id=current_user.id).first()
+    if profile_data:
+        result['entity_type'] = profile_data.entity_type or 'legal'
+        result['legal_entity'] = {
+            'name': profile_data.legal_name or '',
+            'inn': profile_data.legal_inn or '',
+            'kpp': profile_data.legal_kpp or '',
+            'ogrn': profile_data.legal_ogrn or '',
+            'legal_address': profile_data.legal_address or '',
+            'actual_address': profile_data.actual_address or ''
+        }
+        result['physical_entity'] = {
+            'full_name': profile_data.physical_full_name or '',
+            'inn': profile_data.physical_inn or '',
+            'passport_series': profile_data.passport_series or '',
+            'passport_number': profile_data.passport_number or '',
+            'registration_address': profile_data.registration_address or ''
+        }
+    
+    return jsonify(result)
 
 @app.route('/api/settings/update', methods=['POST'])
 @login_required
@@ -1077,13 +1102,81 @@ def api_settings_update():
     try:
         data = request.get_json() or {}
         
-        username = data.get('username', '').strip()
-        email = data.get('email', '').strip() or None
-        password = data.get('password', '').strip() or None
+        # Обработка данных о типе лица (если присутствуют)
+        # Если есть entity_type, обрабатываем только данные о лице и выходим
+        if 'entity_type' in data and data.get('entity_type'):
+            entity_type = data.get('entity_type')
+            legal_entity = data.get('legal_entity', {})
+            physical_entity = data.get('physical_entity', {})
+            
+            # Валидация данных о лице
+            if entity_type == 'legal':
+                if not legal_entity.get('name', '').strip():
+                    return jsonify({'success': False, 'message': 'Название организации обязательно для заполнения'}), 400
+                if not legal_entity.get('inn', '').strip():
+                    return jsonify({'success': False, 'message': 'ИНН обязателен для заполнения'}), 400
+                
+                inn = legal_entity.get('inn', '').strip()
+                if inn and not re.match(r'^\d{10}$|^\d{12}$', inn):
+                    return jsonify({'success': False, 'message': 'ИНН должен содержать 10 или 12 цифр'}), 400
+                
+                kpp = legal_entity.get('kpp', '').strip()
+                if kpp and not re.match(r'^\d{9}$', kpp):
+                    return jsonify({'success': False, 'message': 'КПП должен содержать 9 цифр'}), 400
+                
+                ogrn = legal_entity.get('ogrn', '').strip()
+                if ogrn and not re.match(r'^\d{13}$', ogrn):
+                    return jsonify({'success': False, 'message': 'ОГРН должен содержать 13 цифр'}), 400
+            elif entity_type == 'physical':
+                if not physical_entity.get('full_name', '').strip():
+                    return jsonify({'success': False, 'message': 'ФИО обязательно для заполнения'}), 400
+                
+                inn = physical_entity.get('inn', '').strip()
+                if inn and not re.match(r'^\d{12}$', inn):
+                    return jsonify({'success': False, 'message': 'ИНН физического лица должен содержать 12 цифр'}), 400
+            
+            # Сохранение данных о лице в UserProfileData
+            profile_data = UserProfileData.query.filter_by(user_id=current_user.id).first()
+            if not profile_data:
+                profile_data = UserProfileData(user_id=current_user.id)
+                db.session.add(profile_data)
+            
+            # Обновляем поля
+            profile_data.entity_type = entity_type
+            
+            # Поля для юридического лица
+            profile_data.legal_name = legal_entity.get('name', '').strip() or None
+            profile_data.legal_inn = legal_entity.get('inn', '').strip() or None
+            profile_data.legal_kpp = legal_entity.get('kpp', '').strip() or None
+            profile_data.legal_ogrn = legal_entity.get('ogrn', '').strip() or None
+            profile_data.legal_address = legal_entity.get('legal_address', '').strip() or None
+            profile_data.actual_address = legal_entity.get('actual_address', '').strip() or None
+            
+            # Поля для физического лица
+            profile_data.physical_full_name = physical_entity.get('full_name', '').strip() or None
+            profile_data.physical_inn = physical_entity.get('inn', '').strip() or None
+            profile_data.passport_series = physical_entity.get('passport_series', '').strip() or None
+            profile_data.passport_number = physical_entity.get('passport_number', '').strip() or None
+            profile_data.registration_address = physical_entity.get('registration_address', '').strip() or None
+            
+            db.session.commit()
+            
+            return jsonify({'success': True, 'message': 'Данные о лице успешно сохранены'})
         
-        # Валидация логина
-        if not username:
-            return jsonify({'success': False, 'message': 'Логин не может быть пустым'}), 400
+        # Обработка личных данных (логин, email, пароль)
+        # Проверяем, что это действительно запрос на обновление личных данных
+        # (должен быть хотя бы username или password)
+        if 'username' not in data and 'password' not in data and 'email' not in data:
+            return jsonify({'success': False, 'message': 'Не указаны данные для обновления'}), 400
+        
+        username = data.get('username', '').strip()
+        email = (data.get('email') or '').strip() or None
+        password = (data.get('password') or '').strip() or None
+        
+        # Валидация логина (только если он передан в запросе)
+        if 'username' in data:
+            if not username:
+                return jsonify({'success': False, 'message': 'Логин не может быть пустым'}), 400
         
         # Проверка уникальности username (если изменился)
         if username != current_user.username:
