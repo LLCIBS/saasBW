@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
 Веб-интерфейс для настройки Call Analyzer
@@ -1054,6 +1054,74 @@ def api_config_load():
     """API для получения персональных настроек пользователя."""
     config_data = get_user_config_data()
     return jsonify(config_data)
+
+@app.route('/settings')
+@login_required
+def settings_page():
+    """Страница настроек пользователя"""
+    return render_template('settings.html', active_page='settings')
+
+@app.route('/api/settings/load')
+@login_required
+def api_settings_load():
+    """API для получения данных текущего пользователя."""
+    return jsonify({
+        'username': current_user.username,
+        'email': current_user.email or ''
+    })
+
+@app.route('/api/settings/update', methods=['POST'])
+@login_required
+def api_settings_update():
+    """API для обновления данных пользователя."""
+    try:
+        data = request.get_json() or {}
+        
+        username = data.get('username', '').strip()
+        email = data.get('email', '').strip() or None
+        password = data.get('password', '').strip() or None
+        
+        # Валидация логина
+        if not username:
+            return jsonify({'success': False, 'message': 'Логин не может быть пустым'}), 400
+        
+        # Проверка уникальности username (если изменился)
+        if username != current_user.username:
+            existing_user = User.query.filter_by(username=username).filter(User.id != current_user.id).first()
+            if existing_user:
+                return jsonify({'success': False, 'message': 'Пользователь с таким логином уже существует'}), 400
+        
+        # Проверка уникальности email (если изменился и указан)
+        if email and email != current_user.email:
+            existing_user = User.query.filter_by(email=email).filter(User.id != current_user.id).first()
+            if existing_user:
+                return jsonify({'success': False, 'message': 'Пользователь с таким email уже существует'}), 400
+        
+        # Валидация формата email (если указан)
+        if email:
+            email_regex = r'^[^\s@]+@[^\s@]+\.[^\s@]+$'
+            if not re.match(email_regex, email):
+                return jsonify({'success': False, 'message': 'Некорректный формат email'}), 400
+        
+        # Валидация пароля (если указан)
+        if password:
+            if len(password) < 6:
+                return jsonify({'success': False, 'message': 'Пароль должен содержать минимум 6 символов'}), 400
+            current_user.set_password(password)
+        
+        # Обновление данных
+        current_user.username = username
+        if email is not None:
+            current_user.email = email
+        
+        db.session.commit()
+        
+        return jsonify({'success': True, 'message': 'Настройки успешно сохранены'})
+        
+    except Exception as e:
+        db.session.rollback()
+        logging.error(f'Ошибка обновления настроек пользователя: {e}')
+        return jsonify({'success': False, 'message': f'Ошибка сохранения: {str(e)}'}), 500
 
 @app.route('/stations')
 @login_required
