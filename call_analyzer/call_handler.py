@@ -135,7 +135,7 @@ def transcribe_and_analyze(file_path: Path, station_code: str, original_station_
     # 1. Сразу парсим phone_number, station_code_parsed, call_time
     phone_number, station_code_parsed, call_time = parse_filename(filename)
 
-    # 2. Отправляем файл на транскрипцию (Internal Service)
+    # 2. Отправляем файл на транскрипцию с повторными попытками
     # Передаем режим стерео/моно из профиля пользователя
     # Сначала пытаемся прочитать из PROFILE_SETTINGS (для worker процессов)
     # Если нет, то из глобального TBANK_STEREO_ENABLED
@@ -150,14 +150,29 @@ def transcribe_and_analyze(file_path: Path, station_code: str, original_station_
     # Словарь загружается динамически, чтобы учитывать изменения настроек USE_ADDITIONAL_VOCAB
     additional_vocab_current = load_additional_vocab()
     
-    # Передаем дополнительный словарь для улучшения распознавания
-    transcript_text = transcribe_audio_with_internal_service(
-        file_path, 
-        stereo_mode=stereo_mode,
-        additional_vocab=additional_vocab_current
-    )
+    # Повторные попытки транскрибации с экспоненциальной задержкой
+    max_retries = 3
+    retry_delay = 5  # секунд
+    
+    transcript_text = None
+    for attempt in range(1, max_retries + 1):
+        transcript_text = transcribe_audio_with_internal_service(
+            file_path, 
+            stereo_mode=stereo_mode,
+            additional_vocab=additional_vocab_current
+        )
+        
+        if transcript_text:
+            break  # Успешно получили транскрипт
+        
+        if attempt < max_retries:
+            logger.warning(f"Попытка {attempt}/{max_retries} транскрибации не удалась для {filename}. Повтор через {retry_delay} сек...")
+            time.sleep(retry_delay)
+            retry_delay *= 2  # Экспоненциальная задержка
+    
     if not transcript_text:
-        logger.error(f"Транскрипт не получен для файла {filename}.")
+        logger.error(f"Транскрипт не получен для файла {filename} после {max_retries} попыток.")
+        # НЕ удаляем из _processed_files здесь - это делается в _wrapped_process
         return
 
     # 3. Анализ через TheB.ai
@@ -607,6 +622,9 @@ class CallHandler(FileSystemEventHandler):
             time.sleep(3)
             if not wait_for_file(file_path):
                 logger.error(f"Файл {file_path} недоступен (после нескольких попыток).")
+                # Удаляем из _processed_files при ошибке
+                with _processed_files_lock:
+                    _processed_files.discard(file_path.name)
                 return
 
             phone_number, station_code, call_dt = parse_filename(file_path.name)
@@ -615,6 +633,9 @@ class CallHandler(FileSystemEventHandler):
             # Если не удалось распарсить номер/станцию, пропускаем спец-проверки, чтобы избежать ошибок
             if not phone_number or not station_code:
                 logger.warning(f"Не удалось распарсить имя файла, пропускаю спец-проверки transfer/recall: {file_path.name}")
+                # Удаляем из _processed_files при ошибке парсинга
+                with _processed_files_lock:
+                    _processed_files.discard(file_path.name)
                 return
 
             # Получаем основной код станции для проверок
@@ -644,12 +665,25 @@ class CallHandler(FileSystemEventHandler):
                     try:
                         # Передаем основную станцию для группировки, но оригинальную для определения оператора
                         transcribe_and_analyze(file_path, main_station_code, original_station_code=station_code)
+                    except Exception as e:
+                        logger.error(f"Критическая ошибка при обработке файла {file_path.name}: {e}", exc_info=True)
+                        # Удаляем файл из _processed_files при ошибке, чтобы можно было повторить
+                        with _processed_files_lock:
+                            _processed_files.discard(file_path.name)
                     finally:
                         # снимаем lock после завершения обработки
                         _release_lock()
                 executor.submit(_wrapped_process)
             else:
                 logger.warning(f"Неизвестный код станции: {station_code} (файл {file_path.name})")
+                # Удаляем из _processed_files, если станция неизвестна
+                with _processed_files_lock:
+                    _processed_files.discard(file_path.name)
+        except Exception as e:
+            logger.error(f"Ошибка в on_created для файла {file_path.name}: {e}", exc_info=True)
+            # Удаляем из _processed_files при ошибке
+            with _processed_files_lock:
+                _processed_files.discard(file_path.name)
         finally:
             _release_lock()
 
