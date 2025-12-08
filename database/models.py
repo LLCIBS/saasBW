@@ -262,3 +262,203 @@ class UserProfileData(db.Model):
 
     def __repr__(self):
         return f'<UserProfileData user_id={self.user_id} entity_type={self.entity_type}>'
+
+
+class UserConfig(db.Model):
+    """Модель для конфигурации пользователя"""
+    __tablename__ = 'user_config'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), unique=True, nullable=False, index=True)
+    
+    # Paths
+    source_type = db.Column(db.String(50), nullable=True)  # 'ftp' или 'local'
+    prompts_file = db.Column(db.String(1000), nullable=True)
+    base_records_path = db.Column(db.String(1000), nullable=True)
+    ftp_connection_id = db.Column(db.Integer, db.ForeignKey('ftp_connections.id'), nullable=True)
+    script_prompt_file = db.Column(db.String(1000), nullable=True)
+    additional_vocab_file = db.Column(db.String(1000), nullable=True)
+    
+    # API Keys
+    thebai_api_key = db.Column(db.String(255), nullable=True)
+    telegram_bot_token = db.Column(db.String(255), nullable=True)
+    speechmatics_api_key = db.Column(db.String(255), nullable=True)
+    
+    # Telegram
+    alert_chat_id = db.Column(db.String(100), nullable=True)
+    tg_channel_nizh = db.Column(db.String(100), nullable=True)
+    tg_channel_other = db.Column(db.String(100), nullable=True)
+    
+    # Transcription
+    tbank_stereo_enabled = db.Column(db.Boolean, default=False, nullable=False)
+    use_additional_vocab = db.Column(db.Boolean, default=True, nullable=False)
+    auto_detect_operator_name = db.Column(db.Boolean, default=False, nullable=False)
+    
+    # Arrays stored as JSONB
+    allowed_stations = db.Column(JSONB, nullable=True)  # массив кодов станций
+    nizh_station_codes = db.Column(JSONB, nullable=True)  # массив кодов станций
+    legal_entity_keywords = db.Column(JSONB, nullable=True)  # массив ключевых слов
+    
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    
+    __table_args__ = (
+        Index('idx_config_user', 'user_id'),
+    )
+    
+    user = db.relationship('User', backref=db.backref('config', uselist=False, cascade='all, delete-orphan'))
+    ftp_connection = db.relationship('FtpConnection', foreign_keys=[ftp_connection_id])
+    
+    def __repr__(self):
+        return f'<UserConfig user_id={self.user_id}>'
+
+
+class UserStation(db.Model):
+    """Модель для станций пользователя"""
+    __tablename__ = 'user_stations'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
+    code = db.Column(db.String(20), nullable=False)  # код станции
+    name = db.Column(db.String(500), nullable=False)  # название станции
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    
+    __table_args__ = (
+        Index('idx_station_user_code', 'user_id', 'code'),
+        db.UniqueConstraint('user_id', 'code', name='uq_user_station_code'),
+    )
+    
+    user = db.relationship('User', backref=db.backref('stations', lazy='dynamic', cascade='all, delete-orphan'))
+    
+    def __repr__(self):
+        return f'<UserStation user_id={self.user_id} code={self.code} name={self.name}>'
+
+
+class UserStationMapping(db.Model):
+    """Модель для маппинга станций (основная -> подстанции)"""
+    __tablename__ = 'user_station_mappings'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
+    main_station_code = db.Column(db.String(20), nullable=False)  # код основной станции
+    sub_station_code = db.Column(db.String(20), nullable=False)  # код подстанции
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    
+    __table_args__ = (
+        Index('idx_mapping_user_main', 'user_id', 'main_station_code'),
+        db.UniqueConstraint('user_id', 'main_station_code', 'sub_station_code', name='uq_user_station_mapping'),
+    )
+    
+    user = db.relationship('User', backref=db.backref('station_mappings', lazy='dynamic', cascade='all, delete-orphan'))
+    
+    def __repr__(self):
+        return f'<UserStationMapping user_id={self.user_id} main={self.main_station_code} sub={self.sub_station_code}>'
+
+
+class UserStationChatId(db.Model):
+    """Модель для chat_id станций"""
+    __tablename__ = 'user_station_chat_ids'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
+    station_code = db.Column(db.String(20), nullable=False)
+    chat_id = db.Column(db.String(100), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    
+    __table_args__ = (
+        Index('idx_chat_user_station', 'user_id', 'station_code'),
+        db.UniqueConstraint('user_id', 'station_code', 'chat_id', name='uq_user_station_chat'),
+    )
+    
+    user = db.relationship('User', backref=db.backref('station_chat_ids', lazy='dynamic', cascade='all, delete-orphan'))
+    
+    def __repr__(self):
+        return f'<UserStationChatId user_id={self.user_id} station={self.station_code} chat_id={self.chat_id}>'
+
+
+class UserEmployeeExtension(db.Model):
+    """Модель для маппинга расширений к сотрудникам"""
+    __tablename__ = 'user_employee_extensions'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
+    extension = db.Column(db.String(20), nullable=False)  # номер расширения
+    employee = db.Column(db.String(200), nullable=False)  # имя сотрудника
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    
+    __table_args__ = (
+        Index('idx_employee_user_ext', 'user_id', 'extension'),
+        db.UniqueConstraint('user_id', 'extension', name='uq_user_employee_ext'),
+    )
+    
+    user = db.relationship('User', backref=db.backref('employee_extensions', lazy='dynamic', cascade='all, delete-orphan'))
+    
+    def __repr__(self):
+        return f'<UserEmployeeExtension user_id={self.user_id} extension={self.extension} employee={self.employee}>'
+
+
+class UserPrompt(db.Model):
+    """Модель для промптов пользователя"""
+    __tablename__ = 'user_prompts'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
+    prompt_type = db.Column(db.String(50), nullable=False)  # 'anchor', 'station', 'default'
+    prompt_key = db.Column(db.String(100), nullable=False)  # ключ промпта (название якоря, код станции, 'default')
+    prompt_text = db.Column(Text, nullable=False)  # текст промпта
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    
+    __table_args__ = (
+        Index('idx_prompt_user_type', 'user_id', 'prompt_type'),
+        db.UniqueConstraint('user_id', 'prompt_type', 'prompt_key', name='uq_user_prompt'),
+    )
+    
+    user = db.relationship('User', backref=db.backref('prompts', lazy='dynamic', cascade='all, delete-orphan'))
+    
+    def __repr__(self):
+        return f'<UserPrompt user_id={self.user_id} type={self.prompt_type} key={self.prompt_key}>'
+
+
+class UserVocabulary(db.Model):
+    """Модель для словаря пользователя"""
+    __tablename__ = 'user_vocabulary'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), unique=True, nullable=False, index=True)
+    enabled = db.Column(db.Boolean, default=True, nullable=False)
+    additional_vocab = db.Column(JSONB, nullable=True)  # массив слов
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    
+    __table_args__ = (
+        Index('idx_vocab_user', 'user_id'),
+    )
+    
+    user = db.relationship('User', backref=db.backref('vocabulary', uselist=False, cascade='all, delete-orphan'))
+    
+    def __repr__(self):
+        return f'<UserVocabulary user_id={self.user_id} enabled={self.enabled}>'
+
+
+class UserScriptPrompt(db.Model):
+    """Модель для промпта скрипта пользователя"""
+    __tablename__ = 'user_script_prompts'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), unique=True, nullable=False, index=True)
+    prompt_text = db.Column(Text, nullable=False)  # основной промпт
+    checklist = db.Column(JSONB, nullable=True)  # массив объектов чек-листа
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    
+    __table_args__ = (
+        Index('idx_script_user', 'user_id'),
+    )
+    
+    user = db.relationship('User', backref=db.backref('script_prompt', uselist=False, cascade='all, delete-orphan'))
+    
+    def __repr__(self):
+        return f'<UserScriptPrompt user_id={self.user_id}>'
