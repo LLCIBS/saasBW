@@ -30,8 +30,6 @@ def sync_ftp_connection(connection_id: int):
         from config.settings import get_config
         from sqlalchemy import create_engine, text
         from call_analyzer.ftp_sync import FtpSync
-        from common.user_settings import default_config_template
-        import json
         
         config = get_config()
         engine = create_engine(config.SQLALCHEMY_DATABASE_URI)
@@ -72,13 +70,13 @@ def sync_ftp_connection(connection_id: int):
                 last_processed_mtime = row.last_processed_mtime
                 last_processed_filename = row.last_processed_filename or ''
                 
-                # Получаем путь для сохранения файлов из настроек пользователя
-                user_settings_sql = text("""
-                    SELECT data
-                    FROM user_settings
+                # Получаем путь для сохранения файлов из нормализованной таблицы user_config
+                user_config_sql = text("""
+                    SELECT base_records_path, source_type
+                    FROM user_config
                     WHERE user_id = :user_id
                 """)
-                user_result = connection.execute(user_settings_sql, {'user_id': row.user_id})
+                user_result = connection.execute(user_config_sql, {'user_id': row.user_id})
                 user_row = user_result.fetchone()
             
             # Закрываем engine после получения данных
@@ -93,21 +91,16 @@ def sync_ftp_connection(connection_id: int):
                     pass
             raise
         
-        if user_row and user_row.data:
-            if isinstance(user_row.data, str):
-                try:
-                    user_data = json.loads(user_row.data)
-                except json.JSONDecodeError:
-                    user_data = {}
-            else:
-                user_data = user_row.data
-            config_data = user_data.get('config') or default_config_template()
-        else:
-            config_data = default_config_template()
-        
-        # Получаем base_records_path из настроек пользователя
-        paths_cfg = config_data.get('paths') or {}
-        user_base_path_str = paths_cfg.get('base_records_path', '').strip()
+        # Получаем base_records_path из настроек пользователя (user_config)
+        user_base_path_str = ''
+        source_type = 'local'
+        if user_row:
+            user_base_path_str = (user_row.base_records_path or '').strip()
+            source_type = user_row.source_type or 'local'
+        # Если источник не FTP — прекращаем
+        if source_type != 'ftp':
+            logger.info(f"FTP {row.name}: источник не ftp для пользователя {row.user_id}, пропуск")
+            return
         
         # Если путь не указан в настройках, используем дефолтный
         if not user_base_path_str:
@@ -675,8 +668,6 @@ def start_all_active_ftp_syncs():
     try:
         from config.settings import get_config
         from sqlalchemy import create_engine, text
-        from common.user_settings import default_config_template
-        import json
         
         config = get_config()
         engine = create_engine(config.SQLALCHEMY_DATABASE_URI)
@@ -685,49 +676,25 @@ def start_all_active_ftp_syncs():
         
         with engine.connect() as connection:
             sql = text("""
-                SELECT us.user_id, us.data
-                FROM user_settings us
-                WHERE us.data IS NOT NULL
+                SELECT uc.user_id, uc.ftp_connection_id, fc.id as conn_id, fc.name
+                FROM user_config uc
+                JOIN users u ON u.id = uc.user_id AND u.is_active = TRUE
+                JOIN ftp_connections fc ON fc.id = uc.ftp_connection_id AND fc.user_id = uc.user_id
+                WHERE uc.source_type = 'ftp' AND fc.is_active = TRUE
             """)
             result = connection.execute(sql)
             
+            seen = set()
             for row in result:
-                user_id = row.user_id
-                data = row.data
-                
-                if not data:
+                if not row.conn_id or row.conn_id in seen:
                     continue
-                
-                if isinstance(data, str):
-                    try:
-                        data = json.loads(data)
-                    except json.JSONDecodeError:
-                        continue
-                
-                config_data = data.get('config') or default_config_template()
-                paths_cfg = config_data.get('paths') or {}
-                source_type = paths_cfg.get('source_type', 'local')
-                ftp_connection_id = paths_cfg.get('ftp_connection_id')
-                
-                if source_type == 'ftp' and ftp_connection_id:
-                    conn_sql = text("""
-                        SELECT id, name, user_id, is_active
-                        FROM ftp_connections
-                        WHERE id = :conn_id AND user_id = :user_id AND is_active = TRUE
-                    """)
-                    conn_result = connection.execute(conn_sql, {
-                        'conn_id': ftp_connection_id,
-                        'user_id': user_id
-                    })
-                    conn_row = conn_result.fetchone()
-                    
-                    if conn_row:
-                        try:
-                            start_ftp_sync(conn_row.id)
-                            started_count += 1
-                            logger.info(f"Запущена FTP синхронизация для пользователя {user_id}: {conn_row.name}")
-                        except Exception as e:
-                            logger.error(f"Ошибка запуска синхронизации для FTP {conn_row.id}: {e}")
+                seen.add(row.conn_id)
+                try:
+                    start_ftp_sync(row.conn_id)
+                    started_count += 1
+                    logger.info(f"Запущена FTP синхронизация для пользователя {row.user_id}: {row.name}")
+                except Exception as e:
+                    logger.error(f"Ошибка запуска синхронизации для FTP {row.conn_id}: {e}")
         
         logger.info(f"Запущена синхронизация для {started_count} FTP подключений (выбранных пользователями)")
         
