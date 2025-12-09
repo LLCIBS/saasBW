@@ -44,7 +44,21 @@ from common.user_settings import (
 )
 
 from config.settings import get_config
-from database.models import db, User, UserSettings, UserProfileData, FtpConnection
+from database.models import (
+    db,
+    User,
+    UserSettings,
+    UserProfileData,
+    FtpConnection,
+    UserVocabulary,
+    UserPrompt,
+    UserScriptPrompt,
+    UserConfig,
+    UserStation,
+    UserStationMapping,
+    UserStationChatId,
+    UserEmployeeExtension,
+)
 from auth import login_manager
 from auth.routes import auth_bp
 try:
@@ -159,12 +173,159 @@ def save_user_settings_section(section, value, user=None):
     return deepcopy(value)
 
 
+def _get_or_create_user_config_record(actual_user):
+    """Возвращает запись user_config, создаёт при необходимости."""
+    cfg = UserConfig.query.filter_by(user_id=actual_user.id).first()
+    if not cfg:
+        cfg = UserConfig(user_id=actual_user.id)
+        db.session.add(cfg)
+        db.session.commit()
+    return cfg
+
+
 def get_user_config_data(user=None):
-    return get_user_settings_section('config', default_config_template, user=user)
+    """Загружает конфигурацию пользователя из нормализованных таблиц."""
+    actual_user = _resolve_current_user(user)
+    if not actual_user:
+        return default_config_template()
+
+    cfg = UserConfig.query.filter_by(user_id=actual_user.id).first()
+    config_data = default_config_template()
+
+    # Paths
+    if cfg:
+        paths = config_data.get('paths') or {}
+        paths.update({
+            'source_type': cfg.source_type,
+            'prompts_file': cfg.prompts_file,
+            'base_records_path': cfg.base_records_path,
+            'ftp_connection_id': cfg.ftp_connection_id,
+            'script_prompt_file': cfg.script_prompt_file,
+            'additional_vocab_file': cfg.additional_vocab_file,
+        })
+        config_data['paths'] = paths
+
+        # API Keys
+        config_data['api_keys'] = {
+            'speechmatics_api_key': cfg.speechmatics_api_key or '',
+            'thebai_api_key': cfg.thebai_api_key or '',
+            'thebai_url': config_data['api_keys'].get('thebai_url', 'https://api.deepseek.com/v1/chat/completions'),
+            'thebai_model': config_data['api_keys'].get('thebai_model', 'deepseek-reasoner'),
+            'telegram_bot_token': cfg.telegram_bot_token or '',
+        }
+
+        # Telegram
+        config_data['telegram'] = {
+            'alert_chat_id': cfg.alert_chat_id or '',
+            'tg_channel_nizh': cfg.tg_channel_nizh or '',
+            'tg_channel_other': cfg.tg_channel_other or '',
+        }
+
+        # Transcription
+        config_data['transcription'] = {
+            'tbank_stereo_enabled': bool(cfg.tbank_stereo_enabled),
+            'use_additional_vocab': bool(cfg.use_additional_vocab),
+            'auto_detect_operator_name': bool(cfg.auto_detect_operator_name),
+        }
+
+        # Arrays/JSONB
+        config_data['allowed_stations'] = cfg.allowed_stations or []
+        config_data['nizh_station_codes'] = cfg.nizh_station_codes or []
+        config_data['legal_entity_keywords'] = cfg.legal_entity_keywords or []
+
+    # Stations
+    stations = {s.code: s.name for s in UserStation.query.filter_by(user_id=actual_user.id).all()}
+    station_chat_ids = {}
+    for row in UserStationChatId.query.filter_by(user_id=actual_user.id).all():
+        station_chat_ids.setdefault(row.station_code, []).append(row.chat_id)
+    station_mapping = {}
+    for row in UserStationMapping.query.filter_by(user_id=actual_user.id).all():
+        station_mapping.setdefault(row.main_station_code, []).append(row.sub_station_code)
+    employee_by_extension = {
+        row.extension: row.employee
+        for row in UserEmployeeExtension.query.filter_by(user_id=actual_user.id).all()
+    }
+
+    config_data['stations'] = stations
+    config_data['station_chat_ids'] = station_chat_ids
+    config_data['station_mapping'] = station_mapping
+    config_data['employee_by_extension'] = employee_by_extension
+
+    return config_data
 
 
 def save_user_config_data(config_data, user=None):
-    return save_user_settings_section('config', config_data, user=user)
+    """Сохраняет конфигурацию пользователя в нормализованные таблицы."""
+    actual_user = _resolve_current_user(user)
+    if not actual_user:
+        raise RuntimeError('Пользователь не определен.')
+
+    cfg = _get_or_create_user_config_record(actual_user)
+
+    paths = config_data.get('paths') or {}
+    api_keys = config_data.get('api_keys') or {}
+    telegram_cfg = config_data.get('telegram') or {}
+    transcription_cfg = config_data.get('transcription') or {}
+
+    cfg.source_type = paths.get('source_type')
+    cfg.prompts_file = paths.get('prompts_file')
+    cfg.base_records_path = paths.get('base_records_path')
+    cfg.ftp_connection_id = paths.get('ftp_connection_id')
+    cfg.script_prompt_file = paths.get('script_prompt_file')
+    cfg.additional_vocab_file = paths.get('additional_vocab_file')
+
+    cfg.speechmatics_api_key = api_keys.get('speechmatics_api_key')
+    cfg.thebai_api_key = api_keys.get('thebai_api_key')
+    cfg.telegram_bot_token = api_keys.get('telegram_bot_token')
+
+    cfg.alert_chat_id = telegram_cfg.get('alert_chat_id')
+    cfg.tg_channel_nizh = telegram_cfg.get('tg_channel_nizh')
+    cfg.tg_channel_other = telegram_cfg.get('tg_channel_other')
+
+    cfg.tbank_stereo_enabled = bool(transcription_cfg.get('tbank_stereo_enabled', False))
+    cfg.use_additional_vocab = bool(transcription_cfg.get('use_additional_vocab', True))
+    cfg.auto_detect_operator_name = bool(transcription_cfg.get('auto_detect_operator_name', False))
+
+    cfg.allowed_stations = config_data.get('allowed_stations') or []
+    cfg.nizh_station_codes = config_data.get('nizh_station_codes') or []
+    cfg.legal_entity_keywords = config_data.get('legal_entity_keywords') or []
+
+    db.session.add(cfg)
+
+    # Станции, chat_id, маппинги, сотрудники
+    UserStation.query.filter_by(user_id=actual_user.id).delete()
+    UserStationChatId.query.filter_by(user_id=actual_user.id).delete()
+    UserStationMapping.query.filter_by(user_id=actual_user.id).delete()
+    UserEmployeeExtension.query.filter_by(user_id=actual_user.id).delete()
+
+    stations = config_data.get('stations') or {}
+    for code, name in stations.items():
+        if code:
+            db.session.add(UserStation(user_id=actual_user.id, code=str(code), name=str(name or code)))
+
+    station_chat_ids = config_data.get('station_chat_ids') or {}
+    for code, chat_list in station_chat_ids.items():
+        if not code:
+            continue
+        for chat_id in chat_list or []:
+            if chat_id:
+                db.session.add(UserStationChatId(user_id=actual_user.id, station_code=str(code), chat_id=str(chat_id)))
+
+    station_mapping = config_data.get('station_mapping') or {}
+    for main_code, sub_list in station_mapping.items():
+        if not main_code:
+            continue
+        for sub_code in sub_list or []:
+            if sub_code:
+                db.session.add(UserStationMapping(user_id=actual_user.id, main_station_code=str(main_code), sub_station_code=str(sub_code)))
+
+    employees = config_data.get('employee_by_extension') or {}
+    for ext, emp in employees.items():
+        if ext and emp:
+            db.session.add(UserEmployeeExtension(user_id=actual_user.id, extension=str(ext), employee=str(emp)))
+
+    db.session.commit()
+    return config_data
 
 
 def normalize_prompts_payload(data):
@@ -206,21 +367,146 @@ def normalize_prompts_payload(data):
 
 
 def get_user_prompts_data(user=None):
-    raw = get_user_settings_section('prompts', default_prompts_template, user=user)
-    return normalize_prompts_payload(raw)
+    """Загружает промпты из таблицы user_prompts с обратной совместимостью"""
+    if user is None:
+        user = current_user if hasattr(current_user, 'is_authenticated') and current_user.is_authenticated else None
+    if not user:
+        return normalize_prompts_payload(default_prompts_template())
+    
+    # Сначала пытаемся загрузить из новых таблиц
+    prompts = UserPrompt.query.filter_by(user_id=user.id).all()
+    
+    result = {
+        'default': '',
+        'anchors': {},
+        'stations': {}
+    }
+    
+    has_data = False
+    for prompt in prompts:
+        has_data = True
+        if prompt.prompt_type == 'default':
+            result['default'] = prompt.prompt_text or ''
+        elif prompt.prompt_type == 'anchor':
+            result['anchors'][prompt.prompt_key] = prompt.prompt_text or ''
+        elif prompt.prompt_type == 'station':
+            result['stations'][prompt.prompt_key] = prompt.prompt_text or ''
+    
+    # Если в новых таблицах пусто, читаем из старых UserSettings.data
+    if not has_data:
+        old_data = get_user_settings_section('prompts', default_prompts_template, user=user)
+        if old_data and (old_data.get('anchors') or old_data.get('stations') or old_data.get('default')):
+            # Автоматически мигрируем данные
+            save_user_prompts_data(old_data, user=user)
+            return normalize_prompts_payload(old_data)
+    
+    return normalize_prompts_payload(result)
 
 
 def save_user_prompts_data(prompts_data, user=None):
+    """Сохраняет промпты в таблицу user_prompts"""
+    if user is None:
+        user = current_user if hasattr(current_user, 'is_authenticated') and current_user.is_authenticated else None
+    if not user:
+        raise RuntimeError('Пользователь не определен.')
+    
     normalized = normalize_prompts_payload(prompts_data)
-    return save_user_settings_section('prompts', normalized, user=user)
+    
+    # Удаляем старые промпты
+    UserPrompt.query.filter_by(user_id=user.id).delete()
+    
+    # Сохраняем default
+    if normalized.get('default'):
+        prompt = UserPrompt(
+            user_id=user.id,
+            prompt_type='default',
+            prompt_key='default',
+            prompt_text=str(normalized['default'])
+        )
+        db.session.add(prompt)
+    
+    # Сохраняем anchors
+    anchors = normalized.get('anchors', {})
+    for key, text in anchors.items():
+        if text:  # Сохраняем только непустые
+            prompt = UserPrompt(
+                user_id=user.id,
+                prompt_type='anchor',
+                prompt_key=str(key),
+                prompt_text=str(text)
+            )
+            db.session.add(prompt)
+    
+    # Сохраняем stations
+    stations = normalized.get('stations', {})
+    for station_code, text in stations.items():
+        if text:  # Сохраняем только непустые
+            prompt = UserPrompt(
+                user_id=user.id,
+                prompt_type='station',
+                prompt_key=str(station_code),
+                prompt_text=str(text)
+            )
+            db.session.add(prompt)
+    
+    db.session.commit()
+    return deepcopy(normalized)
 
 
 def get_user_vocabulary_data(user=None):
-    return get_user_settings_section('vocabulary', default_vocabulary_template, user=user)
+    """Загружает словарь из таблицы user_vocabulary с обратной совместимостью"""
+    if user is None:
+        user = current_user if hasattr(current_user, 'is_authenticated') and current_user.is_authenticated else None
+    if not user:
+        return default_vocabulary_template()
+    
+    vocab = UserVocabulary.query.filter_by(user_id=user.id).first()
+    
+    # Если в новых таблицах есть данные, возвращаем их
+    if vocab and (vocab.additional_vocab or vocab.enabled is not None):
+        return {
+            'enabled': vocab.enabled,
+            'additional_vocab': vocab.additional_vocab or []
+        }
+    
+    # Если в новых таблицах пусто, читаем из старых UserSettings.data
+    old_data = get_user_settings_section('vocabulary', default_vocabulary_template, user=user)
+    if old_data and (old_data.get('additional_vocab') or old_data.get('enabled') is not None):
+        # Автоматически мигрируем данные
+        save_user_vocabulary_data(old_data, user=user)
+        return old_data
+    
+    # Создаем запись с дефолтными значениями
+    if not vocab:
+        vocab = UserVocabulary(
+            user_id=user.id,
+            enabled=True,
+            additional_vocab=[]
+        )
+        db.session.add(vocab)
+        db.session.commit()
+    
+    return default_vocabulary_template()
 
 
 def save_user_vocabulary_data(vocab_data, user=None):
-    return save_user_settings_section('vocabulary', vocab_data, user=user)
+    """Сохраняет словарь в таблицу user_vocabulary"""
+    if user is None:
+        user = current_user if hasattr(current_user, 'is_authenticated') and current_user.is_authenticated else None
+    if not user:
+        raise RuntimeError('Пользователь не определен.')
+    
+    vocab = UserVocabulary.query.filter_by(user_id=user.id).first()
+    if not vocab:
+        vocab = UserVocabulary(user_id=user.id)
+        db.session.add(vocab)
+    
+    vocab.enabled = bool(vocab_data.get('enabled', True))
+    vocab.additional_vocab = vocab_data.get('additional_vocab', []) or []
+    vocab.updated_at = datetime.utcnow()
+    
+    db.session.commit()
+    return deepcopy(vocab_data)
 
 
 def get_user_logs(user=None):
@@ -232,11 +518,59 @@ def save_user_logs(logs, user=None):
 
 
 def get_user_script_prompt(user=None):
-    return get_user_settings_section('script_prompt', default_script_prompt_template, user=user)
+    """Загружает script_prompt из таблицы user_script_prompts с обратной совместимостью"""
+    if user is None:
+        user = current_user if hasattr(current_user, 'is_authenticated') and current_user.is_authenticated else None
+    if not user:
+        return default_script_prompt_template()
+    
+    script_prompt = UserScriptPrompt.query.filter_by(user_id=user.id).first()
+    
+    # Если в новых таблицах есть данные, возвращаем их
+    if script_prompt and (script_prompt.prompt_text or script_prompt.checklist):
+        return {
+            'prompt': script_prompt.prompt_text or '',
+            'checklist': script_prompt.checklist or []
+        }
+    
+    # Если в новых таблицах пусто, читаем из старых UserSettings.data
+    old_data = get_user_settings_section('script_prompt', default_script_prompt_template, user=user)
+    if old_data and (old_data.get('prompt') or old_data.get('checklist')):
+        # Автоматически мигрируем данные
+        save_user_script_prompt(old_data, user=user)
+        return old_data
+    
+    # Создаем запись с дефолтными значениями
+    if not script_prompt:
+        script_prompt = UserScriptPrompt(
+            user_id=user.id,
+            prompt_text='',
+            checklist=[]
+        )
+        db.session.add(script_prompt)
+        db.session.commit()
+    
+    return default_script_prompt_template()
 
 
 def save_user_script_prompt(data, user=None):
-    return save_user_settings_section('script_prompt', data, user=user)
+    """Сохраняет script_prompt в таблицу user_script_prompts"""
+    if user is None:
+        user = current_user if hasattr(current_user, 'is_authenticated') and current_user.is_authenticated else None
+    if not user:
+        raise RuntimeError('Пользователь не определен.')
+    
+    script_prompt = UserScriptPrompt.query.filter_by(user_id=user.id).first()
+    if not script_prompt:
+        script_prompt = UserScriptPrompt(user_id=user.id)
+        db.session.add(script_prompt)
+    
+    script_prompt.prompt_text = str(data.get('prompt', ''))
+    script_prompt.checklist = data.get('checklist', []) or []
+    script_prompt.updated_at = datetime.utcnow()
+    
+    db.session.commit()
+    return deepcopy(data)
 
 
 def get_user_prompts_file_path(user=None):
