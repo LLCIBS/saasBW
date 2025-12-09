@@ -67,6 +67,154 @@ except ImportError:
     def request_reload(user_id: int):
         pass
 
+# --- Нормализованный доступ к конфигурации пользователя ---
+def _get_or_create_user_config_record(actual_user):
+    """Возвращает запись user_config, создаёт при необходимости."""
+    cfg = UserConfig.query.filter_by(user_id=actual_user.id).first()
+    if not cfg:
+        cfg = UserConfig(user_id=actual_user.id)
+        db.session.add(cfg)
+        db.session.commit()
+    return cfg
+
+
+def get_user_config_data(user=None):
+    """Загружает конфигурацию пользователя из нормализованных таблиц."""
+    actual_user = user if user else (current_user if hasattr(current_user, 'is_authenticated') and current_user.is_authenticated else None)
+    if not actual_user:
+        return default_config_template()
+
+    cfg = UserConfig.query.filter_by(user_id=actual_user.id).first()
+    config_data = default_config_template()
+
+    if cfg:
+        paths = config_data.get('paths') or {}
+        paths.update({
+            'source_type': cfg.source_type,
+            'prompts_file': cfg.prompts_file,
+            'base_records_path': cfg.base_records_path,
+            'ftp_connection_id': cfg.ftp_connection_id,
+            'script_prompt_file': cfg.script_prompt_file,
+            'additional_vocab_file': cfg.additional_vocab_file,
+        })
+        config_data['paths'] = paths
+
+        config_data['api_keys'] = {
+            'speechmatics_api_key': cfg.speechmatics_api_key or '',
+            'thebai_api_key': cfg.thebai_api_key or '',
+            'thebai_url': config_data['api_keys'].get('thebai_url', 'https://api.deepseek.com/v1/chat/completions'),
+            'thebai_model': config_data['api_keys'].get('thebai_model', 'deepseek-reasoner'),
+            'telegram_bot_token': cfg.telegram_bot_token or '',
+        }
+
+        config_data['telegram'] = {
+            'alert_chat_id': cfg.alert_chat_id or '',
+            'tg_channel_nizh': cfg.tg_channel_nizh or '',
+            'tg_channel_other': cfg.tg_channel_other or '',
+        }
+
+        config_data['transcription'] = {
+            'tbank_stereo_enabled': bool(cfg.tbank_stereo_enabled),
+            'use_additional_vocab': bool(cfg.use_additional_vocab),
+            'auto_detect_operator_name': bool(cfg.auto_detect_operator_name),
+        }
+
+        config_data['allowed_stations'] = cfg.allowed_stations or []
+        config_data['nizh_station_codes'] = cfg.nizh_station_codes or []
+        config_data['legal_entity_keywords'] = cfg.legal_entity_keywords or []
+
+    stations = {s.code: s.name for s in UserStation.query.filter_by(user_id=actual_user.id).all()}
+    station_chat_ids = {}
+    for row in UserStationChatId.query.filter_by(user_id=actual_user.id).all():
+        station_chat_ids.setdefault(row.station_code, []).append(row.chat_id)
+    station_mapping = {}
+    for row in UserStationMapping.query.filter_by(user_id=actual_user.id).all():
+        station_mapping.setdefault(row.main_station_code, []).append(row.sub_station_code)
+    employee_by_extension = {
+        row.extension: row.employee
+        for row in UserEmployeeExtension.query.filter_by(user_id=actual_user.id).all()
+    }
+
+    config_data['stations'] = stations
+    config_data['station_chat_ids'] = station_chat_ids
+    config_data['station_mapping'] = station_mapping
+    config_data['employee_by_extension'] = employee_by_extension
+
+    return config_data
+
+
+def save_user_config_data(config_data, user=None):
+    """Сохраняет конфигурацию пользователя в нормализованные таблицы."""
+    actual_user = user if user else (current_user if hasattr(current_user, 'is_authenticated') and current_user.is_authenticated else None)
+    if not actual_user:
+        raise RuntimeError('Пользователь не определен.')
+
+    cfg = _get_or_create_user_config_record(actual_user)
+
+    paths = config_data.get('paths') or {}
+    api_keys = config_data.get('api_keys') or {}
+    telegram_cfg = config_data.get('telegram') or {}
+    transcription_cfg = config_data.get('transcription') or {}
+
+    cfg.source_type = paths.get('source_type')
+    cfg.prompts_file = paths.get('prompts_file')
+    cfg.base_records_path = paths.get('base_records_path')
+    cfg.ftp_connection_id = paths.get('ftp_connection_id')
+    cfg.script_prompt_file = paths.get('script_prompt_file')
+    cfg.additional_vocab_file = paths.get('additional_vocab_file')
+
+    cfg.speechmatics_api_key = api_keys.get('speechmatics_api_key')
+    cfg.thebai_api_key = api_keys.get('thebai_api_key')
+    cfg.telegram_bot_token = api_keys.get('telegram_bot_token')
+
+    cfg.alert_chat_id = telegram_cfg.get('alert_chat_id')
+    cfg.tg_channel_nizh = telegram_cfg.get('tg_channel_nizh')
+    cfg.tg_channel_other = telegram_cfg.get('tg_channel_other')
+
+    cfg.tbank_stereo_enabled = bool(transcription_cfg.get('tbank_stereo_enabled', False))
+    cfg.use_additional_vocab = bool(transcription_cfg.get('use_additional_vocab', True))
+    # По умолчанию должно совпадать с default_config_template (True)
+    cfg.auto_detect_operator_name = bool(transcription_cfg.get('auto_detect_operator_name', True))
+
+    cfg.allowed_stations = config_data.get('allowed_stations') or []
+    cfg.nizh_station_codes = config_data.get('nizh_station_codes') or []
+    cfg.legal_entity_keywords = config_data.get('legal_entity_keywords') or []
+
+    db.session.add(cfg)
+
+    UserStation.query.filter_by(user_id=actual_user.id).delete()
+    UserStationChatId.query.filter_by(user_id=actual_user.id).delete()
+    UserStationMapping.query.filter_by(user_id=actual_user.id).delete()
+    UserEmployeeExtension.query.filter_by(user_id=actual_user.id).delete()
+
+    stations = config_data.get('stations') or {}
+    for code, name in stations.items():
+        if code:
+            db.session.add(UserStation(user_id=actual_user.id, code=str(code), name=str(name or code)))
+
+    station_chat_ids = config_data.get('station_chat_ids') or {}
+    for code, chat_list in station_chat_ids.items():
+        if not code:
+            continue
+        for chat_id in chat_list or []:
+            if chat_id:
+                db.session.add(UserStationChatId(user_id=actual_user.id, station_code=str(code), chat_id=str(chat_id)))
+
+    station_mapping = config_data.get('station_mapping') or {}
+    for main_code, sub_list in station_mapping.items():
+        if not main_code:
+            continue
+        for sub_code in sub_list or []:
+            if sub_code:
+                db.session.add(UserStationMapping(user_id=actual_user.id, main_station_code=str(main_code), sub_station_code=str(sub_code)))
+
+    employees = config_data.get('employee_by_extension') or {}
+    for ext, emp in employees.items():
+        if ext and emp:
+            db.session.add(UserEmployeeExtension(user_id=actual_user.id, extension=str(ext), employee=str(emp)))
+
+    db.session.commit()
+    return config_data
 
 # Legacy config loader (call_analyzer/config.py)
 LEGACY_CONFIG_MODULE_NAME = 'call_analyzer_legacy_config'
