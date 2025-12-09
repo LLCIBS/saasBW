@@ -329,6 +329,7 @@ def sync_ftp_connection(connection_id: int):
                 
                 # Проверяем формат имени файла
                 from call_analyzer.utils import is_valid_call_filename
+                filename_lower = filename.lower()
                 # Файлы формата out-* пропускаются
                 is_valid_name = is_valid_call_filename(filename)
                 
