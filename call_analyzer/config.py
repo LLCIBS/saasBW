@@ -100,8 +100,8 @@ EMPLOYEE_BY_EXTENSION = {
 
 # Конфигурация для расшифровки имен файлов звонков
 FILENAME_PATTERNS = {
-    # Основной формат fs_*_*_*
-    'fs_pattern': r'^fs_([^_]+)_([^_]+)_([^_]+)_',
+    # Основной формат *_*_*_* (без префикса fs_)
+    'fs_pattern': r'^([^_]+)_([^_]+)_([^_]+)_',
     
     # Формат с дефисами external-*
     'external_pattern': r'^external-([^\-]+)-([^\-]+)-(\d{8})-(\d{6})(?:-.+)?',
@@ -124,14 +124,14 @@ FILENAME_PATTERNS = {
 # Описание форматов файлов для документации
 FILENAME_FORMATS = {
     'incoming': {
-        'pattern': 'fs_[phone_number]_[station_code]_[datetime]_...',
+        'pattern': '[phone_number]_[station_code]_[datetime]_...',
         'description': 'Входящий звонок: номер телефона, код станции, дата и время',
-        'example': 'fs_79056154237_9301_2025-10-13-10-28-03_...'
+        'example': '79056154237_9301_2025-10-13-10-28-03_...'
     },
     'outgoing': {
-        'pattern': 'fs_[station_code]_[phone_number]_[datetime]_...',
+        'pattern': '[station_code]_[phone_number]_[datetime]_...',
         'description': 'Исходящий звонок: код станции, номер телефона, дата и время',
-        'example': 'fs_9301_79056154237_2025-10-13-10-28-03_...'
+        'example': '9301_79056154237_2025-10-13-10-28-03_...'
     },
     'external': {
         'pattern': 'external-[station]-[phone]-[YYYYMMDD]-[HHMMSS]-...',

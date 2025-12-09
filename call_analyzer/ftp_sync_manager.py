@@ -328,13 +328,9 @@ def sync_ftp_connection(connection_id: int):
                     continue
                 
                 # Проверяем формат имени файла
-                filename_lower = filename.lower()
+                from call_analyzer.utils import is_valid_call_filename
                 # Файлы формата out-* пропускаются
-                is_valid_name = (
-                    filename_lower.startswith("fs_") or 
-                    filename_lower.startswith("external-") or 
-                    filename_lower.startswith("вход_")
-                )
+                is_valid_name = is_valid_call_filename(filename)
                 
                 # Для формата external-* пропускаем файлы с хвостами .wav-out. и .wav-in.
                 if filename_lower.startswith("external-"):

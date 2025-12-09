@@ -156,13 +156,18 @@ def parse_day(day: date) -> dict:
             continue
         parts = fpath.name.split('_')
         
-        # Определяем код станции, поддерживая оба формата
-        if len(parts) < 3:
+        # Определяем код станции, поддерживая оба формата (с префиксом fs_ и без него)
+        # Поддержка старого формата с префиксом fs_
+        if fpath.name.startswith("fs_") and len(parts) >= 3:
+            first_part = parts[1]
+            second_part = parts[2]
+        elif len(parts) >= 2:
+            # Новый формат без префикса
+            first_part = parts[0]
+            second_part = parts[1]
+        else:
             continue
             
-        first_part = parts[1]
-        second_part = parts[2]
-        
         # Проверяем, является ли first_part известным кодом станции (включаем основные станции и подстанции)
         all_station_codes = set(config.STATION_NAMES.keys())
         # Добавляем все коды подстанций
@@ -170,10 +175,10 @@ def parse_day(day: date) -> dict:
             all_station_codes.update(sub_codes)
         
         if first_part in all_station_codes:
-            # Формат: fs_[station_code]_[phone_number]_[datetime]_...
+            # Формат: [station_code]_[phone_number]_[datetime]_...
             st = first_part
         elif second_part in all_station_codes:
-            # Формат: fs_[phone_number]_[station_code]_[datetime]_...
+            # Формат: [phone_number]_[station_code]_[datetime]_...
             st = second_part
         else:
             # Если ни first_part, ни second_part не являются известными кодами станций,
@@ -375,16 +380,24 @@ def get_phone_number_from_filename(filename):
     """
     Извлекает номер телефона из названия файла.
     Поддерживает форматы из конфигурации FILENAME_FORMATS:
-    - fs_79209153888_9301_2025-03-27-09-09-32_... (телефон первым)
-    - fs_9301_79209153888_2025-03-27-09-09-32_... (станция первой)
+    - 79209153888_9301_2025-03-27-09-09-32_... (телефон первым, без префикса)
+    - fs_79209153888_9301_2025-03-27-09-09-32_... (телефон первым, со старым префиксом)
+    - 9301_79209153888_2025-03-27-09-09-32_... (станция первой, без префикса)
+    - fs_9301_79209153888_2025-03-27-09-09-32_... (станция первой, со старым префиксом)
     Возвращает, например, '79209153888'
     """
     parts = filename.split("_")
-    if len(parts) < 3:
-        return None
     
-    first_id = parts[1]
-    second_id = parts[2]
+    # Поддержка старого формата с префиксом fs_ (для обратной совместимости)
+    if filename.startswith("fs_") and len(parts) >= 3:
+        first_id = parts[1]
+        second_id = parts[2]
+    elif len(parts) >= 2:
+        # Новый формат без префикса
+        first_id = parts[0]
+        second_id = parts[1]
+    else:
+        return None
     
     # Проверяем, является ли first_id известным кодом станции (включаем основные станции и подстанции)
     all_station_codes = set(config.STATION_NAMES.keys())
@@ -393,10 +406,10 @@ def get_phone_number_from_filename(filename):
         all_station_codes.update(sub_codes)
     
     if first_id in all_station_codes:
-        # Формат: fs_[station_code]_[phone_number]_...
+        # Формат: [station_code]_[phone_number]_...
         return second_id
     else:
-        # Формат: fs_[phone_number]_[station_code]_...
+        # Формат: [phone_number]_[station_code]_...
         return first_id
 
 
@@ -553,12 +566,19 @@ def gather_station_files(station_code, base_folder):
                 continue
                 
             file_parts = file.split("_")
-            if len(file_parts) < 3:
+            
+            # Поддержка старого формата с префиксом fs_
+            if file.startswith("fs_") and len(file_parts) >= 3:
+                first_part = file_parts[1]
+                second_part = file_parts[2]
+            elif len(file_parts) >= 2:
+                # Новый формат без префикса
+                first_part = file_parts[0]
+                second_part = file_parts[1]
+            else:
                 continue
                 
             # Проверяем оба возможных положения кода станции
-            first_part = file_parts[1]
-            second_part = file_parts[2]
             
             # Определяем, где находится код станции и проверяем, входит ли он в целевые коды
             file_station_code = None

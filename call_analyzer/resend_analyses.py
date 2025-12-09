@@ -55,8 +55,8 @@ def extract_info_from_filename(filename: str):
         date_str = f"{year}-{month}-{day}-00-00-00"
         return station_code, phone_number, date_str
     
-    # Формат: fs_phone_station_YYYY-MM-DD-HH-MM-SS
-    match = re.match(r'fs_(\+?\d+)_(\d+)_(\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2})', base_name)
+    # Формат: (fs_)?phone_station_YYYY-MM-DD-HH-MM-SS (с префиксом fs_ или без него)
+    match = re.match(r'(?:fs_)?(\+?\d+)_(\d+)_(\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2})', base_name)
     if match:
         phone_number = match.group(1)
         if not phone_number.startswith("+"):

@@ -222,13 +222,20 @@ def parse_filename(file_name: str):
             pass
 
     parts = file_name.split("_")
-    if len(parts) < 4:
+    
+    # Поддержка старого формата с префиксом fs_ (для обратной совместимости)
+    if file_name.startswith("fs_") and len(parts) >= 4:
+        # Старый формат: fs_[phone/station]_[station/phone]_[datetime]_...
+        first_id = parts[1]  # может быть либо телефон, либо станция
+        second_id = parts[2]  # может быть либо телефон, либо станция
+        date_str = parts[3]  # "2025-03-03-16-19-42"
+    elif len(parts) >= 3:
+        # Новый формат без префикса: [phone/station]_[station/phone]_[datetime]_...
+        first_id = parts[0]  # может быть либо телефон, либо станция
+        second_id = parts[1]  # может быть либо телефон, либо станция
+        date_str = parts[2]  # "2025-03-03-16-19-42"
+    else:
         return None, None, None  # невалидное имя файла
-
-    # parts[0] = "fs"
-    first_id = parts[1]  # может быть либо телефон, либо станция
-    second_id = parts[2]  # может быть либо телефон, либо станция
-    date_str = parts[3]  # "2025-03-03-16-19-42"
 
     station_code = None
     phone_number = None
@@ -238,11 +245,11 @@ def parse_filename(file_name: str):
     
     # Проверяем, является ли first_id известным кодом станции
     if first_id in config.STATION_NAMES or first_id in config.STATION_MAPPING:
-        # Формат: fs_[station_code]_[phone_number]_[datetime]_...
+        # Формат: [station_code]_[phone_number]_[datetime]_...
         station_code = first_id
         phone_number = second_id
     elif second_id in config.STATION_NAMES or second_id in config.STATION_MAPPING:
-        # Формат: fs_[phone_number]_[station_code]_[datetime]_...
+        # Формат: [phone_number]_[station_code]_[datetime]_...
         phone_number = first_id
         station_code = second_id
     else:
@@ -264,6 +271,27 @@ def parse_filename(file_name: str):
     # При желании нормализуем телефон (+7 -> 8)
     phone_number = normalize_phone_number(phone_number)
     return phone_number, station_code, call_time
+
+
+def is_valid_call_filename(filename: str) -> bool:
+    """
+    Проверяет, является ли файл валидным файлом звонка.
+    Поддерживает форматы: fs_*, [phone/station]_[station/phone]_[date]_..., external-*, вход_*
+    """
+    name_lower = filename.lower()
+    
+    # Проверяем известные префиксы
+    if (name_lower.startswith("fs_") or 
+        name_lower.startswith("external-") or 
+        name_lower.startswith("вход_")):
+        return True
+    
+    # Проверяем новый формат без префикса: [phone/station]_[station/phone]_[date]_...
+    # Используем паттерн из конфигурации
+    if re.match(config.FILENAME_PATTERNS['fs_pattern'], filename, re.IGNORECASE):
+        return True
+    
+    return False
 
 
 def normalize_phone_number(num: str) -> str:
@@ -306,26 +334,26 @@ def get_call_format(file_name: str):
         return 'direction_format'
     
     parts = file_name.split("_")
-    if len(parts) < 4:
+    if len(parts) < 3:
         return None
 
-    first_id = parts[1]  # может быть либо телефон, либо станция
-    second_id = parts[2]  # может быть либо телефон, либо станция
+    first_id = parts[0]  # может быть либо телефон, либо станция
+    second_id = parts[1]  # может быть либо телефон, либо станция
 
     # Проверяем, является ли first_id известным кодом станции
     if first_id in config.STATION_NAMES or first_id in config.STATION_MAPPING:
-        # Формат: fs_[station_code]_[phone_number]_[datetime]_... (исходящий)
+        # Формат: [station_code]_[phone_number]_[datetime]_... (исходящий)
         return 'outgoing'
     elif second_id in config.STATION_NAMES or second_id in config.STATION_MAPPING:
-        # Формат: fs_[phone_number]_[station_code]_[datetime]_... (входящий)
+        # Формат: [phone_number]_[station_code]_[datetime]_... (входящий)
         return 'incoming'
     else:
         # Fallback: используем логику по длине
         if len(first_id) == 4 and first_id.isdigit():
-            # Формат: fs_[station_code]_[phone_number]_[datetime]_... (исходящий)
+            # Формат: [station_code]_[phone_number]_[datetime]_... (исходящий)
             return 'outgoing'
         else:
-            # Формат: fs_[phone_number]_[station_code]_[datetime]_... (входящий)
+            # Формат: [phone_number]_[station_code]_[datetime]_... (входящий)
             return 'incoming'
 
 
@@ -349,11 +377,11 @@ def save_transcript_for_analytics(transcript_text: str, phone_number: str, stati
     timestamp = call_time.strftime("%Y-%m-%d-%H-%M-%S")
     
     if call_format == 'outgoing':
-        # Формат исходящих: fs_{station_code}_{phone_number}_{timestamp}
-        filename = f"fs_{station_code}_{phone_clean}_{timestamp}.txt"
+        # Формат исходящих: {station_code}_{phone_number}_{timestamp}
+        filename = f"{station_code}_{phone_clean}_{timestamp}.txt"
     else:
-        # Формат входящих: fs_{phone_number}_{station_code}_{timestamp}
-        filename = f"fs_{phone_clean}_{station_code}_{timestamp}.txt"
+        # Формат входящих: {phone_number}_{station_code}_{timestamp}
+        filename = f"{phone_clean}_{station_code}_{timestamp}.txt"
     
     result_file = transcript_dir / filename
 

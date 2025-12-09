@@ -338,7 +338,8 @@ def analyze_files(period_start: datetime, period_end: datetime, base_folder=None
             pre_dt = None
             
             # Парсим имя файла для проверки соответствия tg_bw_calls
-            match_fs = re.match(r'fs_(\+?\d+)_\d{3,4}_(\d{4}-\d{2}-\d{2})-(\d{2}-\d{2}-\d{2})', base_name)
+            # Поддержка формата с префиксом fs_ и без него
+            match_fs = re.match(r'(?:fs_)?(\+?\d+)_\d{3,4}_(\d{4}-\d{2}-\d{2})-(\d{2}-\d{2}-\d{2})', base_name)
             if match_fs:
                 pre_phone = match_fs.group(1).lstrip('+')
                 pre_dt_str = f"{match_fs.group(2)} {match_fs.group(3).replace('-', ':')}"
@@ -636,8 +637,8 @@ def create_excel_report(transcriptions_folder, output_file_path, telegram_messag
 
             phone_number = None
             date_time_obj = None
-            # Поддержка исходного формата fs_...
-            match_fs = re.match(r'fs_(\+?\d+)_\d{3,4}_(\d{4}-\d{2}-\d{2})-(\d{2}-\d{2}-\d{2})', base_name)
+            # Поддержка формата с префиксом fs_ и без него
+            match_fs = re.match(r'(?:fs_)?(\+?\d+)_\d{3,4}_(\d{4}-\d{2}-\d{2})-(\d{2}-\d{2}-\d{2})', base_name)
             if match_fs:
                 phone_number = match_fs.group(1).lstrip('+')
                 date_str = match_fs.group(2)
@@ -1096,8 +1097,8 @@ def compute_realtime_summary(
             phone_number = None
             date_time_obj = None
 
-            # fs_ формат
-            match_fs = re.match(r'fs_(\+?\d+)_\d{3,4}_(\d{4}-\d{2}-\d{2})-(\d{2}-\d{2}-\d{2})', base_name)
+            # Формат с префиксом fs_ и без него
+            match_fs = re.match(r'(?:fs_)?(\+?\d+)_\d{3,4}_(\d{4}-\d{2}-\d{2})-(\d{2}-\d{2}-\d{2})', base_name)
             if match_fs:
                 phone_number = match_fs.group(1).lstrip('+')
                 date_str = match_fs.group(2)
@@ -1119,7 +1120,7 @@ def compute_realtime_summary(
                 except Exception:
                     date_time_obj = None
 
-            # Если станция не была определена из fs_, попытаемся достать её из parse_filename
+            # Если станция не была определена, попытаемся достать её из parse_filename
             if station_code == 'Неизвестно':
                 try:
                     ph2, st2, dt2 = parse_filename(base_name)

@@ -105,11 +105,8 @@ def main():
                 name_lower = file_path.name.lower()
                 # Проверяем те же условия, что и в CallHandler
                 # Файлы формата out-* пропускаются
-                if not (
-                    name_lower.startswith("fs_") or 
-                    name_lower.startswith("external-") or 
-                    name_lower.startswith("вход_")
-                ):
+                from call_analyzer.utils import is_valid_call_filename
+                if not is_valid_call_filename(file_path.name):
                     continue
                 
                 # Пропускаем файлы с хвостами .wav-out. и .wav-in. для external-*
