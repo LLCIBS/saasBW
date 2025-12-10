@@ -13,11 +13,12 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 
 # Глобальный словарь для хранения потоков синхронизации
+# Ключ: (user_id, connection_id) для полной изоляции между пользователями
 _sync_threads = {}
 _sync_lock = threading.Lock()
 
 
-def sync_ftp_connection(connection_id: int):
+def sync_ftp_connection(connection_id: int, user_id: Optional[int] = None):
     """
     Синхронизирует файлы с FTP подключением
     
@@ -65,6 +66,9 @@ def sync_ftp_connection(connection_id: int):
                 if not row.is_active:
                     logger.info(f"FTP подключение {row.name} неактивно, пропускаем синхронизацию")
                     return
+                # Если user_id не был явно передан (ручной вызов), берем из строки
+                if user_id is None:
+                    user_id = row.user_id
 
                 start_from = row.start_from
                 last_processed_mtime = row.last_processed_mtime
@@ -242,6 +246,7 @@ def sync_ftp_connection(connection_id: int):
         # даже если объект row станет недоступен
         connection_name = row.name
         connection_local_path = user_base_path_str
+        connection_key = (user_id, connection_id)
         
         last_db_check_time = time.time()
         
@@ -250,8 +255,8 @@ def sync_ftp_connection(connection_id: int):
         for file_info in remote_files:
             # 1. Быстрая проверка авто-синхронизации (in-memory)
             current_thread_name = threading.current_thread().name
-            if current_thread_name == f"FtpSync-{connection_id}":
-                if connection_id not in _sync_threads:
+            if current_thread_name == f"FtpSync-{user_id}-{connection_id}":
+                if connection_key not in _sync_threads:
                     logger.info(f"Авто-синхронизация FTP {connection_id} прервана пользователем (local check)")
                     return
             
@@ -459,19 +464,19 @@ def sync_ftp_connection(connection_id: int):
                 error_engine.dispose()
 
 
-def _sync_worker(connection_id: int, sync_interval: int):
+def _sync_worker(user_id: int, connection_id: int, sync_interval: int):
     """
     Рабочий поток для периодической синхронизации FTP подключения
     """
-    logger.info(f"_sync_worker: Запущен поток синхронизации для FTP {connection_id} (интервал {sync_interval} сек)")
+    logger.info(f"_sync_worker: Запущен поток синхронизации для FTP {connection_id} пользователя {user_id} (интервал {sync_interval} сек)")
     
     consecutive_errors = 0
     max_consecutive_errors = 5  # Максимум 5 ошибок подряд перед остановкой
     
     while True:
         # Проверяем, не остановили ли нас
-        if connection_id not in _sync_threads:
-            logger.info(f"Поток синхронизации FTP {connection_id} остановлен (удален из активных)")
+        if (user_id, connection_id) not in _sync_threads:
+            logger.info(f"Поток синхронизации FTP {connection_id} пользователя {user_id} остановлен (удален из активных)")
             break
 
         engine = None
@@ -498,7 +503,7 @@ def _sync_worker(connection_id: int, sync_interval: int):
             engine.dispose()
             engine = None
             
-            sync_ftp_connection(connection_id)
+            sync_ftp_connection(connection_id, user_id=user_id)
             
             # Сбрасываем счетчик ошибок при успешной синхронизации
             consecutive_errors = 0
@@ -517,8 +522,8 @@ def _sync_worker(connection_id: int, sync_interval: int):
                 logger.error(f"Поток синхронизации FTP {connection_id} остановлен из-за {consecutive_errors} ошибок подряд")
                 # Удаляем поток из активных, чтобы он не перезапустился автоматически
                 with _sync_lock:
-                    if connection_id in _sync_threads:
-                        del _sync_threads[connection_id]
+                    if (user_id, connection_id) in _sync_threads:
+                        del _sync_threads[(user_id, connection_id)]
                 break
             
             # Экспоненциальная задержка при ошибках (60, 120, 240, 480 секунд)
@@ -534,11 +539,13 @@ def _sync_worker(connection_id: int, sync_interval: int):
                     pass
 
 
-def start_ftp_sync(connection_id: int):
-    logger.info(f"start_ftp_sync: Запрос на запуск ID={connection_id}")
+def start_ftp_sync(connection_id: int, user_id: Optional[int] = None):
+    logger.info(f"start_ftp_sync: Запрос на запуск ID={connection_id}, user_id={user_id}")
     with _sync_lock:
-        if connection_id in _sync_threads:
-            logger.warning(f"start_ftp_sync: Синхронизация для FTP {connection_id} уже запущена (в списке активных)")
+        # Если user_id не передан, определим его ниже (после запроса в БД)
+        key_to_check = None if user_id is None else (user_id, connection_id)
+        if key_to_check and key_to_check in _sync_threads:
+            logger.warning(f"start_ftp_sync: Синхронизация для FTP {connection_id} пользователя {user_id} уже запущена (в списке активных)")
             return
         
         engine = None
@@ -550,7 +557,7 @@ def start_ftp_sync(connection_id: int):
             
             with engine.connect() as connection:
                 sql = text("""
-                    SELECT id, name, is_active, sync_interval
+                    SELECT id, user_id, name, is_active, sync_interval
                     FROM ftp_connections
                     WHERE id = :conn_id
                 """)
@@ -565,6 +572,12 @@ def start_ftp_sync(connection_id: int):
                     logger.info(f"start_ftp_sync: FTP подключение {row.name} неактивно в БД, отмена запуска")
                     return
                 
+                resolved_user_id = user_id or row.user_id
+                key_to_check = (resolved_user_id, connection_id)
+                if key_to_check in _sync_threads:
+                    logger.warning(f"start_ftp_sync: Синхронизация уже активна для FTP {connection_id} пользователя {resolved_user_id}")
+                    return
+                
                 sync_interval = row.sync_interval or 300
             
             # Закрываем engine перед запуском потока
@@ -573,12 +586,12 @@ def start_ftp_sync(connection_id: int):
             
             thread = threading.Thread(
                 target=_sync_worker,
-                args=(connection_id, sync_interval),
+                args=(resolved_user_id, connection_id, sync_interval),
                 daemon=True,
-                name=f"FtpSync-{connection_id}"
+                name=f"FtpSync-{resolved_user_id}-{connection_id}"
             )
             thread.start()
-            _sync_threads[connection_id] = thread
+            _sync_threads[(resolved_user_id, connection_id)] = thread
             
             logger.info(f"start_ftp_sync: Поток запущен и добавлен в реестр для FTP {connection_id}")
             
@@ -606,15 +619,15 @@ def _monitor_and_restart_threads():
             # Сначала собираем список мертвых потоков (с блокировкой)
             dead_threads = []
             with _sync_lock:
-                for conn_id, thread in list(_sync_threads.items()):
+                for (user_id, conn_id), thread in list(_sync_threads.items()):
                     if not thread.is_alive():
-                        logger.warning(f"Обнаружен мертвый поток синхронизации для FTP {conn_id}, планируем перезапуск")
-                        dead_threads.append(conn_id)
+                        logger.warning(f"Обнаружен мертвый поток синхронизации для FTP {conn_id} пользователя {user_id}, планируем перезапуск")
+                        dead_threads.append((user_id, conn_id))
                         # Удаляем из словаря перед перезапуском
-                        del _sync_threads[conn_id]
+                        del _sync_threads[(user_id, conn_id)]
             
             # Перезапускаем мертвые потоки (без блокировки, чтобы избежать deadlock)
-            for conn_id in dead_threads:
+            for user_id, conn_id in dead_threads:
                 # Проверяем, что подключение все еще активно
                 engine = None
                 try:
@@ -625,7 +638,7 @@ def _monitor_and_restart_threads():
                     
                     with engine.connect() as connection:
                         sql = text("""
-                            SELECT id, name, is_active, sync_interval
+                            SELECT id, user_id, name, is_active, sync_interval
                             FROM ftp_connections
                             WHERE id = :conn_id
                         """)
@@ -633,8 +646,8 @@ def _monitor_and_restart_threads():
                         row = result.fetchone()
                         
                         if row and row.is_active:
-                            logger.info(f"Перезапускаем поток синхронизации для FTP {conn_id} ({row.name})")
-                            start_ftp_sync(conn_id)
+                            logger.info(f"Перезапускаем поток синхронизации для FTP {conn_id} пользователя {row.user_id} ({row.name})")
+                            start_ftp_sync(conn_id, user_id=row.user_id)
                         else:
                             logger.info(f"FTP подключение {conn_id} неактивно, не перезапускаем")
                 except Exception as e:
@@ -651,12 +664,21 @@ def _monitor_and_restart_threads():
             time.sleep(60)
 
 
-def stop_ftp_sync(connection_id: int):
+def stop_ftp_sync(connection_id: int, user_id: Optional[int] = None):
+    """
+    Останавливает синхронизацию для конкретного подключения.
+    Если user_id не указан — останавливает все потоки с таким connection_id.
+    """
     with _sync_lock:
-        if connection_id not in _sync_threads:
-            return
-        del _sync_threads[connection_id]
-        logger.info(f"Остановлена синхронизация для FTP подключения {connection_id}")
+        if user_id is None:
+            # Удаляем все потоки с данным connection_id (safety fallback)
+            keys_to_remove = [(u, cid) for (u, cid) in _sync_threads.keys() if cid == connection_id]
+        else:
+            keys_to_remove = [(user_id, connection_id)] if (user_id, connection_id) in _sync_threads else []
+        
+        for key in keys_to_remove:
+            _sync_threads.pop(key, None)
+            logger.info(f"Остановлена синхронизация для FTP подключения {key[1]} пользователя {key[0]}")
 
 
 def start_all_active_ftp_syncs():
@@ -683,11 +705,12 @@ def start_all_active_ftp_syncs():
             
             seen = set()
             for row in result:
-                if not row.conn_id or row.conn_id in seen:
+                key = (row.user_id, row.conn_id)
+                if not row.conn_id or key in seen:
                     continue
-                seen.add(row.conn_id)
+                seen.add(key)
                 try:
-                    start_ftp_sync(row.conn_id)
+                    start_ftp_sync(row.conn_id, user_id=row.user_id)
                     started_count += 1
                     logger.info(f"Запущена FTP синхронизация для пользователя {row.user_id}: {row.name}")
                 except Exception as e:
@@ -720,7 +743,7 @@ def start_all_active_ftp_syncs():
 def stop_all_ftp_syncs():
     """Останавливает все FTP синхронизации"""
     with _sync_lock:
-        connection_ids = list(_sync_threads.keys())
-        for conn_id in connection_ids:
-            stop_ftp_sync(conn_id)
+        keys = list(_sync_threads.keys())
+        for user_id, conn_id in keys:
+            stop_ftp_sync(conn_id, user_id=user_id)
         logger.info("Остановлены все FTP синхронизации")
