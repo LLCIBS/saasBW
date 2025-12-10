@@ -298,14 +298,7 @@ def main():
     setup_logging()
     engine = get_engine()
     processes = {}
-    
-    # Запускаем FTP синхронизации для всех активных подключений
-    try:
-        from call_analyzer.ftp_sync_manager import start_all_active_ftp_syncs
-        start_all_active_ftp_syncs()
-    except Exception as e:
-        LOGGER.warning(f"Не удалось запустить FTP синхронизации: {e}")
-    
+
     try:
         while True:
             profiles = load_active_profiles(engine)

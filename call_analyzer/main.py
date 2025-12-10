@@ -147,10 +147,16 @@ def main():
         # start_ftp_sync() защищен от дубликатов - если поток уже запущен, просто вернется
         try:
             from call_analyzer.ftp_sync_manager import start_all_active_ftp_syncs
-            logger.info("[MAIN] Запуск FTP синхронизации...")
-            start_all_active_ftp_syncs()
+            logger.info("[MAIN] ?????? FTP ?????????????...")
+            profile_user_id = getattr(profile_config, "PROFILE_USER_ID", None)
+            try:
+                ftp_user_id = int(profile_user_id) if profile_user_id else None
+            except (TypeError, ValueError):
+                ftp_user_id = None
+            start_all_active_ftp_syncs(user_id=ftp_user_id)
         except Exception as e:
-            logger.error(f"[MAIN] Ошибка запуска FTP синхронизации: {e}")
+            logger.error(f"[MAIN] ?????? ??????? FTP ?????????????: {e}")
+
 
         # 3. Основной цикл
         while True:

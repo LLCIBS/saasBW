@@ -681,8 +681,11 @@ def stop_ftp_sync(connection_id: int, user_id: Optional[int] = None):
             logger.info(f"Остановлена синхронизация для FTP подключения {key[1]} пользователя {key[0]}")
 
 
-def start_all_active_ftp_syncs():
-    """Запускает синхронизацию для FTP подключений, выбранных пользователями в конфигурации"""
+def start_all_active_ftp_syncs(user_id: Optional[int] = None):
+    """????????? ????????????? ??? FTP ???????????, ????????? ?????????????? ? ????????????.
+    
+    Args:
+        user_id: ????????????, ??? ???? ????????? FTP. ???? None, ??????????? ?????? ???."""
     engine = None
     try:
         from config.settings import get_config
@@ -694,14 +697,19 @@ def start_all_active_ftp_syncs():
         started_count = 0
         
         with engine.connect() as connection:
-            sql = text("""
+            params = {}
+            user_filter = ''
+            if user_id is not None:
+                params['filter_user_id'] = user_id
+                user_filter = ' AND uc.user_id = :filter_user_id'
+            sql = text(f"""
                 SELECT uc.user_id, uc.ftp_connection_id, fc.id as conn_id, fc.name
                 FROM user_config uc
                 JOIN users u ON u.id = uc.user_id AND u.is_active = TRUE
                 JOIN ftp_connections fc ON fc.id = uc.ftp_connection_id AND fc.user_id = uc.user_id
-                WHERE uc.source_type = 'ftp' AND fc.is_active = TRUE
+                WHERE uc.source_type = 'ftp' AND fc.is_active = TRUE{user_filter}
             """)
-            result = connection.execute(sql)
+            result = connection.execute(sql, params)
             
             seen = set()
             for row in result:
@@ -716,7 +724,8 @@ def start_all_active_ftp_syncs():
                 except Exception as e:
                     logger.error(f"Ошибка запуска синхронизации для FTP {row.conn_id}: {e}")
         
-        logger.info(f"Запущена синхронизация для {started_count} FTP подключений (выбранных пользователями)")
+        scope_msg = f' ??? ???????????? {user_id}' if user_id is not None else ''
+        logger.info(f"???????? ????????????? ??? {started_count} FTP ??????????? (????????? ??????????????){scope_msg}")
         
         # Запускаем мониторинг потоков (только один раз)
         if not hasattr(start_all_active_ftp_syncs, '_monitor_started'):
