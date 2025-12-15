@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Настройка чек-листов - Call Analyzer</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        .sidebar {
+            min-height: 100vh;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        .sidebar .nav-link {
+            color: rgba(255, 255, 255, 0.8);
+            padding: 12px 20px;
+            border-radius: 8px;
+            margin: 2px 0;
+            transition: all 0.3s;
+        }
+        .sidebar .nav-link:hover {
+            color: white;
+            background: rgba(255, 255, 255, 0.1);
+        }
+        .sidebar .nav-link.active {
+            color: white;
+            background: rgba(255, 255, 255, 0.2);
+        }
+        .main-content {
+            background-color: #f8f9fa;
+            min-height: 100vh;
+        }
+        .stub-card {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            margin-top: 20px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            text-align: center;
+        }
+        .stub-icon {
+            font-size: 48px;
+            color: #667eea;
+            margin-bottom: 16px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container-fluid">
+        <div class="row">
+            <!-- Боковая панель -->
+            {% include 'partials/sidebar.html' %}
+
+            <!-- Основной контент -->
+            <main class="col-md-9 col-lg-10 main-content">
+                <div class="p-4">
+                    <div class="d-flex justify-content-between align-items-center mb-4">
+                        <div>
+                            <h1 class="h3 mb-1">Настройка чек-листов</h1>
+                            <p class="text-muted mb-0">Загрузите файл и прогоните его через текущие настройки для быстрой проверки промптов.</p>
+                        </div>
+                    </div>
+
+                    <div class="row g-4">
+                        <div class="col-lg-6">
+                            <div class="stub-card text-start">
+                                <form id="checklistForm">
+                                    <div class="mb-3">
+                                        <label class="form-label fw-semibold">Файл звонка</label>
+                                        <input class="form-control" type="file" id="audioFile" name="file" accept=".mp3,.wav" required>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label class="form-label fw-semibold">Станция (опционально)</label>
+                                        <select class="form-select" id="stationSelect">
+                                            <option value="">Авто (из имени файла)</option>
+                                        </select>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label class="form-label fw-semibold">Файл чек-листа</label>
+                                        <div class="input-group">
+                                            <input type="text" class="form-control" id="scriptPromptPath" readonly>
+                                            <span class="input-group-text"><i class="fas fa-file-alt"></i></span>
+                                        </div>
+                                        <div class="form-text">Используется текущий файл из профиля. При необходимости можно указать свой путь.</div>
+                                        <input type="text" class="form-control mt-2" id="scriptPromptOverride" placeholder="Путь к другому script_prompt_8.yaml (опционально)">
+                                    </div>
+                                    <div class="d-flex align-items-center gap-3">
+                                        <button type="submit" class="btn btn-save" id="runTestBtn">
+                                            <i class="fas fa-play me-2"></i>Тестировать
+                                        </button>
+                                        <div class="text-muted" id="statusText"></div>
+                                    </div>
+                                </form>
+                            </div>
+
+                            <div id="resultsCard" class="stub-card text-start" style="display:none;">
+                                <div class="d-flex align-items-center mb-3">
+                                    <div class="stub-icon me-3">
+                                        <i class="fas fa-check-circle text-success"></i>
+                                    </div>
+                                    <div>
+                                        <h5 class="mb-0">Результаты теста</h5>
+                                        <small class="text-muted" id="resultMessage"></small>
+                                    </div>
+                                </div>
+                                <div id="resultLinks"></div>
+                            </div>
+                        </div>
+
+                        <div class="col-lg-6">
+                            <div class="stub-card text-start" id="checklistCard" style="display:none;">
+                                <h5 class="mb-3">Разбор по чек-листу</h5>
+                                <div class="mb-2 text-muted" id="checklistCaption"></div>
+                                <pre id="checklistDetails" style="white-space:pre-wrap; font-family: 'Courier New', monospace; font-size: 0.9rem; margin:0;"></pre>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <script>
+        const stationSelect = document.getElementById('stationSelect');
+        const scriptPromptPath = document.getElementById('scriptPromptPath');
+        const scriptPromptOverride = document.getElementById('scriptPromptOverride');
+        const statusText = document.getElementById('statusText');
+        const resultsCard = document.getElementById('resultsCard');
+        const resultMessage = document.getElementById('resultMessage');
+        const resultLinks = document.getElementById('resultLinks');
+        const formEl = document.getElementById('checklistForm');
+        const checklistCard = document.getElementById('checklistCard');
+        const checklistCaption = document.getElementById('checklistCaption');
+        const checklistDetails = document.getElementById('checklistDetails');
+
+        function setHtmlWithNewlines(el, text) {
+            if (!text) {
+                el.innerHTML = '';
+                return;
+            }
+            // Поддерживаем HTML-теги из Telegram (`<b>`, и т.п.) и переносы строк
+            el.innerHTML = text.replace(/\n/g, '<br>');
+        }
+
+        async function loadMeta() {
+            try {
+                const resp = await fetch('/api/checklists/meta');
+                const data = await resp.json();
+                (data.stations || []).forEach(st => {
+                    const opt = document.createElement('option');
+                    opt.value = st.code;
+                    opt.textContent = `${st.code} — ${st.name}`;
+                    stationSelect.appendChild(opt);
+                });
+                if (data.script_prompt_file) {
+                    scriptPromptPath.value = data.script_prompt_file;
+                }
+            } catch (e) {
+                statusText.textContent = 'Не удалось загрузить настройки.';
+            }
+        }
+
+        formEl.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            resultsCard.style.display = 'none';
+            statusText.textContent = 'Отправка файла...';
+            const file = document.getElementById('audioFile').files[0];
+            if (!file) {
+                statusText.textContent = 'Выберите файл.';
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('file', file);
+            if (stationSelect.value) {
+                formData.append('station_code', stationSelect.value);
+            }
+            if (scriptPromptOverride.value.trim()) {
+                formData.append('script_prompt_file', scriptPromptOverride.value.trim());
+            }
+
+            try {
+                const resp = await fetch('/api/checklists/test', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await resp.json();
+                if (!resp.ok || !data.success) {
+                    statusText.textContent = data.message || 'Ошибка при тестировании.';
+                    return;
+                }
+                statusText.textContent = '';
+                resultMessage.textContent = data.message || 'Готово.';
+                resultLinks.innerHTML = '';
+                const paths = data.paths || {};
+                Object.entries(paths).forEach(([key, val]) => {
+                    if (!val) return;
+                    const div = document.createElement('div');
+                    div.className = 'mb-2';
+                    div.innerHTML = `<strong>${key}:</strong> <code>${val}</code>`;
+                    resultLinks.appendChild(div);
+                });
+                resultsCard.style.display = 'block';
+
+                // Разбор по чек-листу (как в Telegram)
+                const checklist = data.checklist || null;
+                if (checklist && (checklist.qa_text || checklist.caption || checklist.overall)) {
+                    setHtmlWithNewlines(checklistCaption, checklist.caption || '');
+                    let details = '';
+                    // В caption уже встроен список пунктов (как в Telegram).
+                    // Чтобы не дублировать чек-лист, ниже показываем только итоговый вывод.
+                    if (checklist.overall) {
+                        details = checklist.overall.trim();
+                    } else if (checklist.qa_text) {
+                        // fallback: если по какой-то причине overall нет, покажем qa_text
+                        details = checklist.qa_text.trim();
+                    }
+                    setHtmlWithNewlines(checklistDetails, details);
+                    checklistCard.style.display = 'block';
+                } else {
+                    checklistCaption.innerHTML = '';
+                    checklistDetails.innerHTML = '';
+                    checklistCard.style.display = 'none';
+                }
+            } catch (err) {
+                statusText.textContent = 'Сбой при отправке.';
+            }
+        });
+
+        document.addEventListener('DOMContentLoaded', loadMeta);
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
+

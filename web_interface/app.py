@@ -67,6 +67,41 @@ except ImportError:
     def request_reload(user_id: int):
         pass
 
+try:
+    from call_analyzer.call_handler import (
+        thebai_analyze,
+        get_station_prompts,
+        load_additional_vocab,
+        save_transcript_analysis,
+        parse_filename,
+    )
+    from call_analyzer.internal_transcription import transcribe_audio_with_internal_service
+    from call_analyzer.exental_alert import run_exental_alert
+except ImportError:
+    thebai_analyze = None
+    get_station_prompts = None
+    load_additional_vocab = None
+    save_transcript_analysis = None
+    parse_filename = None
+    transcribe_audio_with_internal_service = None
+    run_exental_alert = None
+
+
+def _dedupe_checklist_qa_text(text_value: str) -> str:
+    """
+    В некоторых ответах LLM чек-лист (нумерованный список 1..N) дублируется дважды.
+    Удаляем второй блок, обрезая всё, что начинается со второго вхождения строки '1. ...'.
+    """
+    if not text_value:
+        return text_value
+    try:
+        matches = list(re.finditer(r'(?m)^\s*1\.\s', text_value))
+        if len(matches) >= 2:
+            return text_value[:matches[1].start()].rstrip()
+    except Exception:
+        pass
+    return text_value
+
 # --- Нормализованный доступ к конфигурации пользователя ---
 def _get_or_create_user_config_record(actual_user):
     """Возвращает запись user_config, создаёт при необходимости."""
@@ -2301,6 +2336,168 @@ def api_regenerate_anchor_prompt():
 def vocabulary_page():
     """Страница управления словарем"""
     return render_template('vocabulary.html', active_page='vocabulary')
+
+@app.route('/checklists')
+@login_required
+def checklists_page():
+    """Страница настройки чек-листов"""
+    return render_template('checklists.html', active_page='checklists')
+
+@app.route('/api/checklists/meta')
+@login_required
+def api_checklists_meta():
+    """Возвращает данные для страницы тестирования чек-листов."""
+    runtime_cfg = build_user_runtime_config()
+    stations_dict = runtime_cfg.get('stations', {}) or {}
+    stations = [{'code': code, 'name': name} for code, name in stations_dict.items()]
+    script_prompt_path = (
+        runtime_cfg.get('paths', {}).get('script_prompt_file')
+        or str(getattr(project_config, 'SCRIPT_PROMPT_8_PATH', ''))
+    )
+    return jsonify({
+        'script_prompt_file': script_prompt_path,
+        'stations': stations
+    })
+
+@app.route('/api/checklists/test', methods=['POST'])
+@login_required
+def api_checklists_test():
+    """Прогон загруженного файла через транскрибацию и чек-лист без Telegram уведомлений."""
+    if not transcribe_audio_with_internal_service or not thebai_analyze or not save_transcript_analysis:
+        return jsonify({'success': False, 'message': 'Модуль обработки недоступен на сервере.'}), 500
+
+    upload = request.files.get('file')
+    if not upload or not upload.filename:
+        return jsonify({'success': False, 'message': 'Файл не выбран.'}), 400
+
+    station_code = (request.form.get('station_code') or '').strip()
+    script_prompt_override = (request.form.get('script_prompt_file') or '').strip()
+
+    runtime_cfg = build_user_runtime_config()
+    # Локально отключаем Telegram, чтобы тесты чек-листов не слали уведомления
+    runtime_cfg = deepcopy(runtime_cfg)
+    api_keys = runtime_cfg.get('api_keys') or {}
+    api_keys['telegram_bot_token'] = ''
+    runtime_cfg['api_keys'] = api_keys
+    telegram_cfg = runtime_cfg.get('telegram') or {}
+    telegram_cfg['alert_chat_id'] = ''
+    telegram_cfg['tg_channel_nizh'] = ''
+    telegram_cfg['tg_channel_other'] = ''
+    runtime_cfg['telegram'] = telegram_cfg
+    if script_prompt_override:
+        runtime_cfg.setdefault('paths', {})
+        runtime_cfg['paths']['script_prompt_file'] = script_prompt_override
+
+    try:
+        with legacy_config_override(runtime_cfg):
+            # Куда складываем тестовые файлы и результаты
+            paths_cfg = runtime_cfg.get('paths', {}) or {}
+            base_records = paths_cfg.get('base_records_path') or getattr(project_config, 'BASE_RECORDS_PATH', Path.cwd())
+            base_records = Path(base_records)
+
+            # Отдельная папка testscalls в корне профиля пользователя, чтобы не мешать боевой обработке
+            today_subdir = datetime.now().strftime("%Y/%m/%d")
+            test_root = base_records / "testscalls" / today_subdir
+            save_dir = test_root / datetime.now().strftime("%H%M%S_%f")
+            save_dir.mkdir(parents=True, exist_ok=True)
+
+            safe_name = secure_filename(upload.filename)
+            if not safe_name:
+                safe_name = f"test_{int(time.time())}.wav"
+            saved_path = save_dir / safe_name
+            upload.save(saved_path)
+
+            # Метаданные из имени файла
+            phone_number = ''
+            call_time = datetime.now()
+            parsed_station = None
+            if parse_filename:
+                try:
+                    phone_number, parsed_station, parsed_dt = parse_filename(saved_path.name)
+                    if parsed_dt:
+                        call_time = parsed_dt
+                except Exception as exc:
+                    app.logger.warning("Не удалось распарсить имя файла для теста: %s", exc)
+
+            if not station_code:
+                station_code = parsed_station or 'test'
+
+            # Транскрипция
+            stereo_mode = bool((runtime_cfg.get('transcription') or {}).get('tbank_stereo_enabled', False))
+            additional_vocab = load_additional_vocab() if load_additional_vocab else []
+            transcript_text = transcribe_audio_with_internal_service(
+                saved_path,
+                stereo_mode=stereo_mode,
+                additional_vocab=additional_vocab,
+                timeout=int(os.getenv("CHECKLIST_TEST_TRANSCRIPTION_TIMEOUT", "120") or "120")
+            )
+            if not transcript_text:
+                return jsonify({'success': False, 'message': 'Не удалось получить транскрипт.'}), 500
+
+            # Анализ основным промптом
+            prompt_text = ''
+            try:
+                prompts = get_station_prompts() if get_station_prompts else {}
+                prompt_text = prompts.get(str(station_code)) or prompts.get('default') or ''
+            except Exception as exc:
+                app.logger.error("Не удалось получить промпт станции: %s", exc)
+
+            if not prompt_text:
+                prompt_text = "Проанализируй звонок и определи результат разговора."
+
+            analysis_text = thebai_analyze(transcript_text, prompt_text)
+
+            # Сохраняем транскрипцию и анализ в отдельную тестовую папку,
+            # не используя стандартный путь transcriptions, чтобы не мешать рабочим данным
+            test_trans_dir = save_dir / "transcriptions"
+            test_trans_dir.mkdir(parents=True, exist_ok=True)
+            transcript_file = test_trans_dir / f"{saved_path.stem}.txt"
+            try:
+                with transcript_file.open("w", encoding="utf-8") as f:
+                    f.write("Диалог:\n\n")
+                    f.write(transcript_text)
+                    f.write("\n\nАнализ:\n\n")
+                    f.write(analysis_text)
+            except Exception as exc:
+                app.logger.error("Не удалось сохранить тестовый файл транскрипции: %s", exc)
+                return jsonify({'success': False, 'message': 'Не удалось сохранить результаты теста.'}), 500
+
+            checklist_analysis_path = None
+            checklist_payload = None
+            try:
+                result = run_exental_alert(
+                    str(transcript_file),
+                    station_code=str(station_code),
+                    phone_number=phone_number or '',
+                    date_str=call_time.strftime("%Y-%m-%d %H:%M:%S"),
+                    operator_station_code=station_code
+                )
+                if isinstance(result, (list, tuple)) and len(result) == 4:
+                    caption, analysis_full, qa_text, overall = result
+                    checklist_payload = {
+                        'caption': caption,
+                        'qa_text': _dedupe_checklist_qa_text(qa_text),
+                        'overall': overall
+                    }
+                # Файл чек-листа создаётся рядом в script_8/
+                checklist_analysis_path = Path(transcript_file).parent / "script_8" / f"{Path(transcript_file).stem}_analysis.txt"
+            except Exception as exc:
+                app.logger.error("Ошибка при разборе чек-листа: %s", exc, exc_info=True)
+
+            return jsonify({
+                'success': True,
+                'message': 'Файл обработан. Результаты сохранены в тестовую папку.',
+                'paths': {
+                    'audio': str(saved_path),
+                    'transcript': str(transcript_file),
+                    'analysis': str(transcript_file),
+                    'checklist': str(checklist_analysis_path) if checklist_analysis_path else None
+                },
+                'checklist': checklist_payload
+            })
+    except Exception as exc:
+        app.logger.error("Сбой при тестировании чек-листа: %s", exc, exc_info=True)
+        return jsonify({'success': False, 'message': f'Ошибка тестирования: {exc}'}), 500
 
 @app.route('/api/vocabulary')
 @login_required

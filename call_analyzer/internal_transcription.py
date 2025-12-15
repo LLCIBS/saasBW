@@ -7,7 +7,7 @@ import config
 
 logger = logging.getLogger(__name__)
 
-def transcribe_audio_with_internal_service(file_path, stereo_mode=None, additional_vocab=None):
+def transcribe_audio_with_internal_service(file_path, stereo_mode=None, additional_vocab=None, timeout=600):
     """
     Транскрибирует аудио файл используя внутренний сервис Whisper/PyAnnote.
     Возвращает отформатированный текст транскрипции или None в случае ошибки.
@@ -17,6 +17,7 @@ def transcribe_audio_with_internal_service(file_path, stereo_mode=None, addition
         stereo_mode: Если True - стерео режим (2 спикера, диаризация по каналам),
                      Если False - моно режим. Если None - берется из config.TBANK_STEREO_ENABLED
         additional_vocab: Список дополнительных слов для улучшения распознавания (опционально)
+        timeout: Таймаут запроса в секундах (по умолчанию 600)
     """
     if not os.path.exists(file_path):
         logger.error(f"Файл '{file_path}' не найден.")
@@ -49,8 +50,9 @@ def transcribe_audio_with_internal_service(file_path, stereo_mode=None, addition
             
             logger.info(f"Отправка файла на сервер (режим: {mode_str})...")
             
-            # timeout=600 (10 минут) - достаточно для большинства файлов
-            response = requests.post(api_url, files=files, data=data, timeout=600) 
+            # timeout по умолчанию 600 (10 минут) - достаточно для большинства файлов.
+            # Для тестов чек-листов можно передать меньшее значение.
+            response = requests.post(api_url, files=files, data=data, timeout=timeout)
 
         if response.status_code == 200:
             result = response.json()

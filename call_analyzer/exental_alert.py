@@ -322,11 +322,13 @@ prompt: |
 
     analysis_path = save_analysis(txt_path, dialog_text, new_analysis, qa_text, overall)
     logger.info(f"[exental_alert] Итоговый анализ сохранён: {analysis_path}")
-
+    
     mp3_path = guess_mp3_path(txt_path)
     send_exental_results(station_code, caption, overall, mp3_path, analysis_path)
-
+    
     logger.info("[exental_alert] Завершено.")
+    # Возвращаем данные разбора для использования в веб-интерфейсе (страница тестирования чек-листов)
+    return caption, raw_analysis, qa_text, overall
 
 
 def extract_dialog_from_txt(txt_path: str) -> str:
