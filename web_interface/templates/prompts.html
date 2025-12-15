@@ -627,6 +627,78 @@
             renderStations();
         }
 
+        async function regenerateChecklistItemPrompt(itemIndex) {
+            const conditionInput = document.getElementById(`checklist-condition-${itemIndex}`);
+            const regenerateBtn = document.getElementById(`regenerate-checklist-btn-${itemIndex}`);
+            const promptInput = document.getElementById(`prompt_${itemIndex}`);
+
+            if (!conditionInput || !regenerateBtn || !promptInput) {
+                showAlert('Ошибка: не найдены элементы интерфейса', 'danger');
+                return;
+            }
+
+            const additionalCondition = (conditionInput.value || '').trim();
+            if (!additionalCondition) {
+                showAlert('Введите дополнительное условие или требование', 'warning');
+                conditionInput.focus();
+                return;
+            }
+
+            const currentPrompt = (promptInput.value || '').trim();
+            if (!currentPrompt) {
+                showAlert('Текущий промпт пункта не может быть пустым. Сначала создайте базовый промпт.', 'warning');
+                return;
+            }
+
+            // Сохраняем оригинальное содержимое кнопки
+            const originalContent = regenerateBtn.innerHTML;
+            regenerateBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>AI...';
+            regenerateBtn.disabled = true;
+
+            try {
+                const response = await fetch('/api/regenerate-checklist-item-prompt', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        current_prompt: currentPrompt,
+                        additional_condition: additionalCondition,
+                        item_title: scriptPromptData.checklist[itemIndex]?.title || ''
+                    })
+                });
+
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    console.error('Ошибка сервера:', response.status, errorText);
+                    showAlert(`Ошибка сервера (${response.status})`, 'danger');
+                    return;
+                }
+
+                const result = await response.json();
+
+                if (result.success && result.prompt) {
+                    // Обновляем промпт в input
+                    promptInput.value = result.prompt;
+                    // Обновляем данные в памяти
+                    updateChecklistPrompt(itemIndex, result.prompt);
+                    // Очищаем поле условия
+                    conditionInput.value = '';
+                    showAlert('Промпт пункта успешно доработан через AI', 'success');
+                    // Обновляем собранный промпт
+                    generateAssembledPrompt();
+                } else {
+                    showAlert(result.message || 'Ошибка при доработке промпта', 'danger');
+                }
+            } catch (error) {
+                console.error('Ошибка при доработке промпта пункта:', error);
+                showAlert('Ошибка соединения: ' + error.message, 'danger');
+            } finally {
+                regenerateBtn.innerHTML = originalContent;
+                regenerateBtn.disabled = false;
+            }
+        }
+
         function renderStations() {
             ensurePromptsStructure();
             const container = document.getElementById('stationPromptsContainer');
@@ -823,24 +895,45 @@
             const items = Array.isArray(scriptPromptData.checklist) ? scriptPromptData.checklist : [];
             holder.innerHTML = items.map((item, idx) => `
                 <div class="anchor-section" data-index="${idx}">
-                    <div class="row g-3">
+                    <div class="row g-3 mb-2">
                         <div class="col-md-4">
                             <label class="form-label">Название пункта</label>
                             <input type="text" class="form-control" value="${(item.title||'')}" onchange="updateChecklistTitle(${idx}, this.value)">
                         </div>
                         <div class="col-md-5">
                             <label class="form-label">Промпт для пункта</label>
-                            <input type="text" class="form-control" id="prompt_${idx}" value="${(item.prompt||'')}" onchange="updateChecklistPrompt(${idx}, this.value)">
+                            <textarea class="form-control" id="prompt_${idx}" rows="2" onchange="updateChecklistPrompt(${idx}, this.value)" placeholder="Введите промпт...">${(item.prompt||'')}</textarea>
                         </div>
                         <div class="col-md-2 d-flex align-items-end">
                             <button class="btn btn-outline-primary w-100" onclick="generatePrompt(${idx})" title="Автогенерация промпта">
-                                <i class="fas fa-magic"></i>
+                                <i class="fas fa-magic"></i> Создать
                             </button>
                         </div>
                         <div class="col-md-1 d-flex align-items-end">
                             <button class="btn btn-outline-danger w-100" onclick="removeChecklistItem(${idx})" title="Удалить пункт">
                                 <i class="fas fa-trash"></i>
                             </button>
+                        </div>
+                    </div>
+                    <div class="row g-3">
+                        <div class="col-md-12">
+                            <label class="form-label text-muted small">
+                                <i class="fas fa-magic me-1"></i>Доработать промпт через AI
+                            </label>
+                            <div class="input-group">
+                                <input type="text"
+                                       class="form-control"
+                                       id="checklist-condition-${idx}"
+                                       placeholder="Введите дополнительное условие (например: добавить проверку на конкретные слова)..."
+                                       onkeypress="if(event.key === 'Enter') { event.preventDefault(); regenerateChecklistItemPrompt(${idx}); }">
+                                <button type="button"
+                                        class="btn btn-outline-primary"
+                                        onclick="regenerateChecklistItemPrompt(${idx})"
+                                        id="regenerate-checklist-btn-${idx}">
+                                    <i class="fas fa-sync-alt me-1"></i>Перегенерировать
+                                </button>
+                            </div>
+                            <small class="text-muted">Введите новое условие и нажмите "Перегенерировать" для доработки промпта через AI</small>
                         </div>
                     </div>
                 </div>
