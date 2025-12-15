@@ -153,6 +153,7 @@
         // Глобальные данные последнего теста для анализа
         let lastTestData = null;
         let checklistItems = [];
+        let checklistPromptsData = null; // Данные промптов чек-листа для доработки
 
         function setHtmlWithNewlines(el, text) {
             if (!text) {
@@ -377,6 +378,9 @@
             analyzeStatus.style.display = 'inline';
             
             try {
+                // Загружаем промпты чек-листа для возможности доработки
+                await loadChecklistPrompts();
+                
                 const resp = await fetch('/api/checklists/analyze', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
@@ -398,7 +402,7 @@
                 analyzeStatus.textContent = 'Анализ завершён';
                 analyzeStatus.className = 'ms-2 text-success';
                 
-                // Заполняем обоснования в пунктах чек-листа
+                // Заполняем обоснования в пунктах чек-листа с интерфейсом доработки
                 const explanations = data.explanations || {};
                 checklistItems.forEach(item => {
                     const explDiv = document.getElementById(`expl-${item.num}`);
@@ -406,7 +410,7 @@
                     
                     if (explanations[item.num]) {
                         item.explanation = explanations[item.num];
-                        explDiv.textContent = item.explanation;
+                        renderExplanationWithRefinement(explDiv, item);
                         toggleBtn.style.display = 'inline-block';
                     }
                 });
@@ -421,6 +425,148 @@
                 analyzeStatus.textContent = 'Сбой при запросе анализа.';
                 analyzeStatus.className = 'ms-2 text-danger';
                 analyzeBtn.disabled = false;
+            }
+        }
+
+        async function loadChecklistPrompts() {
+            try {
+                const resp = await fetch('/api/script-prompt');
+                const result = await resp.json();
+                if (result.success && result.data) {
+                    checklistPromptsData = result.data;
+                }
+            } catch (err) {
+                console.error('Ошибка загрузки промптов чек-листа:', err);
+            }
+        }
+
+        function renderExplanationWithRefinement(explDiv, item) {
+            // Создаем контейнер для обоснования
+            explDiv.innerHTML = '';
+            explDiv.style.whiteSpace = 'normal'; // Для корректного отображения блоков
+            
+            // Текст обоснования
+            const explanationText = document.createElement('div');
+            explanationText.style.whiteSpace = 'pre-wrap';
+            explanationText.style.marginBottom = '15px';
+            explanationText.textContent = item.explanation;
+            explDiv.appendChild(explanationText);
+            
+            // Интерфейс доработки промпта
+            const refinementSection = document.createElement('div');
+            refinementSection.className = 'mt-3 pt-3 border-top';
+            refinementSection.innerHTML = `
+                <div class="small text-muted mb-2">
+                    <i class="fas fa-magic me-1"></i>Доработать промпт этого пункта через AI
+                </div>
+                <div class="input-group input-group-sm">
+                    <input type="text"
+                           class="form-control form-control-sm"
+                           id="refine-condition-${item.num}"
+                           placeholder="Введите дополнительное условие..."
+                           style="font-size: 0.85rem;">
+                    <button type="button"
+                            class="btn btn-sm btn-outline-primary"
+                            id="refine-btn-${item.num}"
+                            onclick="refineChecklistPromptFromAnalysis(${item.num})">
+                        <i class="fas fa-sync-alt me-1"></i>Перегенерировать
+                    </button>
+                </div>
+                <div class="small text-muted mt-1">
+                    Обновленный промпт будет сохранен в чек-лист
+                </div>
+            `;
+            explDiv.appendChild(refinementSection);
+        }
+
+        async function refineChecklistPromptFromAnalysis(itemNum) {
+            const conditionInput = document.getElementById(`refine-condition-${itemNum}`);
+            const refineBtn = document.getElementById(`refine-btn-${itemNum}`);
+            
+            if (!conditionInput || !refineBtn) {
+                alert('Ошибка: не найдены элементы интерфейса');
+                return;
+            }
+            
+            const additionalCondition = (conditionInput.value || '').trim();
+            if (!additionalCondition) {
+                alert('Введите дополнительное условие');
+                conditionInput.focus();
+                return;
+            }
+            
+            if (!checklistPromptsData || !checklistPromptsData.checklist) {
+                alert('Не удалось загрузить данные чек-листа');
+                return;
+            }
+            
+            // Находим промпт для данного пункта (индекс = номер - 1)
+            const itemIndex = parseInt(itemNum) - 1;
+            const checklistItem = checklistPromptsData.checklist[itemIndex];
+            
+            if (!checklistItem || !checklistItem.prompt) {
+                alert('Промпт для этого пункта не найден');
+                return;
+            }
+            
+            const currentPrompt = checklistItem.prompt;
+            
+            // Сохраняем оригинальное содержимое кнопки
+            const originalContent = refineBtn.innerHTML;
+            refineBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>AI...';
+            refineBtn.disabled = true;
+            
+            try {
+                const response = await fetch('/api/regenerate-checklist-item-prompt', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        current_prompt: currentPrompt,
+                        additional_condition: additionalCondition,
+                        item_title: checklistItem.title || ''
+                    })
+                });
+                
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    console.error('Ошибка сервера:', response.status, errorText);
+                    alert(`Ошибка сервера (${response.status})`);
+                    return;
+                }
+                
+                const result = await response.json();
+                
+                if (result.success && result.prompt) {
+                    // Обновляем промпт в данных
+                    checklistPromptsData.checklist[itemIndex].prompt = result.prompt;
+                    
+                    // Сохраняем обновленный чек-лист
+                    const saveResp = await fetch('/api/script-prompt/save', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({
+                            data: checklistPromptsData
+                        })
+                    });
+                    
+                    const saveResult = await saveResp.json();
+                    
+                    if (saveResult.success) {
+                        // Очищаем поле условия
+                        conditionInput.value = '';
+                        alert('✅ Промпт успешно доработан и сохранен в чек-лист!\n\nЗапустите новый тест, чтобы проверить изменения.');
+                    } else {
+                        alert('Промпт доработан, но не удалось сохранить: ' + (saveResult.message || 'Ошибка'));
+                    }
+                } else {
+                    alert(result.message || 'Ошибка при доработке промпта');
+                }
+            } catch (error) {
+                console.error('Ошибка при доработке промпта:', error);
+                alert('Ошибка соединения: ' + error.message);
+            } finally {
+                refineBtn.innerHTML = originalContent;
+                refineBtn.disabled = false;
             }
         }
 
@@ -447,7 +593,7 @@
             }
         }
 
-        function restoreAnalysisFromStorage() {
+        async function restoreAnalysisFromStorage() {
             try {
                 const stored = localStorage.getItem('checklistAnalysisResults');
                 if (!stored) return;
@@ -458,6 +604,9 @@
                     return;
                 }
                 
+                // Загружаем промпты чек-листа для возможности доработки
+                await loadChecklistPrompts();
+                
                 // Заполняем обоснования в уже созданных пунктах чек-листа
                 checklistItems.forEach(item => {
                     const explDiv = document.getElementById(`expl-${item.num}`);
@@ -465,7 +614,7 @@
                     
                     if (explanations[item.num] && explDiv && toggleBtn) {
                         item.explanation = explanations[item.num];
-                        explDiv.textContent = item.explanation;
+                        renderExplanationWithRefinement(explDiv, item);
                         toggleBtn.style.display = 'inline-block';
                     }
                 });
@@ -478,7 +627,7 @@
             }
         }
 
-        function restoreResultsFromStorage() {
+        async function restoreResultsFromStorage() {
             try {
                 const stored = localStorage.getItem('checklistTestResults');
                 if (!stored) return;
@@ -522,7 +671,7 @@
                     analyzeBtn.style.display = 'inline-block';
                     
                     // Пытаемся восстановить результаты анализа
-                    restoreAnalysisFromStorage();
+                    await restoreAnalysisFromStorage();
                 }
             } catch (err) {
                 console.error('Ошибка восстановления из localStorage:', err);
@@ -554,9 +703,9 @@
             setTimeout(() => { statusText.textContent = ''; }, 2000);
         }
 
-        document.addEventListener('DOMContentLoaded', () => {
-            loadMeta();
-            restoreResultsFromStorage();
+        document.addEventListener('DOMContentLoaded', async () => {
+            await loadMeta();
+            await restoreResultsFromStorage();
         });
     </script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
