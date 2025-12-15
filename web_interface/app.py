@@ -2493,11 +2493,135 @@ def api_checklists_test():
                     'analysis': str(transcript_file),
                     'checklist': str(checklist_analysis_path) if checklist_analysis_path else None
                 },
-                'checklist': checklist_payload
+                'checklist': checklist_payload,
+                'transcript_text': transcript_text  # Для последующего анализа
             })
     except Exception as exc:
         app.logger.error("Сбой при тестировании чек-листа: %s", exc, exc_info=True)
         return jsonify({'success': False, 'message': f'Ошибка тестирования: {exc}'}), 500
+
+@app.route('/api/checklists/analyze', methods=['POST'])
+@login_required
+def api_checklists_analyze():
+    """Детальный анализ разбора каждого пункта чек-листа с обоснованием."""
+    data = request.get_json() or {}
+    transcript_text = data.get('transcript_text', '').strip()
+    qa_text = data.get('qa_text', '').strip()
+    
+    if not transcript_text or not qa_text:
+        return jsonify({'success': False, 'message': 'Не переданы данные транскрипта или чек-листа.'}), 400
+    
+    # Формируем промпт для детального анализа каждого пункта
+    analysis_prompt = f"""Ты — эксперт по анализу клиентских звонков. Перед тобой транскрипт звонка и результат разбора по чек-листу.
+
+ТРАНСКРИПТ ЗВОНКА:
+{transcript_text}
+
+РЕЗУЛЬТАТ РАЗБОРА ПО ЧЕК-ЛИСТУ:
+{qa_text}
+
+Твоя задача: для КАЖДОГО пункта чек-листа написать детальное обоснование, ПОЧЕМУ этот пункт был оценен именно так (ДА или НЕТ).
+
+В обосновании укажи:
+- Цитаты или парафразы из транскрипта, которые подтверждают или опровергают выполнение пункта
+- Краткое объяснение логики оценки
+- Если пункт НЕ выполнен — что именно отсутствовало
+
+Формат ответа — строго для каждого пункта по порядку:
+
+1. [Детальное обоснование для пункта 1]
+
+2. [Детальное обоснование для пункта 2]
+
+...
+
+Обоснования должны быть конкретными и ссылаться на реальные фрагменты диалога."""
+
+    try:
+        runtime_cfg = build_user_runtime_config()
+        thebai_api_key = (runtime_cfg.get('api_keys') or {}).get('thebai_api_key', '')
+        thebai_url = (runtime_cfg.get('api_keys') or {}).get('thebai_url', 'https://api.deepseek.com/v1/chat/completions')
+        
+        if not thebai_api_key:
+            return jsonify({'success': False, 'message': 'API ключ для анализа не настроен.'}), 400
+        
+        # Отправляем запрос к TheB.ai / DeepSeek
+        payload = {
+            "model": (runtime_cfg.get('api_keys') or {}).get('thebai_model', 'deepseek-reasoner'),
+            "messages": [
+                {"role": "system", "content": "Ты эксперт по анализу клиентских звонков."},
+                {"role": "user", "content": analysis_prompt}
+            ],
+            "temperature": 0.3,
+        }
+        
+        response = requests.post(
+            thebai_url,
+            headers={
+                'Authorization': f'Bearer {thebai_api_key}',
+                'Content-Type': 'application/json',
+            },
+            json=payload,
+            timeout=120
+        )
+        
+        if response.status_code != 200:
+            app.logger.error(f"Ошибка API при анализе чек-листа: {response.status_code} - {response.text}")
+            return jsonify({'success': False, 'message': f'Ошибка API: {response.status_code}'}), 502
+        
+        result = response.json()
+        analysis_result = (result.get('choices', [{}])[0]
+                          .get('message', {})
+                          .get('content', '')).strip()
+        
+        if not analysis_result:
+            return jsonify({'success': False, 'message': 'Пустой ответ от API анализа.'}), 500
+        
+        # Парсим результат: разбиваем по номерам пунктов
+        explanations = _parse_checklist_explanations(analysis_result)
+        
+        return jsonify({
+            'success': True,
+            'explanations': explanations,
+            'raw_analysis': analysis_result
+        })
+        
+    except requests.exceptions.Timeout:
+        app.logger.error("Таймаут при анализе чек-листа")
+        return jsonify({'success': False, 'message': 'Превышено время ожидания ответа от API.'}), 504
+    except Exception as exc:
+        app.logger.error(f"Ошибка анализа чек-листа: {exc}", exc_info=True)
+        return jsonify({'success': False, 'message': f'Ошибка анализа: {exc}'}), 500
+
+def _parse_checklist_explanations(analysis_text):
+    """Парсит текст анализа и возвращает dict {номер_пункта: обоснование}"""
+    explanations = {}
+    lines = analysis_text.split('\n')
+    
+    current_num = None
+    current_text = []
+    
+    for line in lines:
+        line = line.strip()
+        # Ищем строки вида "1. текст" или "1) текст"
+        match = re.match(r'^(\d+)[\.\)]\s*(.*)$', line)
+        if match:
+            # Сохраняем предыдущий блок
+            if current_num is not None and current_text:
+                explanations[str(current_num)] = '\n'.join(current_text).strip()
+            # Начинаем новый блок
+            current_num = match.group(1)
+            rest = match.group(2).strip()
+            current_text = [rest] if rest else []
+        elif current_num is not None and line:
+            # Продолжение текущего пункта
+            current_text.append(line)
+    
+    # Сохраняем последний блок
+    if current_num is not None and current_text:
+        explanations[str(current_num)] = '\n'.join(current_text).strip()
+    
+    return explanations
 
 @app.route('/api/vocabulary')
 @login_required
