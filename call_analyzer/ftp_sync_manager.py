@@ -238,8 +238,11 @@ def sync_ftp_connection(connection_id: int, user_id: Optional[int] = None):
         min_age_minutes = 3
         files_before_age_filter = len(filtered_files)
         
+        logger.info(f"FTP {row.name}: применяем фильтр возраста файлов (минимум {min_age_minutes} минут). Текущее время: {current_time.strftime('%Y-%m-%d %H:%M:%S')}")
+        
         # Добавляем логирование для отладки
         filtered_files_with_age = []
+        skipped_count = 0
         from call_analyzer.utils import parse_filename
         
         for f in filtered_files:
@@ -252,25 +255,30 @@ def sync_ftp_connection(connection_id: int, user_id: Optional[int] = None):
                 if age_seconds >= (min_age_minutes * 60):
                     filtered_files_with_age.append(f)
                 else:
-                    logger.debug(
-                        f"Файл {f['name']} пропущен: возраст {age_seconds:.0f} сек "
-                        f"(звонок {call_dt.strftime('%H:%M:%S')}, требуется {min_age_minutes * 60} сек)"
+                    skipped_count += 1
+                    logger.info(
+                        f"FTP {row.name}: пропуск файла {f['name']} - возраст {age_seconds:.0f} сек "
+                        f"(звонок {call_dt.strftime('%Y-%m-%d %H:%M:%S')}, требуется >= {min_age_minutes * 60} сек)"
                     )
             else:
                 # Если не удалось извлечь дату из имени, используем mtime с FTP
                 age_seconds = (current_time - f['mtime']).total_seconds()
                 if age_seconds >= (min_age_minutes * 60):
                     filtered_files_with_age.append(f)
+                    logger.info(f"FTP {row.name}: файл {f['name']} прошел (по mtime): возраст {age_seconds:.0f} сек")
                 else:
-                    logger.debug(f"Файл {f['name']} пропущен по mtime: возраст {age_seconds:.0f} сек")
+                    skipped_count += 1
+                    logger.info(f"FTP {row.name}: пропуск файла {f['name']} по mtime: возраст {age_seconds:.0f} сек (mtime: {f['mtime'].strftime('%Y-%m-%d %H:%M:%S')})")
         
         filtered_files = filtered_files_with_age
         
-        if files_before_age_filter > len(filtered_files):
+        if skipped_count > 0:
             logger.info(
                 f"FTP {row.name}: отфильтрованы файлы моложе {min_age_minutes} минут "
-                f"(пропущено {files_before_age_filter - len(filtered_files)}, осталось {len(filtered_files)})"
+                f"(пропущено {skipped_count}, осталось {len(filtered_files)})"
             )
+        else:
+            logger.info(f"FTP {row.name}: все файлы ({files_before_age_filter}) прошли фильтр возраста")
 
         remote_files = filtered_files
         logger.info(
