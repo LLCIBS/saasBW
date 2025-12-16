@@ -231,11 +231,11 @@ def sync_ftp_connection(connection_id: int, user_id: Optional[int] = None):
                 f"(осталось {len(filtered_files)} из {total_detected})"
             )
 
-        # ВАЖНО: Фильтруем файлы, которые были изменены менее 2 минут назад
+        # ВАЖНО: Фильтруем файлы, которые были изменены менее 3 минут назад
         # На FTP-сервере работает скрипт конвертации в стерео (~2 минуты)
-        # Скачиваем только файлы, которые "отстоялись" минимум 2 минуты
+        # Скачиваем только файлы, которые "отстоялись" минимум 3 минуты (с запасом)
         current_time = datetime.now()
-        min_age_minutes = 2
+        min_age_minutes = 3
         files_before_age_filter = len(filtered_files)
         
         filtered_files = [
