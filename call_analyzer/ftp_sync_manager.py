@@ -235,7 +235,7 @@ def sync_ftp_connection(connection_id: int, user_id: Optional[int] = None):
         # На FTP-сервере работает скрипт конвертации в стерео (~2 минуты)
         # Используем время из ИМЕНИ ФАЙЛА (call_dt), а не mtime, т.к. mtime может быть некорректным
         current_time = datetime.now()
-        min_age_minutes = 3
+        min_age_minutes = 5
         files_before_age_filter = len(filtered_files)
         
         logger.info(f"FTP {row.name}: применяем фильтр возраста файлов (минимум {min_age_minutes} минут). Текущее время: {current_time.strftime('%Y-%m-%d %H:%M:%S')}")
