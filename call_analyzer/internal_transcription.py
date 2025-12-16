@@ -23,6 +23,17 @@ def transcribe_audio_with_internal_service(file_path, stereo_mode=None, addition
         logger.error(f"Файл '{file_path}' не найден.")
         return None
 
+    # Проверяем размер файла
+    file_size = os.path.getsize(file_path)
+    file_size_kb = file_size / 1024
+    
+    logger.info(f"Размер файла {os.path.basename(file_path)}: {file_size} байт ({file_size_kb:.2f} КБ)")
+    
+    # Если файл слишком маленький (меньше 1 КБ), это скорее всего поврежденный файл
+    if file_size < 1024:
+        logger.error(f"Файл '{file_path}' слишком маленький ({file_size} байт). Вероятно поврежден или пуст.")
+        return None
+
     api_url = config.INTERNAL_TRANSCRIPTION_URL
     
     # Определяем режим стерео/моно
@@ -59,6 +70,12 @@ def transcribe_audio_with_internal_service(file_path, stereo_mode=None, addition
             if result.get("status") == "success":
                 duration = time.time() - start_time
                 logger.info(f"Транскрипция успешно завершена за {duration:.2f} сек.")
+                
+                # Проверяем, что данные не пустые
+                if not result.get("data") or len(result["data"]) == 0:
+                    logger.warning(f"Сервер транскрипции вернул пустые данные для файла {os.path.basename(file_path)}")
+                    return None
+                    
                 return format_transcription_result(result["data"])
             else:
                 logger.error(f"Ошибка API транскрипции: {result}")
@@ -74,11 +91,16 @@ def transcribe_audio_with_internal_service(file_path, stereo_mode=None, addition
         logger.error("Ошибка: Сервер транскрипции не ответил за 10 минут.")
         return None
     except Exception as e:
-        logger.error(f"Произошла ошибка при транскрипции: {e}")
+        logger.error(f"Произошла ошибка при транскрипции: {e}", exc_info=True)
         return None
 
 def format_transcription_result(data):
     """Форматирует JSON результат в строку диалога."""
+    # Проверка на пустые данные
+    if not data or not isinstance(data, list):
+        logger.warning(f"format_transcription_result: получены некорректные данные: {type(data)}")
+        return ""
+    
     lines = []
     current_speaker = None
     current_text_buffer = []
@@ -100,6 +122,12 @@ def format_transcription_result(data):
             
     if current_speaker is not None:
         lines.append(f"{current_speaker}: {' '.join(current_text_buffer)}")
-        
-    return "\n".join(lines)
+    
+    result = "\n".join(lines)
+    
+    # Финальная проверка
+    if not result:
+        logger.warning("format_transcription_result: результат пустой после форматирования")
+    
+    return result
 

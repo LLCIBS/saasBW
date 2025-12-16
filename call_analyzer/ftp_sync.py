@@ -419,62 +419,243 @@ class FtpSync:
                 ssh.close()
         return files
 
-    def download_file(self, remote_filename: str, local_path: Path) -> bool:
+    def download_file(self, remote_filename: str, local_path: Path, max_retries: int = 3) -> bool:
         remote_file_path = f"{self.remote_path}/{remote_filename}".replace('//', '/')
         if remote_filename.startswith('/'):
             remote_file_path = remote_filename
             
         if self.protocol == 'ftp':
-            return self._download_file_ftp(remote_file_path, local_path)
+            return self._download_file_ftp(remote_file_path, local_path, max_retries)
         else:
-            return self._download_file_sftp(remote_file_path, local_path)
+            return self._download_file_sftp(remote_file_path, local_path, max_retries)
 
-    def _download_file_ftp(self, remote_path: str, local_path: Path) -> bool:
+    def _download_file_ftp(self, remote_path: str, local_path: Path, max_retries: int = 3) -> bool:
+        """
+        Скачивает файл с FTP с проверкой размера и повторными попытками
+        
+        Args:
+            remote_path: Путь к файлу на FTP
+            local_path: Локальный путь для сохранения
+            max_retries: Максимальное количество попыток скачивания
+        
+        Returns:
+            True если файл успешно скачан, False в случае ошибки
+        """
         ftp = None
-        try:
-            ftp = self._get_ftp_connection()
-            local_path.parent.mkdir(parents=True, exist_ok=True)
-            with open(local_path, 'wb') as f:
-                ftp.retrbinary(f'RETR {remote_path}', f.write)
-            logger.info(f"Файл скачан: {remote_path} -> {local_path}")
-            return True
-        except Exception as e:
-            logger.error(f"Ошибка скачивания файла через FTP: {e}")
-            if local_path.exists():
+        
+        for attempt in range(1, max_retries + 1):
+            try:
+                ftp = self._get_ftp_connection()
+                
+                # Получаем размер файла на FTP сервере
+                remote_size = None
                 try:
-                    local_path.unlink()
-                except:
-                    pass
-            return False
-        finally:
-            if ftp:
-                try:
-                    ftp.quit()
-                except:
-                    ftp.close()
+                    remote_size = ftp.size(remote_path)
+                except Exception as size_error:
+                    logger.warning(f"Не удалось получить размер файла {remote_path}: {size_error}")
+                
+                # Создаем директорию для локального файла
+                local_path.parent.mkdir(parents=True, exist_ok=True)
+                
+                # Скачиваем файл
+                with open(local_path, 'wb') as f:
+                    ftp.retrbinary(f'RETR {remote_path}', f.write)
+                
+                # Проверяем размер скачанного файла
+                if local_path.exists():
+                    local_size = local_path.stat().st_size
+                    
+                    # Если удалось получить удаленный размер, сравниваем
+                    if remote_size is not None:
+                        if local_size == remote_size:
+                            logger.info(f"Файл скачан: {remote_path} -> {local_path} (размер: {local_size} байт)")
+                            return True
+                        else:
+                            logger.warning(
+                                f"Попытка {attempt}/{max_retries}: Размер файла не совпадает! "
+                                f"FTP: {remote_size} байт, локально: {local_size} байт"
+                            )
+                            # Удаляем неполный файл
+                            try:
+                                local_path.unlink()
+                            except:
+                                pass
+                            
+                            if attempt < max_retries:
+                                logger.info(f"Повторная попытка скачивания через 2 секунды...")
+                                time.sleep(2)
+                                continue
+                            else:
+                                logger.error(f"Не удалось скачать файл {remote_path} после {max_retries} попыток")
+                                return False
+                    else:
+                        # Если не удалось получить размер на FTP, проверяем что файл не пустой
+                        if local_size > 0:
+                            logger.info(f"Файл скачан: {remote_path} -> {local_path} (размер: {local_size} байт)")
+                            return True
+                        else:
+                            logger.warning(f"Попытка {attempt}/{max_retries}: Скачан пустой файл")
+                            try:
+                                local_path.unlink()
+                            except:
+                                pass
+                            
+                            if attempt < max_retries:
+                                logger.info(f"Повторная попытка скачивания через 2 секунды...")
+                                time.sleep(2)
+                                continue
+                            else:
+                                return False
+                else:
+                    logger.error(f"Попытка {attempt}/{max_retries}: Локальный файл не был создан")
+                    if attempt < max_retries:
+                        time.sleep(2)
+                        continue
+                    else:
+                        return False
+                        
+            except Exception as e:
+                logger.error(f"Попытка {attempt}/{max_retries}: Ошибка скачивания файла через FTP: {e}")
+                
+                # Удаляем частично скачанный файл
+                if local_path.exists():
+                    try:
+                        local_path.unlink()
+                    except:
+                        pass
+                
+                if attempt < max_retries:
+                    logger.info(f"Повторная попытка через 2 секунды...")
+                    time.sleep(2)
+                else:
+                    logger.error(f"Не удалось скачать файл {remote_path} после {max_retries} попыток")
+                    return False
+            finally:
+                if ftp:
+                    try:
+                        ftp.quit()
+                    except:
+                        try:
+                            ftp.close()
+                        except:
+                            pass
+        
+        return False
     
-    def _download_file_sftp(self, remote_path: str, local_path: Path) -> bool:
-        ssh = None
-        sftp = None
-        try:
-            ssh, sftp = self._get_sftp_connection()
-            local_path.parent.mkdir(parents=True, exist_ok=True)
-            sftp.get(remote_path, str(local_path))
-            logger.info(f"Файл скачан: {remote_path} -> {local_path}")
-            return True
-        except Exception as e:
-            logger.error(f"Ошибка скачивания файла через SFTP: {e}")
-            if local_path.exists():
+    def _download_file_sftp(self, remote_path: str, local_path: Path, max_retries: int = 3) -> bool:
+        """
+        Скачивает файл с SFTP с проверкой размера и повторными попытками
+        
+        Args:
+            remote_path: Путь к файлу на SFTP
+            local_path: Локальный путь для сохранения
+            max_retries: Максимальное количество попыток скачивания
+        
+        Returns:
+            True если файл успешно скачан, False в случае ошибки
+        """
+        for attempt in range(1, max_retries + 1):
+            ssh = None
+            sftp = None
+            try:
+                ssh, sftp = self._get_sftp_connection()
+                
+                # Получаем размер файла на SFTP сервере
+                remote_size = None
                 try:
-                    local_path.unlink()
-                except:
-                    pass
-            return False
-        finally:
-            if sftp:
-                sftp.close()
-            if ssh:
-                ssh.close()
+                    remote_stat = sftp.stat(remote_path)
+                    remote_size = remote_stat.st_size
+                except Exception as stat_error:
+                    logger.warning(f"Не удалось получить размер файла {remote_path}: {stat_error}")
+                
+                # Создаем директорию для локального файла
+                local_path.parent.mkdir(parents=True, exist_ok=True)
+                
+                # Скачиваем файл
+                sftp.get(remote_path, str(local_path))
+                
+                # Проверяем размер скачанного файла
+                if local_path.exists():
+                    local_size = local_path.stat().st_size
+                    
+                    # Если удалось получить удаленный размер, сравниваем
+                    if remote_size is not None:
+                        if local_size == remote_size:
+                            logger.info(f"Файл скачан: {remote_path} -> {local_path} (размер: {local_size} байт)")
+                            return True
+                        else:
+                            logger.warning(
+                                f"Попытка {attempt}/{max_retries}: Размер файла не совпадает! "
+                                f"SFTP: {remote_size} байт, локально: {local_size} байт"
+                            )
+                            # Удаляем неполный файл
+                            try:
+                                local_path.unlink()
+                            except:
+                                pass
+                            
+                            if attempt < max_retries:
+                                logger.info(f"Повторная попытка скачивания через 2 секунды...")
+                                time.sleep(2)
+                                continue
+                            else:
+                                logger.error(f"Не удалось скачать файл {remote_path} после {max_retries} попыток")
+                                return False
+                    else:
+                        # Если не удалось получить размер на SFTP, проверяем что файл не пустой
+                        if local_size > 0:
+                            logger.info(f"Файл скачан: {remote_path} -> {local_path} (размер: {local_size} байт)")
+                            return True
+                        else:
+                            logger.warning(f"Попытка {attempt}/{max_retries}: Скачан пустой файл")
+                            try:
+                                local_path.unlink()
+                            except:
+                                pass
+                            
+                            if attempt < max_retries:
+                                logger.info(f"Повторная попытка скачивания через 2 секунды...")
+                                time.sleep(2)
+                                continue
+                            else:
+                                return False
+                else:
+                    logger.error(f"Попытка {attempt}/{max_retries}: Локальный файл не был создан")
+                    if attempt < max_retries:
+                        time.sleep(2)
+                        continue
+                    else:
+                        return False
+                        
+            except Exception as e:
+                logger.error(f"Попытка {attempt}/{max_retries}: Ошибка скачивания файла через SFTP: {e}")
+                
+                # Удаляем частично скачанный файл
+                if local_path.exists():
+                    try:
+                        local_path.unlink()
+                    except:
+                        pass
+                
+                if attempt < max_retries:
+                    logger.info(f"Повторная попытка через 2 секунды...")
+                    time.sleep(2)
+                else:
+                    logger.error(f"Не удалось скачать файл {remote_path} после {max_retries} попыток")
+                    return False
+            finally:
+                if sftp:
+                    try:
+                        sftp.close()
+                    except:
+                        pass
+                if ssh:
+                    try:
+                        ssh.close()
+                    except:
+                        pass
+        
+        return False
     
     def test_connection(self) -> Tuple[bool, str]:
         try:
