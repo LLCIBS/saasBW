@@ -233,15 +233,38 @@ def sync_ftp_connection(connection_id: int, user_id: Optional[int] = None):
 
         # ВАЖНО: Фильтруем файлы, которые были изменены менее 3 минут назад
         # На FTP-сервере работает скрипт конвертации в стерео (~2 минуты)
-        # Скачиваем только файлы, которые "отстоялись" минимум 3 минуты (с запасом)
+        # Используем время из ИМЕНИ ФАЙЛА (call_dt), а не mtime, т.к. mtime может быть некорректным
         current_time = datetime.now()
         min_age_minutes = 3
         files_before_age_filter = len(filtered_files)
         
-        filtered_files = [
-            f for f in filtered_files
-            if (current_time - f['mtime']).total_seconds() >= (min_age_minutes * 60)
-        ]
+        # Добавляем логирование для отладки
+        filtered_files_with_age = []
+        from call_analyzer.utils import parse_filename
+        
+        for f in filtered_files:
+            # Пытаемся извлечь время звонка из имени файла
+            _, _, call_dt = parse_filename(f['name'])
+            
+            if call_dt:
+                # Используем время из имени файла
+                age_seconds = (current_time - call_dt).total_seconds()
+                if age_seconds >= (min_age_minutes * 60):
+                    filtered_files_with_age.append(f)
+                else:
+                    logger.debug(
+                        f"Файл {f['name']} пропущен: возраст {age_seconds:.0f} сек "
+                        f"(звонок {call_dt.strftime('%H:%M:%S')}, требуется {min_age_minutes * 60} сек)"
+                    )
+            else:
+                # Если не удалось извлечь дату из имени, используем mtime с FTP
+                age_seconds = (current_time - f['mtime']).total_seconds()
+                if age_seconds >= (min_age_minutes * 60):
+                    filtered_files_with_age.append(f)
+                else:
+                    logger.debug(f"Файл {f['name']} пропущен по mtime: возраст {age_seconds:.0f} сек")
+        
+        filtered_files = filtered_files_with_age
         
         if files_before_age_filter > len(filtered_files):
             logger.info(
