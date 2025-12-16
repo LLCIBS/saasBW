@@ -59,6 +59,83 @@ load_transfer_cases()
 load_recall_cases()
 # from call_analyzer.transfer_recall.recall import add_recall_case
 
+def scan_current_day_folder(event_handler, current_folder_path):
+    """
+    Сканирует папку текущего дня и обрабатывает необработанные файлы.
+    
+    Args:
+        event_handler: Экземпляр CallHandler для обработки файлов
+        current_folder_path: Путь к папке текущего дня
+    """
+    logger = logging.getLogger(__name__)
+    
+    try:
+        from types import SimpleNamespace
+        from call_analyzer.call_handler import get_result_file_path
+        from call_analyzer.utils import is_valid_call_filename
+        
+        if not os.path.exists(current_folder_path):
+            return 0
+        
+        # Ищем все аудиофайлы в папке дня
+        existing_files = list(Path(current_folder_path).glob("*.mp3")) + list(Path(current_folder_path).glob("*.wav"))
+        
+        processed_count = 0
+        skipped_count = 0
+        
+        for file_path in existing_files:
+            name_lower = file_path.name.lower()
+            
+            # Проверяем валидность имени файла
+            if not is_valid_call_filename(file_path.name):
+                continue
+            
+            # Пропускаем файлы с хвостами .wav-out. и .wav-in. для external-*
+            if name_lower.startswith("external-"):
+                if ".wav-out." in name_lower or ".wav-in." in name_lower:
+                    continue
+            
+            # Проверяем расширение
+            if file_path.suffix.lower() not in ['.mp3', '.wav']:
+                continue
+            
+            # Проверяем, не был ли файл уже обработан
+            result_file = get_result_file_path(file_path)
+            if result_file.exists():
+                skipped_count += 1
+                continue
+            
+            # Файл не обработан - обрабатываем
+            try:
+                logger.info(f"[SCAN] Найден необработанный файл: {file_path.name}")
+                
+                mock_event = SimpleNamespace(
+                    src_path=str(file_path.resolve()),
+                    is_directory=False
+                )
+                event_handler.on_created(mock_event)
+                processed_count += 1
+                
+                # Небольшая задержка, чтобы не перегружать систему
+                time.sleep(0.5)
+                
+            except Exception as e:
+                logger.error(f"[SCAN] Ошибка обработки файла {file_path.name}: {e}", exc_info=True)
+        
+        if processed_count > 0:
+            logger.info(
+                f"[SCAN] Переобход папки завершен. "
+                f"Найдено файлов: {len(existing_files)}, "
+                f"пропущено (уже обработано): {skipped_count}, "
+                f"отправлено на обработку: {processed_count}"
+            )
+        
+        return processed_count
+        
+    except Exception as e:
+        logger.error(f"[SCAN] Ошибка при сканировании папки {current_folder_path}: {e}", exc_info=True)
+        return 0
+
 def main():
     setup_logging()
     logger = logging.getLogger(__name__)
@@ -159,6 +236,7 @@ def main():
 
 
         # 3. Основной цикл
+        last_scan_minute = None  # Для отслеживания последней минуты переобхода
         while True:
             now = datetime.now()
             time_str = now.strftime("%H:%M")
@@ -231,6 +309,21 @@ def main():
             else:
                 logging.info("Файлы ещё не обрабатывались. Устанавливаем время последней обработки на текущее.")
                 handler.last_processed_time = now
+
+            # Периодический переобход папки текущего дня (каждые 30 минут)
+            # Проверяем каждые 30 минут (минута == 0 или минута == 30)
+            # Защита от повторных вызовов в одну и ту же минуту
+            if now.minute in [0, 30] and last_scan_minute != now.minute:
+                try:
+                    current_day_path = get_current_folder()
+                    if os.path.exists(current_day_path):
+                        scan_current_day_folder(event_handler, current_day_path)
+                        last_scan_minute = now.minute  # Запоминаем минуту переобхода
+                except Exception as e:
+                    logger.error(f"[MAIN] Ошибка при периодическом переобходе папки: {e}", exc_info=True)
+            elif now.minute not in [0, 30]:
+                # Сбрасываем флаг, когда минута изменилась на не-0/30
+                last_scan_minute = None
 
             time.sleep(60)
 
