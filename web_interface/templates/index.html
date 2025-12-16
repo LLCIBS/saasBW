@@ -110,6 +110,9 @@
                             <button type="button" class="btn btn-warning" onclick="restartService()">
                                 <i class="fas fa-redo me-1"></i> Перезапустить
                             </button>
+                            <button type="button" class="btn btn-info" onclick="rescanCurrentDay()" title="Переобойти папку текущего дня">
+                                <i class="fas fa-folder-open me-1"></i> Переобход файлов
+                            </button>
                         </div>
                     </div>
 
@@ -469,6 +472,23 @@
                 }
             } catch (error) {
                 showAlert('Ошибка перезапуска сервиса', 'danger');
+            }
+        }
+
+        async function rescanCurrentDay() {
+            try {
+                showAlert('Запуск переобхода папки текущего дня...', 'info');
+                const response = await fetch('/api/rescan-current-day', { method: 'POST' });
+                const data = await response.json();
+                
+                if (data.success) {
+                    showAlert(`Переобход запущен. Папка: ${data.path}`, 'success');
+                } else {
+                    showAlert(data.message, 'danger');
+                }
+            } catch (error) {
+                console.error('Ошибка переобхода файлов:', error);
+                showAlert('Ошибка при запуске переобхода файлов', 'danger');
             }
         }
 

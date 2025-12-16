@@ -1478,6 +1478,79 @@ def api_status():
         'timestamp': datetime.now().isoformat()
     })
 
+@app.route('/api/rescan-current-day', methods=['POST'])
+@login_required
+def api_rescan_current_day():
+    """API для ручного переобхода файлов в папке текущего дня"""
+    try:
+        # Импортируем функцию переобхода из call_analyzer.main
+        try:
+            from call_analyzer.main import scan_current_day_folder
+            from call_analyzer.call_handler import CallHandler, get_current_folder
+        except ImportError as e:
+            app.logger.error(f"Ошибка импорта модулей обработки файлов: {e}")
+            return jsonify({
+                'success': False,
+                'message': 'Ошибка импорта модулей обработки файлов'
+            }), 500
+        
+        # Получаем путь к папке текущего дня для текущего пользователя
+        try:
+            # Получаем базовый путь для текущего пользователя
+            user_config = UserConfig.query.filter_by(user_id=current_user.id).first()
+            if user_config and user_config.base_records_path:
+                base_path = Path(user_config.base_records_path)
+            else:
+                # Используем дефолтный путь
+                config = get_config()
+                base_path = Path(config.BASE_RECORDS_PATH) / 'users' / str(current_user.id)
+            
+            # Формируем путь к папке текущего дня
+            today = datetime.now()
+            current_day_path = base_path / str(today.year) / f"{today.month:02d}" / f"{today.day:02d}"
+            
+            if not current_day_path.exists():
+                return jsonify({
+                    'success': False,
+                    'message': f'Папка текущего дня не найдена: {current_day_path}'
+                }), 404
+            
+            # Создаем временный экземпляр CallHandler для обработки
+            event_handler = CallHandler()
+            
+            # Запускаем переобход в отдельном потоке, чтобы не блокировать запрос
+            def run_scan():
+                try:
+                    processed_count = scan_current_day_folder(event_handler, str(current_day_path))
+                    app.logger.info(f"[WEB] Ручной переобход завершен. Обработано файлов: {processed_count}")
+                except Exception as e:
+                    app.logger.error(f"[WEB] Ошибка в потоке переобхода: {e}", exc_info=True)
+            
+            scan_thread = threading.Thread(target=run_scan, daemon=True)
+            scan_thread.start()
+            
+            app.logger.info(f"[WEB] Запущен ручной переобход папки: {current_day_path}")
+            
+            return jsonify({
+                'success': True,
+                'message': f'Запущен переобход папки текущего дня',
+                'path': str(current_day_path)
+            })
+            
+        except Exception as e:
+            app.logger.error(f"[WEB] Ошибка при переобходе папки: {e}", exc_info=True)
+            return jsonify({
+                'success': False,
+                'message': f'Ошибка при переобходе папки: {str(e)}'
+            }), 500
+            
+    except Exception as e:
+        app.logger.error(f"[WEB] Критическая ошибка в api_rescan_current_day: {e}", exc_info=True)
+        return jsonify({
+            'success': False,
+            'message': f'Критическая ошибка: {str(e)}'
+        }), 500
+
 @app.route('/api/summary/realtime')
 @login_required
 def api_summary_realtime():
