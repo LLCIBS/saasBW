@@ -313,9 +313,10 @@
                                     <table class="table table-sm align-middle">
                                         <thead>
                                             <tr>
-                                                <th style="width:20%">Название (Бренд АТС)</th>
+                                                <th style="width:15%">Название (Бренд АТС)</th>
                                                 <th>Шаблон (как выглядит имя файла)</th>
-                                                <th style="width:20%">Формат даты</th>
+                                                <th style="width:15%">Формат даты</th>
+                                                <th style="width:15%">Направление</th>
                                                 <th style="width:50px"></th>
                                             </tr>
                                         </thead>
@@ -645,6 +646,13 @@
                             <option value="%Y_%m_%d" ${p.datetime_format === '%Y_%m_%d' ? 'selected' : ''}>ГГГГ_ММ_ДД</option>
                         </select>
                     </td>
+                    <td>
+                        <select class="form-select form-select-sm" data-idx="${idx}" data-field="direction" onchange="onFilenamePatternChange(this)">
+                            <option value="auto" ${p.direction === 'auto' || !p.direction ? 'selected' : ''}>Авто</option>
+                            <option value="incoming" ${p.direction === 'incoming' ? 'selected' : ''}>Входящий</option>
+                            <option value="outgoing" ${p.direction === 'outgoing' ? 'selected' : ''}>Исходящий</option>
+                        </select>
+                    </td>
                     <td class="text-end">
                         <button class="btn btn-sm btn-outline-danger border-0" type="button" onclick="removeFilenamePattern(${idx})">
                             <i class="fas fa-trash"></i>
@@ -743,6 +751,7 @@
                 template: '', 
                 regex: '', 
                 datetime_format: '%Y-%m-%d-%H-%M-%S',
+                direction: 'auto',
                 example: '' 
             });
             renderFilenamePatterns();

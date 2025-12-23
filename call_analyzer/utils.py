@@ -412,16 +412,35 @@ def get_call_format(file_name: str):
     Возвращает 'incoming' для входящих звонков, 'outgoing' для исходящих звонков,
     или 'direction_format' для нового формата с направлением.
     """
-    # Проверяем новый формат с направлением
+    # 1. Проверяем пользовательские паттерны (наивысший приоритет)
+    filename_cfg = getattr(config, "PROFILE_SETTINGS", {}).get('filename') or {}
+    if filename_cfg.get('enabled'):
+        patterns = filename_cfg.get('patterns') or []
+        for pattern in patterns:
+            regex = pattern.get('regex')
+            if regex and re.match(regex, file_name, re.IGNORECASE):
+                direction = pattern.get('direction', 'auto')
+                if direction in ['incoming', 'outgoing']:
+                    return direction
+                # Если 'auto', продолжаем к стандартной логике ниже
+
+    # 2. Проверяем новый формат с направлением
     if re.match(config.FILENAME_PATTERNS['direction_pattern'], file_name, re.IGNORECASE):
         return 'direction_format'
     
     parts = file_name.split("_")
     if len(parts) < 3:
-        return None
+        # Если не разделилось подчеркиванием, пробуем дефис (для out- форматов)
+        parts = file_name.split("-")
+        if len(parts) < 3:
+            return 'incoming'  # Fallback
 
     first_id = parts[0]  # может быть либо телефон, либо станция
     second_id = parts[1]  # может быть либо телефон, либо станция
+    
+    # Спец-обработка для префикса out-
+    if file_name.lower().startswith('out-'):
+        return 'outgoing'
 
     # Проверяем, является ли first_id известным кодом станции
     if first_id in config.STATION_NAMES or first_id in config.STATION_MAPPING:
