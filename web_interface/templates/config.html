@@ -291,6 +291,73 @@
                         <div class="form-text mt-2">При включении система пытается извлечь имя оператора из транскрипции (когда консультант представляется), затем использует таблицу привязки. При выключении сразу берет имя из таблицы EMPLOYEE_BY_EXTENSION.</div>
                     </div>
 
+                    <!-- Форматы файлов -->
+                    <div class="config-section">
+                        <h3 class="config-title">
+                            <i class="fas fa-file-audio me-2"></i>Форматы аудиофайлов
+                        </h3>
+                        <div class="form-check form-switch mb-3">
+                            <input class="form-check-input" type="checkbox" id="filenameEnabled">
+                            <label class="form-check-label" for="filenameEnabled">Использовать свои правила для имён файлов</label>
+                        </div>
+                        
+                        <div id="customFilenameSection" style="display: none;">
+                            <div class="alert alert-info py-2 mb-3" style="font-size: 0.9rem;">
+                                <i class="fas fa-info-circle me-2"></i>
+                                Используйте теги: <strong>{телефон}</strong>, <strong>{станция}</strong>, <strong>{дата_время}</strong> и <strong>{любой}</strong>.
+                                <br>Пример: <code>{телефон}_{станция}_{дата_время}</code> или <code>rec-{телефон}-{дата_время}</code>
+                            </div>
+
+                            <div class="mb-3">
+                                <div class="table-responsive">
+                                    <table class="table table-sm align-middle">
+                                        <thead>
+                                            <tr>
+                                                <th style="width:20%">Название (Бренд АТС)</th>
+                                                <th>Шаблон (как выглядит имя файла)</th>
+                                                <th style="width:20%">Формат даты</th>
+                                                <th style="width:50px"></th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="filenamePatternsContainer">
+                                        </tbody>
+                                    </table>
+                                </div>
+                                <button class="btn btn-outline-primary btn-sm" type="button" onclick="addFilenamePattern()">
+                                    <i class="fas fa-plus me-1"></i> Добавить правило
+                                </button>
+                            </div>
+
+                            <!-- Блок тестирования -->
+                            <div class="card bg-light border-0 mb-3">
+                                <div class="card-body p-3">
+                                    <h6 class="card-title mb-2"><i class="fas fa-vial me-2"></i>Проверить шаблон</h6>
+                                    <div class="row g-2">
+                                        <div class="col-md-8">
+                                            <input type="text" class="form-control form-control-sm" id="filenameTestInput" 
+                                                   placeholder="Вставьте сюда реальное имя файла (например: 79001112233_101_2023-12-01.mp3)">
+                                        </div>
+                                        <div class="col-md-4">
+                                            <div id="filenameTestResult" class="small mt-1"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Разрешенные расширения</label>
+                            <div id="filenameExtensionsContainer" class="d-flex flex-wrap gap-1 mb-2"></div>
+                            <div class="input-group input-group-sm" style="max-width: 200px;">
+                                <input type="text" class="form-control" id="filenameExtensionInput" placeholder=".mp3">
+                                <button class="btn btn-outline-primary" type="button" onclick="addFilenameExtension()">
+                                    <i class="fas fa-plus"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="form-text small">Если свои правила отключены, система использует стандартные форматы (fs_*, external-*, вход_*).</div>
+                    </div>
+
                     <!-- Коды станций Нижегородского региона -->
                     <div class="config-section">
                         <h3 class="config-title">
@@ -401,6 +468,7 @@
             try {
                 const response = await fetch('/api/config/load');
                 configData = await response.json();
+                ensureFilenameConfig();
                 
                 // Заполняем поля формы
                 document.getElementById('speechmaticsApiKey').value = configData.api_keys?.speechmatics_api_key || '';
@@ -439,6 +507,16 @@
                 document.getElementById('tbankStereoEnabled').checked = stereo;
                 const autoDetectOperator = configData.transcription?.auto_detect_operator_name !== false; // По умолчанию true
                 document.getElementById('autoDetectOperatorName').checked = autoDetectOperator;
+
+        // Форматы файлов
+                document.getElementById('filenameEnabled').checked = configData.filename?.enabled === true;
+                updateFilenameUI();
+                renderFilenamePatterns();
+                renderFilenameExtensions();
+                
+                // Слушатель на изменение чекбокса
+                document.getElementById('filenameEnabled').addEventListener('change', updateFilenameUI);
+                document.getElementById('filenameTestInput').addEventListener('input', testActivePatterns);
                 
                 // Загружаем коды станций
                 loadStationCodes(configData.nizh_station_codes || []);
@@ -448,6 +526,22 @@
             } catch (error) {
                 console.error('Ошибка загрузки конфигурации:', error);
                 showAlert('Ошибка загрузки конфигурации', 'danger');
+            }
+        }
+
+        function ensureFilenameConfig() {
+            if (!configData.filename) {
+                configData.filename = {
+                    enabled: false,
+                    patterns: [],
+                    extensions: ['.mp3', '.wav']
+                };
+            }
+            if (!Array.isArray(configData.filename.patterns)) {
+                configData.filename.patterns = [];
+            }
+            if (!Array.isArray(configData.filename.extensions) || configData.filename.extensions.length === 0) {
+                configData.filename.extensions = ['.mp3', '.wav'];
             }
         }
 
@@ -524,71 +618,245 @@
             renderExtensions(configData.employee_by_extension);
         }
 
+        function updateFilenameUI() {
+            const enabled = document.getElementById('filenameEnabled').checked;
+            document.getElementById('customFilenameSection').style.display = enabled ? 'block' : 'none';
+        }
+
+        function renderFilenamePatterns() {
+            ensureFilenameConfig();
+            const tbody = document.getElementById('filenamePatternsContainer');
+            const patterns = configData.filename.patterns || [];
+            
+            if (patterns.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="4" class="text-muted text-center py-3">Правила не добавлены. Нажмите "+ Добавить правило"</td></tr>`;
+                return;
+            }
+
+            tbody.innerHTML = patterns.map((p, idx) => `
+                <tr>
+                    <td><input class="form-control form-control-sm" value="${p.key || ''}" data-idx="${idx}" data-field="key" oninput="onFilenamePatternChange(this)" placeholder="Напр. Asterisk"></td>
+                    <td><input class="form-control form-control-sm font-monospace" value="${p.template || ''}" data-idx="${idx}" data-field="template" oninput="onFilenamePatternChange(this)" placeholder="{телефон}_{станция}_{дата_время}"></td>
+                    <td>
+                        <select class="form-select form-select-sm" data-idx="${idx}" data-field="datetime_format" onchange="onFilenamePatternChange(this)">
+                            <option value="%Y-%m-%d-%H-%M-%S" ${p.datetime_format === '%Y-%m-%d-%H-%M-%S' ? 'selected' : ''}>ГГГГ-ММ-ДД-ЧЧ-ММ-СС</option>
+                            <option value="%Y%m%d-%H%M%S" ${p.datetime_format === '%Y%m%d-%H%M%S' ? 'selected' : ''}>ГГГГММДД-ЧЧММСС</option>
+                            <option value="%Y%m%d%H%M%S" ${p.datetime_format === '%Y%m%d%H%M%S' ? 'selected' : ''}>ГГГГММДДЧЧММСС</option>
+                            <option value="%Y_%m_%d" ${p.datetime_format === '%Y_%m_%d' ? 'selected' : ''}>ГГГГ_ММ_ДД</option>
+                        </select>
+                    </td>
+                    <td class="text-end">
+                        <button class="btn btn-sm btn-outline-danger border-0" type="button" onclick="removeFilenamePattern(${idx})">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </td>
+                </tr>
+            `).join('');
+            testActivePatterns();
+        }
+
+        function templateToRegex(template, dtFormat = '') {
+            if (!template) return "";
+            // Экранируем спецсимволы регекса, кроме наших тегов
+            let res = template.replace(/[.*+?^${}()|[\]\\]/g, (match) => {
+                if (match === '{' || match === '}') return match;
+                return '\\' + match;
+            });
+            
+            // Более специфичные регексы для даты, чтобы не обрезались на дефисах
+            let dtRegex = '.*?';
+            if (dtFormat === '%Y%m%d-%H%M%S') dtRegex = '\\d{8}-\\d{6}';
+            else if (dtFormat === '%Y-%m-%d-%H-%M-%S') dtRegex = '\\d{4}-\\d{2}-\\d{2}-\\d{2}-\\d{2}-\\d{2}';
+            else if (dtFormat === '%Y%m%d%H%M%S') dtRegex = '\\d{14}';
+            else if (dtFormat === '%Y_%m_%d') dtRegex = '\\d{4}_\\d{2}_\\d{2}';
+
+            // Заменяем наши теги на именованные группы захвата (формат Python)
+            // Используем [^-_]+ для телефона и станции, чтобы они не поглощали лишнего
+            res = res.replace(/\{телефон\}/g, '(?P<phone>[^-_]+)')
+                     .replace(/\{станция\}/g, '(?P<station>[^-_]+)')
+                     .replace(/\{дата_время\}/g, '(?P<datetime>' + dtRegex + ')')
+                     .replace(/\{любой\}/g, '.*?');
+            
+            return '^' + res + '(?:\\..+)?$';
+        }
+
+        function onFilenamePatternChange(input) {
+            ensureFilenameConfig();
+            const idx = parseInt(input.getAttribute('data-idx'));
+            const field = input.getAttribute('data-field');
+            if (!configData.filename.patterns[idx]) return;
+            
+            configData.filename.patterns[idx][field] = input.value;
+            
+            // Если изменился шаблон или формат даты, обновляем скрытый regex
+            if (field === 'template' || field === 'datetime_format') {
+                const pattern = configData.filename.patterns[idx];
+                pattern.regex = templateToRegex(pattern.template, pattern.datetime_format);
+            }
+            testActivePatterns();
+        }
+
+        function testActivePatterns() {
+            const testStr = document.getElementById('filenameTestInput').value.trim();
+            const resultDiv = document.getElementById('filenameTestResult');
+            
+            if (!testStr) {
+                resultDiv.innerHTML = '';
+                return;
+            }
+
+            let found = false;
+            const patterns = configData.filename.patterns || [];
+            
+            for (let p of patterns) {
+                let regexStr = templateToRegex(p.template, p.datetime_format);
+                if (!regexStr) continue;
+                
+                try {
+                    // Конвертируем Python-style (?P<name>) в JS-style (?<name>) для теста в браузере
+                    const jsRegexStr = regexStr.replace(/\(\?P<(\w+)>/g, '(?<$1>');
+                    const re = new RegExp(jsRegexStr, 'i');
+                    const match = testStr.match(re);
+                    if (match) {
+                        const phone = (match.groups && match.groups.phone) || '---';
+                        const station = (match.groups && match.groups.station) || '---';
+                        const dt = (match.groups && match.groups.datetime) || '---';
+                        resultDiv.innerHTML = `<span class="text-success"><i class="fas fa-check-circle me-1"></i> Шаблон: <strong>${p.key || 'Без имени'}</strong></span><br>` +
+                                            `<span class="text-muted">Тел: ${phone}, Стац: ${station}, Дата: ${dt}</span>`;
+                        found = true;
+                        break;
+                    }
+                } catch(e) {
+                    console.error("Ошибка теста регекса:", e);
+                }
+            }
+
+            if (!found && patterns.length > 0) {
+                resultDiv.innerHTML = '<span class="text-danger"><i class="fas fa-times-circle me-1"></i> Ни один шаблон не подошёл</span>';
+            }
+        }
+
+        function addFilenamePattern() {
+            ensureFilenameConfig();
+            configData.filename.patterns.push({ 
+                key: '', 
+                template: '', 
+                regex: '', 
+                datetime_format: '%Y-%m-%d-%H-%M-%S',
+                example: '' 
+            });
+            renderFilenamePatterns();
+        }
+
+        function removeFilenamePattern(idx) {
+            ensureFilenameConfig();
+            configData.filename.patterns.splice(idx, 1);
+            renderFilenamePatterns();
+        }
+
+        function renderFilenameExtensions() {
+            ensureFilenameConfig();
+            const container = document.getElementById('filenameExtensionsContainer');
+            const exts = configData.filename.extensions || [];
+            if (exts.length === 0) {
+                container.innerHTML = '<span class="text-muted">Нет расширений</span>';
+                return;
+            }
+            container.innerHTML = exts.map(ext => `
+                <span class="badge bg-light text-dark border">
+                    ${ext}
+                    <button class="btn btn-sm btn-link text-danger p-0 ms-1" type="button" onclick="removeFilenameExtension('${ext}')">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </span>
+            `).join(' ');
+        }
+
+        function addFilenameExtension() {
+            ensureFilenameConfig();
+            const input = document.getElementById('filenameExtensionInput');
+            let value = (input.value || '').trim();
+            if (!value) return;
+            if (!value.startsWith('.')) {
+                value = '.' + value;
+            }
+            if (!configData.filename.extensions.includes(value)) {
+                configData.filename.extensions.push(value);
+                renderFilenameExtensions();
+            }
+            input.value = '';
+        }
+
+        function removeFilenameExtension(ext) {
+            ensureFilenameConfig();
+            configData.filename.extensions = (configData.filename.extensions || []).filter(e => e !== ext);
+            renderFilenameExtensions();
+        }
+
         async function saveAllConfig() {
             try {
-                // Сохраняем API ключи
-                const apiKeysData = {
-                    speechmatics_api_key: document.getElementById('speechmaticsApiKey').value,
-                    thebai_api_key: document.getElementById('thebaiApiKey').value,
-                    telegram_bot_token: document.getElementById('telegramBotToken').value
-                };
-                
-                if (Object.values(apiKeysData).some(value => value.trim())) {
-                    await saveConfigSection('api_keys', apiKeysData);
-                }
-                
-                // Сохраняем Telegram настройки
-                const telegramData = {
-                    alert_chat_id: document.getElementById('alertChatId').value,
-                    tg_channel_nizh: document.getElementById('tgChannelNizh').value,
-                    tg_channel_other: document.getElementById('tgChannelOther').value
-                };
-                
-                if (Object.values(telegramData).some(value => value.trim())) {
-                    await saveConfigSection('telegram', telegramData);
-                }
-                
-                // Сохраняем пути
                 const sourceType = document.querySelector('input[name="sourceType"]:checked').value;
                 const basePath = sourceType === 'ftp' 
                     ? document.getElementById('baseRecordsPathFtp').value 
                     : document.getElementById('baseRecordsPath').value;
+
+                ensureFilenameConfig();
                 
-                const pathsData = {
-                    base_records_path: basePath,
-                    prompts_file: document.getElementById('promptsFile').value,
-                    additional_vocab_file: document.getElementById('additionalVocabFile').value,
-                    script_prompt_file: document.getElementById('scriptPromptFile').value,
-                    source_type: sourceType,
-                    ftp_connection_id: sourceType === 'ftp' ? parseInt(document.getElementById('ftpConnectionId').value) || null : null
+                // Собираем все данные в один объект
+                const fullPayload = {
+                    api_keys: {
+                        speechmatics_api_key: document.getElementById('speechmaticsApiKey').value,
+                        thebai_api_key: document.getElementById('thebaiApiKey').value,
+                        telegram_bot_token: document.getElementById('telegramBotToken').value
+                    },
+                    telegram: {
+                        alert_chat_id: document.getElementById('alertChatId').value,
+                        tg_channel_nizh: document.getElementById('tgChannelNizh').value,
+                        tg_channel_other: document.getElementById('tgChannelOther').value
+                    },
+                    paths: {
+                        base_records_path: basePath,
+                        prompts_file: document.getElementById('promptsFile').value,
+                        additional_vocab_file: document.getElementById('additionalVocabFile').value,
+                        script_prompt_file: document.getElementById('scriptPromptFile').value,
+                        source_type: sourceType,
+                        ftp_connection_id: sourceType === 'ftp' ? parseInt(document.getElementById('ftpConnectionId').value) || null : null
+                    },
+                    transcription: {
+                        tbank_stereo_enabled: document.getElementById('tbankStereoEnabled').checked,
+                        auto_detect_operator_name: document.getElementById('autoDetectOperatorName').checked
+                    },
+                    filename: {
+                        enabled: document.getElementById('filenameEnabled').checked,
+                        patterns: configData.filename.patterns,
+                        extensions: (configData.filename.extensions || []).map(e => e.trim()).filter(Boolean)
+                    },
+                    stations: {
+                        nizh_station_codes: configData.nizh_station_codes,
+                        stations: configData.stations, // Мы не меняем это здесь напрямую, но отправляем для целостности
+                        station_chat_ids: configData.station_chat_ids,
+                        station_mapping: configData.station_mapping
+                    },
+                    employee_by_extension: configData.employee_by_extension || {}
                 };
 
-                if (Object.values(pathsData).some(value => value.trim())) {
-                    await saveConfigSection('paths', pathsData);
-                }
-
-                // Сохраняем настройки транскрипции
-                await saveConfigSection('transcription', {
-                    tbank_stereo_enabled: document.getElementById('tbankStereoEnabled').checked,
-                    auto_detect_operator_name: document.getElementById('autoDetectOperatorName').checked
+                const response = await fetch('/api/config/save_all', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(fullPayload)
                 });
-                
-                // Сохраняем коды станций
-                const stationCodesData = {
-                    nizh_station_codes: configData.nizh_station_codes
-                };
-                
-                if (stationCodesData.nizh_station_codes.length > 0) {
-                    await saveConfigSection('stations', stationCodesData);
-                }
-                // Привязка сотрудников к вн. номерам
-                await saveConfigSection('employee_by_extension', configData.employee_by_extension || {});
 
-                showAlert('Конфигурация сохранена успешно', 'success');
+                const result = await response.json();
+                if (result.success) {
+                    showAlert('Все настройки успешно сохранены', 'success');
+                    // Если изменились пути, воркер перезапустится автоматически через API (нужно добавить в бэкенд)
+                } else {
+                    throw new Error(result.message);
+                }
                 
             } catch (error) {
                 console.error('Ошибка сохранения конфигурации:', error);
-                showAlert('Ошибка сохранения конфигурации', 'danger');
+                showAlert('Ошибка сохранения конфигурации: ' + error.message, 'danger');
             }
         }
         

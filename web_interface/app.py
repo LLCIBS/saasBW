@@ -154,6 +154,12 @@ def get_user_config_data(user=None):
             'auto_detect_operator_name': bool(cfg.auto_detect_operator_name),
         }
 
+        config_data['filename'] = {
+            'enabled': bool(cfg.use_custom_filename_patterns),
+            'patterns': cfg.filename_patterns or [],
+            'extensions': cfg.filename_extensions or ['.mp3', '.wav']
+        }
+
         config_data['allowed_stations'] = cfg.allowed_stations or []
         config_data['nizh_station_codes'] = cfg.nizh_station_codes or []
         config_data['legal_entity_keywords'] = cfg.legal_entity_keywords or []
@@ -210,6 +216,18 @@ def save_user_config_data(config_data, user=None):
     cfg.use_additional_vocab = bool(transcription_cfg.get('use_additional_vocab', True))
     # По умолчанию должно совпадать с default_config_template (True)
     cfg.auto_detect_operator_name = bool(transcription_cfg.get('auto_detect_operator_name', True))
+
+    filename_cfg = config_data.get('filename') or {}
+    cfg.use_custom_filename_patterns = bool(filename_cfg.get('enabled', False))
+    cfg.filename_patterns = filename_cfg.get('patterns') or []
+    cfg.filename_extensions = filename_cfg.get('extensions') or ['.mp3', '.wav']
+
+    from sqlalchemy.orm.attributes import flag_modified
+    flag_modified(cfg, 'filename_patterns')
+    flag_modified(cfg, 'filename_extensions')
+    flag_modified(cfg, 'allowed_stations')
+    flag_modified(cfg, 'nizh_station_codes')
+    flag_modified(cfg, 'legal_entity_keywords')
 
     cfg.allowed_stations = config_data.get('allowed_stations') or []
     cfg.nizh_station_codes = config_data.get('nizh_station_codes') or []
@@ -411,6 +429,13 @@ def get_user_config_data(user=None):
             'auto_detect_operator_name': bool(cfg.auto_detect_operator_name),
         }
 
+        # Filename formats
+        config_data['filename'] = {
+            'enabled': bool(getattr(cfg, 'use_custom_filename_patterns', False)),
+            'patterns': getattr(cfg, 'filename_patterns', None) or [],
+            'extensions': getattr(cfg, 'filename_extensions', None) or ['.mp3', '.wav'],
+        }
+
         # Arrays/JSONB
         config_data['allowed_stations'] = cfg.allowed_stations or []
         config_data['nizh_station_codes'] = cfg.nizh_station_codes or []
@@ -467,7 +492,20 @@ def save_user_config_data(config_data, user=None):
 
     cfg.tbank_stereo_enabled = bool(transcription_cfg.get('tbank_stereo_enabled', False))
     cfg.use_additional_vocab = bool(transcription_cfg.get('use_additional_vocab', True))
-    cfg.auto_detect_operator_name = bool(transcription_cfg.get('auto_detect_operator_name', False))
+    # По умолчанию должно совпадать с default_config_template (True)
+    cfg.auto_detect_operator_name = bool(transcription_cfg.get('auto_detect_operator_name', True))
+
+    filename_cfg = config_data.get('filename') or {}
+    cfg.use_custom_filename_patterns = bool(filename_cfg.get('enabled', False))
+    cfg.filename_patterns = filename_cfg.get('patterns') or []
+    cfg.filename_extensions = filename_cfg.get('extensions') or ['.mp3', '.wav']
+
+    from sqlalchemy.orm.attributes import flag_modified
+    flag_modified(cfg, 'filename_patterns')
+    flag_modified(cfg, 'filename_extensions')
+    flag_modified(cfg, 'allowed_stations')
+    flag_modified(cfg, 'nizh_station_codes')
+    flag_modified(cfg, 'legal_entity_keywords')
 
     cfg.allowed_stations = config_data.get('allowed_stations') or []
     cfg.nizh_station_codes = config_data.get('nizh_station_codes') or []
@@ -3939,6 +3977,82 @@ def api_config_test():
         logging.error(f'?????? ???????? ????????????: {e}')
         return jsonify({'error': str(e)})
 
+@app.route('/api/config/save_all', methods=['POST'])
+@login_required
+def api_config_save_all():
+    """API для сохранения всей конфигурации одним запросом (атомарно)."""
+    try:
+        data = request.get_json() or {}
+        config_data = get_user_config_data()
+
+        # Обновляем все секции
+        if 'api_keys' in data:
+            config_data['api_keys'] = data['api_keys']
+        
+        if 'telegram' in data:
+            config_data['telegram'] = data['telegram']
+            
+        if 'paths' in data:
+            old_paths = config_data.get('paths', {})
+            new_paths = data['paths']
+            config_data['paths'] = new_paths
+            
+            # Управляем FTP (как в старом методе)
+            old_source_type = old_paths.get('source_type', 'local')
+            old_ftp_id = old_paths.get('ftp_connection_id')
+            new_source_type = new_paths.get('source_type', 'local')
+            new_ftp_id = new_paths.get('ftp_connection_id')
+            
+            if old_source_type != new_source_type or old_ftp_id != new_ftp_id:
+                try:
+                    from call_analyzer.ftp_sync_manager import start_ftp_sync, stop_ftp_sync
+                    if old_source_type == 'ftp' and old_ftp_id:
+                        stop_ftp_sync(old_ftp_id)
+                    if new_source_type == 'ftp' and new_ftp_id:
+                        ftp_conn = FtpConnection.query.filter_by(id=new_ftp_id, user_id=current_user.id, is_active=True).first()
+                        if ftp_conn:
+                            start_ftp_sync(new_ftp_id)
+                except Exception as e:
+                    app.logger.error(f"FTP Sync toggle error: {e}")
+
+        if 'transcription' in data:
+            config_data['transcription'] = data['transcription']
+            
+        if 'filename' in data:
+            config_data['filename'] = data['filename']
+            
+        if 'stations' in data:
+            st_data = data['stations']
+            if 'stations' in st_data and isinstance(st_data['stations'], dict):
+                config_data['stations'] = st_data['stations']
+            elif 'stations' in st_data and isinstance(st_data['stations'], list):
+                config_data['stations'] = {item['code']: item['name'] for item in st_data['stations'] if item.get('code')}
+            
+            if 'station_chat_ids' in st_data:
+                config_data['station_chat_ids'] = st_data['station_chat_ids']
+            if 'station_mapping' in st_data:
+                config_data['station_mapping'] = st_data['station_mapping']
+            if 'nizh_station_codes' in st_data:
+                config_data['nizh_station_codes'] = st_data['nizh_station_codes']
+
+        if 'employee_by_extension' in data:
+            config_data['employee_by_extension'] = data['employee_by_extension']
+
+        # Сохраняем всё сразу
+        save_user_config_data(config_data)
+        
+        # Перезапуск воркера если нужно
+        if 'paths' in data:
+            try:
+                request_reload(current_user.id)
+            except: pass
+            
+        append_user_log('Сохранена полная конфигурация', module='config')
+        return jsonify({'success': True, 'message': 'Все настройки сохранены'})
+    except Exception as e:
+        app.logger.error(f'Ошибка сохранения всей конфигурации: {e}', exc_info=True)
+        return jsonify({'success': False, 'message': str(e)})
+
 @app.route('/api/config/save', methods=['POST'])
 @login_required
 def api_config_save():
@@ -3997,6 +4111,13 @@ def api_config_save():
             config_data['employee_by_extension'] = config_payload
         elif config_type == 'transcription':
             config_data['transcription'] = config_payload
+        elif config_type == 'filename':
+            # Пользовательские форматы имен файлов
+            config_data['filename'] = {
+                'enabled': bool(config_payload.get('enabled', False)),
+                'patterns': config_payload.get('patterns') or [],
+                'extensions': config_payload.get('extensions') or ['.mp3', '.wav']
+            }
         elif config_type == 'stations':
             config_data['stations'] = {item['code']: item['name'] for item in config_payload.get('stations', []) if item.get('code')}
             config_data['station_chat_ids'] = config_payload.get('station_chat_ids', {})

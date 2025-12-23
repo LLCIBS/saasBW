@@ -39,6 +39,11 @@ def default_config_template():
             # False - сразу брать из таблицы EMPLOYEE_BY_EXTENSION
             'auto_detect_operator_name': True,
         },
+        'filename': {
+            'enabled': False,
+            'patterns': [],
+            'extensions': ['.mp3', '.wav']
+        },
         'allowed_stations': []
     }
 
@@ -166,6 +171,7 @@ def build_runtime_config(project_config, config_data=None, user_id=None):
             'tbank_stereo_enabled': bool(getattr(project_config, 'TBANK_STEREO_ENABLED', False)),
             'use_additional_vocab': vocab_enabled
         },
+        'filename': config_data.get('filename') or default_config_template()['filename'],
         'allowed_stations': config_data.get('allowed_stations')
     }
     

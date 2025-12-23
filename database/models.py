@@ -293,6 +293,10 @@ class UserConfig(db.Model):
     tbank_stereo_enabled = db.Column(db.Boolean, default=False, nullable=False)
     use_additional_vocab = db.Column(db.Boolean, default=True, nullable=False)
     auto_detect_operator_name = db.Column(db.Boolean, default=False, nullable=False)
+    # Форматы файлов
+    use_custom_filename_patterns = db.Column(db.Boolean, default=False, nullable=False)
+    filename_patterns = db.Column(JSONB, nullable=True)  # список паттернов [{key, regex, description, example}]
+    filename_extensions = db.Column(JSONB, nullable=True)  # список допустимых расширений
     
     # Arrays stored as JSONB
     allowed_stations = db.Column(JSONB, nullable=True)  # массив кодов станций

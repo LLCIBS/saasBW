@@ -120,6 +120,7 @@ FILENAME_PATTERNS = {
     'datetime_format_compact': '%Y%m%d-%H%M%S',
     'date_format_direction': '%Y_%m_%d',  # Для нового формата: 2025_10_20
 }
+DEFAULT_FILENAME_PATTERNS = dict(FILENAME_PATTERNS)
 
 # Описание форматов файлов для документации
 FILENAME_FORMATS = {
@@ -182,6 +183,7 @@ def _apply_profile_dict(profile_data):
     global STATION_NAMES, STATION_CHAT_IDS, STATION_MAPPING
     global NIZH_STATION_CODES, EMPLOYEE_BY_EXTENSION
     global ALLOWED_STATIONS, PROFILE_SETTINGS, TBANK_STEREO_ENABLED, USE_ADDITIONAL_VOCAB, AUTO_DETECT_OPERATOR_NAME
+    global FILENAME_PATTERNS
 
     PROFILE_SETTINGS = profile_data or {}
 
@@ -222,6 +224,34 @@ def _apply_profile_dict(profile_data):
     USE_ADDITIONAL_VOCAB = bool(transcription_cfg.get('use_additional_vocab', True))
     # Автоматическое определение имени оператора (по умолчанию включено)
     AUTO_DETECT_OPERATOR_NAME = bool(transcription_cfg.get('auto_detect_operator_name', True))
+
+    # Переопределение форматов файлов по профилю
+    filename_cfg = (profile_data or {}).get('filename') or {}
+    filename_enabled = bool(filename_cfg.get('enabled', False))
+    filename_patterns = filename_cfg.get('patterns') or []
+    filename_extensions = filename_cfg.get('extensions')
+
+    # ВАЖНО: Сохраняем секцию filename в PROFILE_SETTINGS для использования в is_valid_call_filename
+    if 'filename' not in PROFILE_SETTINGS:
+        PROFILE_SETTINGS['filename'] = {}
+    PROFILE_SETTINGS['filename'] = {
+        'enabled': filename_enabled,
+        'patterns': filename_patterns,
+        'extensions': filename_extensions
+    }
+
+    merged_patterns = dict(DEFAULT_FILENAME_PATTERNS)
+    if filename_enabled:
+        for idx, pattern in enumerate(filename_patterns):
+            key = str(pattern.get('key') or f'custom_{idx}')
+            regex = pattern.get('regex')
+            if not regex:
+                continue
+            merged_patterns[key] = regex
+        if filename_extensions and isinstance(filename_extensions, list):
+            merged_patterns['supported_extensions'] = filename_extensions
+
+    FILENAME_PATTERNS = merged_patterns
 
 
 _apply_profile_overrides()

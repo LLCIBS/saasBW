@@ -231,7 +231,19 @@ def sync_ftp_connection(connection_id: int, user_id: Optional[int] = None):
                 f"(осталось {len(filtered_files)} из {total_detected})"
             )
 
-        # ВАЖНО: Фильтруем файлы, которые были изменены менее 3 минут назад
+        # ВАЖНО: Оставляем только те файлы, которые подходят под наши шаблоны и расширения.
+        # Это нужно сделать ДО фильтра возраста, чтобы parse_filename мог извлечь дату из имени.
+        from call_analyzer.utils import is_valid_call_filename
+        valid_files = [f for f in filtered_files if is_valid_call_filename(f['name'])]
+        
+        if len(valid_files) < len(filtered_files):
+            logger.info(
+                f"FTP {row.name}: отфильтрованы файлы неподходящего формата "
+                f"(осталось {len(valid_files)} из {len(filtered_files)})"
+            )
+        filtered_files = valid_files
+
+        # ВАЖНО: Фильтруем файлы, которые были изменены менее 5 минут назад
         # На FTP-сервере работает скрипт конвертации в стерео (~2 минуты)
         # Используем время из ИМЕНИ ФАЙЛА (call_dt), а не mtime, т.к. mtime может быть некорректным
         current_time = datetime.now()
@@ -381,24 +393,12 @@ def sync_ftp_connection(connection_id: int, user_id: Optional[int] = None):
                     logger.debug(f"Файл уже существует, пропускаем: {filename}")
                     continue
                 
-                # Проверяем формат имени файла
-                from call_analyzer.utils import is_valid_call_filename
+                # Дополнительная проверка для формата external-* (пропускаем служебные хвосты)
                 filename_lower = filename.lower()
-                # Файлы формата out-* пропускаются
-                is_valid_name = is_valid_call_filename(filename)
-                
-                # Для формата external-* пропускаем файлы с хвостами .wav-out. и .wav-in.
                 if filename_lower.startswith("external-"):
                     if ".wav-out." in filename_lower or ".wav-in." in filename_lower:
                         logger.debug(f"Пропускаем файл с хвостом .wav-out. или .wav-in.: {filename}")
                         continue
-                
-                valid_extensions = ['.mp3', '.wav']
-                is_valid_ext = any(filename_lower.endswith(ext) for ext in valid_extensions)
-
-                if not is_valid_name or not is_valid_ext:
-                    logger.warning(f"Файл {filename} не соответствует формату. Пропускаем.")
-                    continue
                 
                 # Скачиваем файл
                 # Используем relative_path, но FTP client должен понимать, что это может быть полный путь

@@ -147,6 +147,64 @@ def parse_filename(file_name: str):
     независимо от того, входящий или исходящий звонок.
     Поддерживает форматы из конфигурации FILENAME_FORMATS.
     """
+    def _try_custom_patterns():
+        """Пробуем пользовательские паттерны, если включены. Ожидается порядок групп: phone, station, datetime."""
+        try:
+            filename_cfg = getattr(config, "PROFILE_SETTINGS", {}).get('filename') or {}
+            if not filename_cfg.get('enabled'):
+                return None
+            patterns = filename_cfg.get('patterns') or []
+            dt_default = config.FILENAME_PATTERNS.get('datetime_format')
+            for idx, pattern in enumerate(patterns):
+                regex = pattern.get('regex')
+                if not regex:
+                    continue
+                
+                # Если в сохраненном regex есть [^\\._-]+, он может обрезать дату на первом дефисе.
+                # Исправляем это на лету, если нужно, или просто используем как есть.
+                match = re.match(regex, file_name, re.IGNORECASE)
+                if not match:
+                    continue
+                
+                # Пробуем получить данные по именам групп (если они есть) или по порядку (1-3)
+                group_dict = match.groupdict()
+                phone = group_dict.get('phone') or (match.group(1) if match.lastindex and match.lastindex >= 1 else None)
+                station = group_dict.get('station') or (match.group(2) if match.lastindex and match.lastindex >= 2 else None)
+                dt_str = group_dict.get('datetime') or (match.group(3) if match.lastindex and match.lastindex >= 3 else None)
+                
+                phone = normalize_phone_number(phone) if phone else phone
+                call_time = None
+                dt_fmt = pattern.get('datetime_format') or dt_default
+                if dt_str and dt_fmt:
+                    try:
+                        # Удаляем лишние символы из строки даты, если они попали (например, расширение)
+                        # Но лучше полагаться на точный regex
+                        call_time = datetime.datetime.strptime(dt_str, dt_fmt)
+                    except Exception:
+                        # Попробуем отрезать всё после последнего разделителя, если формат не совпал
+                        # (иногда в группу попадает лишнее из-за жадного regex)
+                        logger.debug("Ошибка парсинга даты '%s' форматом '%s'", dt_str, dt_fmt)
+                        call_time = None
+                
+                if phone or station:
+                    return phone, station, call_time
+        except Exception:
+            logger.debug("Не удалось применить пользовательские паттерны для %s", file_name, exc_info=True)
+        return None
+
+    filename_cfg = getattr(config, "PROFILE_SETTINGS", {}).get('filename') or {}
+    custom_enabled = bool(filename_cfg.get('enabled', False))
+
+    custom_match = _try_custom_patterns()
+    if custom_match:
+        return custom_match
+    
+    # Если включены свои правила, но ничего не подошло — ПРЕКРАЩАЕМ поиск.
+    # Это предотвращает "подтягивание из общего формата".
+    if custom_enabled:
+        logger.debug("Файл %s не подошел под кастомные шаблоны, общий поиск пропущен.", file_name)
+        return None, None, None
+
     # Поддержка нового формата с направлением:
     # вход_EkbFocusMal128801_с_79536098664_на_73432260822_от_2025_10_20
     m = re.match(config.FILENAME_PATTERNS['direction_pattern'], file_name, re.IGNORECASE)
@@ -279,18 +337,43 @@ def is_valid_call_filename(filename: str) -> bool:
     Поддерживает форматы: fs_*, [phone/station]_[station/phone]_[date]_..., external-*, вход_*
     """
     name_lower = filename.lower()
-    
+
+    filename_cfg = getattr(config, "PROFILE_SETTINGS", {}).get('filename') or {}
+    custom_enabled = bool(filename_cfg.get('enabled', False))
+    custom_patterns = filename_cfg.get('patterns') or []
+
+    extensions = filename_cfg.get('extensions') or config.FILENAME_PATTERNS.get('supported_extensions', ['.mp3', '.wav'])
+    if extensions:
+        if not any(name_lower.endswith(ext.lower()) for ext in extensions):
+            return False
+
+    # Если включены пользовательские правила, считаем валидными ТОЛЬКО их
+    if custom_enabled:
+        if not custom_patterns:
+            return False
+        for pattern in custom_patterns:
+            regex = pattern.get('regex')
+            if not regex:
+                continue
+            if re.match(regex, filename, re.IGNORECASE):
+                return True
+        # Ни один кастомный паттерн не подошёл
+        return False
+
+    # Кастомные правила выключены — используем стандартную логику
     # Проверяем известные префиксы
-    if (name_lower.startswith("fs_") or 
-        name_lower.startswith("external-") or 
-        name_lower.startswith("вход_")):
+    if (
+        name_lower.startswith("fs_")
+        or name_lower.startswith("external-")
+        or name_lower.startswith("вход_")
+    ):
         return True
-    
+
     # Проверяем новый формат без префикса: [phone/station]_[station/phone]_[date]_...
     # Используем паттерн из конфигурации
     if re.match(config.FILENAME_PATTERNS['fs_pattern'], filename, re.IGNORECASE):
         return True
-    
+
     return False
 
 

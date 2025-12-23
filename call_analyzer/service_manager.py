@@ -66,7 +66,8 @@ def load_active_profiles(engine):
                        thebai_api_key, telegram_bot_token, speechmatics_api_key,
                        alert_chat_id, tg_channel_nizh, tg_channel_other,
                        tbank_stereo_enabled, use_additional_vocab, auto_detect_operator_name,
-                       allowed_stations, nizh_station_codes, legal_entity_keywords
+                       allowed_stations, nizh_station_codes, legal_entity_keywords,
+                       use_custom_filename_patterns, filename_patterns, filename_extensions
                 FROM user_config
                 WHERE user_id IN :ids
             """)
@@ -142,6 +143,12 @@ def load_active_profiles(engine):
                 'tbank_stereo_enabled': bool(cfg_row.tbank_stereo_enabled),
                 'use_additional_vocab': bool(cfg_row.use_additional_vocab),
                 'auto_detect_operator_name': bool(cfg_row.auto_detect_operator_name),
+            }
+
+            config_data['filename'] = {
+                'enabled': bool(cfg_row.use_custom_filename_patterns),
+                'patterns': cfg_row.filename_patterns or [],
+                'extensions': cfg_row.filename_extensions or ['.mp3', '.wav']
             }
 
             config_data['allowed_stations'] = cfg_row.allowed_stations or []
