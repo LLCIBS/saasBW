@@ -11,13 +11,31 @@
 
 import sys
 import logging
+import os
 from pathlib import Path
 
 from sqlalchemy import create_engine, text
+from dotenv import load_dotenv
 
 # Подготовка путей
 project_root = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(project_root))
+
+# Настройка UTF-8 для Windows
+if sys.platform == 'win32':
+    import io
+    try:
+        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+        sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+    except AttributeError:
+        pass # В некоторых средах вывода buffer может не быть
+
+# Загружаем переменные окружения из .env
+env_path = project_root / '.env'
+if env_path.exists():
+    load_dotenv(env_path, encoding='utf-8')
+else:
+    load_dotenv(encoding='utf-8')
 
 # Настройка логирования
 logging.basicConfig(
