@@ -398,7 +398,7 @@ def sync_ftp_connection(connection_id: int, user_id: Optional[int] = None):
                 if filename_lower.startswith("external-"):
                     if ".wav-out." in filename_lower or ".wav-in." in filename_lower:
                         logger.debug(f"Пропускаем файл с хвостом .wav-out. или .wav-in.: {filename}")
-                    continue
+                        continue
                 
                 # Скачиваем файл
                 # Используем relative_path, но FTP client должен понимать, что это может быть полный путь

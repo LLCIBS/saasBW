@@ -384,6 +384,7 @@ def is_valid_call_filename(filename: str) -> bool:
         name_lower.startswith("fs_")
         or name_lower.startswith("external-")
         or name_lower.startswith("вход_")
+        or name_lower.startswith("out-")
     ):
         return True
 
