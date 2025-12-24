@@ -195,7 +195,16 @@ def transcribe_and_analyze(file_path: Path, station_code: str, original_station_
     # 5. Запускаем расширенный разбор по чек-листу (ТОЛЬКО ДЛЯ ЦЕЛЕВЫХ/ПЕРВИЧНЫХ ЗВОНКОВ)
     # Проверяем наличие маркера ЦЕЛЕВОЙ (или ПЕРВИЧНЫЙ) в результате анализа якоря.
     # Это экономит ресурсы и исключает оценку менеджера по ошибочным звонкам.
-    if "[ТИПЗВОНКА:ЦЕЛЕВОЙ]" in analysis_upper or "ПЕРВИЧНЫЙ" in analysis_upper:
+    
+    # ПРОВЕРКА: Разрешен ли чек-лист для этого формата файлов?
+    from call_analyzer.utils import get_matched_pattern_config
+    pattern_cfg = get_matched_pattern_config(filename)
+    checklist_allowed = True
+    if pattern_cfg and pattern_cfg.get('process_checklist') == False:
+        logger.info(f"Для формата файла {filename} чек-лист отключен пользователем.")
+        checklist_allowed = False
+
+    if checklist_allowed and ("[ТИПЗВОНКА:ЦЕЛЕВОЙ]" in analysis_upper or "ПЕРВИЧНЫЙ" in analysis_upper):
         logger.info("Звонок определен как ЦЕЛЕВОЙ/ПЕРВИЧНЫЙ. Запускаем расширенный разбор (чек-лист).")
         if phone_number and call_time:
             # Используем оригинальный код станции для определения оператора в Telegram сообщении

@@ -141,6 +141,24 @@ def _send_text_telegram(chat_id, text):
         logger.error(f"Исключение при отправке сообщения в чат {chat_id}: {e}")
 
 
+def get_matched_pattern_config(file_name: str):
+    """
+    Возвращает конфигурацию паттерна, который подошел под имя файла.
+    """
+    try:
+        filename_cfg = getattr(config, "PROFILE_SETTINGS", {}).get('filename') or {}
+        if not filename_cfg.get('enabled'):
+            return None
+        patterns = filename_cfg.get('patterns') or []
+        for pattern in patterns:
+            regex = pattern.get('regex')
+            if regex and re.match(regex, file_name, re.IGNORECASE):
+                return pattern
+    except Exception:
+        logger.debug("Ошибка при поиске подходящего паттерна для %s", file_name)
+    return None
+
+
 def parse_filename(file_name: str):
     """
     Возвращает кортеж (phone_number, station_code, call_datetime),

@@ -316,7 +316,8 @@
                                                 <th style="width:15%">Название (Бренд АТС)</th>
                                                 <th>Шаблон (как выглядит имя файла)</th>
                                                 <th style="width:15%">Формат даты</th>
-                                                <th style="width:15%">Направление</th>
+                                                <th style="width:12%">Направление</th>
+                                                <th style="width:10%" title="Запускать ли детальный анализ по чек-листу для этих звонков?">Чек-лист</th>
                                                 <th style="width:50px"></th>
                                             </tr>
                                         </thead>
@@ -653,6 +654,9 @@
                             <option value="outgoing" ${p.direction === 'outgoing' ? 'selected' : ''}>Исходящий</option>
                         </select>
                     </td>
+                    <td class="text-center">
+                        <input type="checkbox" class="form-check-input" data-idx="${idx}" data-field="process_checklist" onchange="onFilenamePatternChange(this)" ${p.process_checklist !== false ? 'checked' : ''}>
+                    </td>
                     <td class="text-end">
                         <button class="btn btn-sm btn-outline-danger border-0" type="button" onclick="removeFilenamePattern(${idx})">
                             <i class="fas fa-trash"></i>
@@ -694,7 +698,11 @@
             const field = input.getAttribute('data-field');
             if (!configData.filename.patterns[idx]) return;
             
-            configData.filename.patterns[idx][field] = input.value;
+            if (input.type === 'checkbox') {
+                configData.filename.patterns[idx][field] = input.checked;
+            } else {
+                configData.filename.patterns[idx][field] = input.value;
+            }
             
             // Если изменился шаблон или формат даты, обновляем скрытый regex
             if (field === 'template' || field === 'datetime_format') {
@@ -752,6 +760,7 @@
                 regex: '', 
                 datetime_format: '%Y-%m-%d-%H-%M-%S',
                 direction: 'auto',
+                process_checklist: true,
                 example: '' 
             });
             renderFilenamePatterns();
