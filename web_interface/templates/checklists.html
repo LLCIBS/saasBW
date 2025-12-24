@@ -107,6 +107,52 @@
                                     </div>
                                 </div>
                                 <div id="resultLinks"></div>
+
+                                <!-- Секция для якоря -->
+                                <div id="anchorSection" class="mt-4 pt-3 border-top" style="display:none;">
+                                    <div class="d-flex justify-content-between align-items-center mb-2">
+                                        <h6 class="mb-0"><i class="fas fa-anchor me-2"></i>Статус звонка (Якорь)</h6>
+                                        <div id="anchorTargetBadge"></div>
+                                    </div>
+                                    <div id="anchorResult" class="p-3 bg-light rounded mb-2" style="white-space:pre-wrap; font-family: 'Courier New', monospace; font-size: 0.9rem;"></div>
+                                    
+                                    <div class="d-flex align-items-center gap-2 mb-3">
+                                        <button type="button" class="btn btn-outline-primary btn-sm" id="analyzeAnchorBtn" onclick="analyzeAnchor()">
+                                            <i class="fas fa-search me-1"></i>Анализ
+                                        </button>
+                                        <span id="analyzeAnchorStatus" class="small text-muted" style="display:none;"></span>
+                                    </div>
+
+                                    <div id="anchorExplanation" class="mb-3 p-3 border-start border-3 border-info bg-light small" style="display:none; white-space:pre-wrap;"></div>
+
+                                    <!-- Блок доработки якоря -->
+                                    <div id="anchorRefinementBlock" class="mt-3" style="display:none;">
+                                        <label class="form-label text-muted small mb-1">
+                                            <i class="fas fa-magic me-1"></i>Доработать промпт через AI
+                                        </label>
+                                        <div class="input-group mb-2">
+                                            <input type="text"
+                                                   class="form-control form-control-sm"
+                                                   id="anchorRefineInput"
+                                                   placeholder="Введите условие (например: добавь проверку на вежливость)..."
+                                                   onkeypress="if(event.key === 'Enter') { event.preventDefault(); regenerateAnchorPromptFromTest(); }">
+                                            <button type="button"
+                                                    class="btn btn-sm btn-outline-primary"
+                                                    onclick="regenerateAnchorPromptFromTest()"
+                                                    id="anchorRegenerateBtn">
+                                                <i class="fas fa-sync-alt me-1"></i>Перегенерировать
+                                            </button>
+                                        </div>
+                                        
+                                        <div id="newAnchorPromptPreview" class="mt-2" style="display:none;">
+                                            <label class="form-label text-muted small mb-1">Новый вариант промпта:</label>
+                                            <textarea class="form-control form-control-sm mb-2" id="newAnchorPromptText" rows="5"></textarea>
+                                            <button type="button" class="btn btn-sm btn-success" onclick="saveNewAnchorFromTest()">
+                                                <i class="fas fa-save me-1"></i>Применить и сохранить
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
 
@@ -150,8 +196,21 @@
         const analyzeBtn = document.getElementById('analyzeBtn');
         const analyzeStatus = document.getElementById('analyzeStatus');
         
+        const anchorSection = document.getElementById('anchorSection');
+        const anchorResult = document.getElementById('anchorResult');
+        const anchorTargetBadge = document.getElementById('anchorTargetBadge');
+        const analyzeAnchorBtn = document.getElementById('analyzeAnchorBtn');
+        const analyzeAnchorStatus = document.getElementById('analyzeAnchorStatus');
+        const anchorExplanation = document.getElementById('anchorExplanation');
+        const anchorRefinementBlock = document.getElementById('anchorRefinementBlock');
+        const anchorRefineInput = document.getElementById('anchorRefineInput');
+        const anchorRegenerateBtn = document.getElementById('anchorRegenerateBtn');
+        const newAnchorPromptPreview = document.getElementById('newAnchorPromptPreview');
+        const newAnchorPromptText = document.getElementById('newAnchorPromptText');
+
         // Глобальные данные последнего теста для анализа
         let lastTestData = null;
+        let lastAnchorData = null;
         let checklistItems = [];
         let checklistPromptsData = null; // Данные промптов чек-листа для доработки
 
@@ -318,6 +377,29 @@
                     resultLinks.appendChild(div);
                 });
                 resultsCard.style.display = 'block';
+
+                // Показываем данные якоря
+                const anchor = data.anchor || null;
+                if (anchor) {
+                    lastAnchorData = anchor;
+                    setHtmlWithNewlines(anchorResult, anchor.analysis);
+                    
+                    // Установка бейджа Целевой/Нецелевой
+                    if (anchor.is_target) {
+                        anchorTargetBadge.innerHTML = '<span class="badge bg-success"><i class="fas fa-bullseye me-1"></i>Целевой</span>';
+                    } else {
+                        anchorTargetBadge.innerHTML = '<span class="badge bg-danger"><i class="fas fa-times-circle me-1"></i>Не целевой</span>';
+                    }
+                    
+                    anchorSection.style.display = 'block';
+                    anchorExplanation.style.display = 'none';
+                    anchorExplanation.innerHTML = '';
+                    anchorRefinementBlock.style.display = 'none';
+                    newAnchorPromptPreview.style.display = 'none';
+                } else {
+                    anchorSection.style.display = 'none';
+                    lastAnchorData = null;
+                }
 
                 // Разбор по чек-листу
                 const checklist = data.checklist || null;
@@ -567,6 +649,151 @@
             } finally {
                 refineBtn.innerHTML = originalContent;
                 refineBtn.disabled = false;
+            }
+        }
+
+        async function analyzeAnchor() {
+            if (!lastAnchorData || !lastTestData || !lastTestData.transcript_text) {
+                alert('Сначала выполните тест звонка.');
+                return;
+            }
+            
+            analyzeAnchorBtn.disabled = true;
+            analyzeAnchorStatus.textContent = 'Анализ...';
+            analyzeAnchorStatus.style.display = 'inline';
+            analyzeAnchorStatus.className = 'small text-muted';
+            
+            try {
+                const resp = await fetch('/api/anchors/analyze', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        transcript_text: lastTestData.transcript_text,
+                        analysis_text: lastAnchorData.analysis,
+                        prompt_text: lastAnchorData.prompt
+                    })
+                });
+                
+                const data = await resp.json();
+                
+                if (!resp.ok || !data.success) {
+                    analyzeAnchorStatus.textContent = data.message || 'Ошибка анализа.';
+                    analyzeAnchorStatus.className = 'small text-danger';
+                    analyzeAnchorBtn.disabled = false;
+                    return;
+                }
+                
+                analyzeAnchorStatus.textContent = 'Анализ завершён';
+                analyzeAnchorStatus.className = 'small text-success';
+                
+                anchorExplanation.innerHTML = data.explanation;
+                anchorExplanation.style.display = 'block';
+                anchorRefinementBlock.style.display = 'block';
+                
+                analyzeAnchorBtn.disabled = false;
+            } catch (err) {
+                console.error('Ошибка анализа якоря:', err);
+                analyzeAnchorStatus.textContent = 'Сбой сети.';
+                analyzeAnchorStatus.className = 'small text-danger';
+                analyzeAnchorBtn.disabled = false;
+            }
+        }
+
+        async function regenerateAnchorPromptFromTest() {
+            const refineInput = document.getElementById('anchorRefineInput');
+            const condition = (refineInput.value || '').trim();
+            if (!condition) {
+                alert('Введите дополнительное условие.');
+                refineInput.focus();
+                return;
+            }
+
+            if (!lastAnchorData || !lastAnchorData.prompt) {
+                alert('Нет данных промпта для доработки.');
+                return;
+            }
+
+            anchorRegenerateBtn.disabled = true;
+            const originalContent = anchorRegenerateBtn.innerHTML;
+            anchorRegenerateBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>...';
+
+            try {
+                const response = await fetch('/api/regenerate-anchor-prompt', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        current_prompt: lastAnchorData.prompt,
+                        additional_condition: condition
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`Ошибка сервера (${response.status})`);
+                }
+
+                const result = await response.json();
+
+                if (result.success && result.prompt) {
+                    newAnchorPromptText.value = result.prompt;
+                    newAnchorPromptPreview.style.display = 'block';
+                    refineInput.value = '';
+                } else {
+                    alert(result.message || 'Ошибка при перегенерации');
+                }
+            } catch (error) {
+                console.error('Ошибка при перегенерации промпта:', error);
+                alert('Ошибка: ' + error.message);
+            } finally {
+                anchorRegenerateBtn.innerHTML = originalContent;
+                anchorRegenerateBtn.disabled = false;
+            }
+        }
+
+        async function saveNewAnchorFromTest() {
+            if (!lastAnchorData) return;
+            
+            const newPrompt = newAnchorPromptText.value.trim();
+            if (!newPrompt) {
+                alert('Промпт не может быть пустым.');
+                return;
+            }
+
+            if (!confirm('Вы действительно хотите обновить и сохранить этот промпт?')) {
+                return;
+            }
+
+            try {
+                // Нам нужны текущие якоря и станции
+                const respPrompts = await fetch('/api/prompts');
+                let promptsData = await respPrompts.json();
+                
+                if (lastAnchorData.anchor_name) {
+                    // Если это именованный якорь, обновляем его
+                    promptsData.anchors[lastAnchorData.anchor_name] = newPrompt;
+                } else {
+                    // Если это пользовательский промпт для станции, обновляем станцию
+                    promptsData.stations[lastAnchorData.station_code] = newPrompt;
+                }
+
+                const saveResp = await fetch('/api/prompts/save', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(promptsData)
+                });
+
+                const saveResult = await saveResp.json();
+
+                if (saveResult.success) {
+                    alert('✅ Промпт успешно сохранен и применен!\n\nЗапустите тест снова, чтобы увидеть результат с новым промптом.');
+                    newAnchorPromptPreview.style.display = 'none';
+                    // Обновляем локальные данные
+                    lastAnchorData.prompt = newPrompt;
+                } else {
+                    alert('Ошибка при сохранении: ' + (saveResult.message || 'Неизвестная ошибка'));
+                }
+            } catch (error) {
+                console.error('Ошибка при сохранении промпта:', error);
+                alert('Ошибка соединения при сохранении.');
             }
         }
 

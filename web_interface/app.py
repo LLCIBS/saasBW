@@ -2679,9 +2679,20 @@ def api_checklists_test():
 
             # Анализ основным промптом
             prompt_text = ''
+            anchor_name = None
             try:
+                # Получаем промпты пользователя для определения имени якоря
+                user_prompts = get_user_prompts_data(user=current_user)
+                anchors = user_prompts.get('anchors') or {}
+                
                 prompts = get_station_prompts() if get_station_prompts else {}
                 prompt_text = prompts.get(str(station_code)) or prompts.get('default') or ''
+                
+                # Пытаемся найти имя якоря по тексту промпта
+                for name, text in anchors.items():
+                    if text == prompt_text:
+                        anchor_name = name
+                        break
             except Exception as exc:
                 app.logger.error("Не удалось получить промпт станции: %s", exc)
 
@@ -2689,6 +2700,10 @@ def api_checklists_test():
                 prompt_text = "Проанализируй звонок и определи результат разговора."
 
             analysis_text = thebai_analyze(transcript_text, prompt_text)
+            
+            # Определяем целевой ли звонок (по аналогии с call_handler.py)
+            analysis_upper = analysis_text.upper()
+            is_target = "[ТИПЗВОНКА:ЦЕЛЕВОЙ]" in analysis_upper or "ПЕРВИЧНЫЙ" in analysis_upper
 
             # Сохраняем транскрипцию и анализ в отдельную тестовую папку,
             # не используя стандартный путь transcriptions, чтобы не мешать рабочим данным
@@ -2737,6 +2752,13 @@ def api_checklists_test():
                     'checklist': str(checklist_analysis_path) if checklist_analysis_path else None
                 },
                 'checklist': checklist_payload,
+                'anchor': {
+                    'analysis': analysis_text,
+                    'prompt': prompt_text,
+                    'anchor_name': anchor_name,
+                    'station_code': station_code,
+                    'is_target': is_target
+                },
                 'transcript_text': transcript_text  # Для последующего анализа
             })
     except Exception as exc:
@@ -2865,6 +2887,80 @@ def _parse_checklist_explanations(analysis_text):
         explanations[str(current_num)] = '\n'.join(current_text).strip()
     
     return explanations
+
+@app.route('/api/anchors/analyze', methods=['POST'])
+@login_required
+def api_anchors_analyze():
+    """Детальный анализ результата якоря с обоснованием."""
+    data = request.get_json() or {}
+    transcript_text = data.get('transcript_text', '').strip()
+    analysis_text = data.get('analysis_text', '').strip()
+    prompt_text = data.get('prompt_text', '').strip()
+    
+    if not transcript_text or not analysis_text or not prompt_text:
+        return jsonify({'success': False, 'message': 'Не переданы данные транскрипта, анализа или промпта.'}), 400
+    
+    analysis_prompt = f"""Ты — эксперт по анализу клиентских звонков. Перед тобой транскрипт звонка и результат его классификации по выбранному якорю.
+
+ТРАНСКРИПТ ЗВОНКА:
+{transcript_text}
+
+ПРОМПТ ЯКОРЯ:
+{prompt_text}
+
+РЕЗУЛЬТАТ КЛАССИФИКАЦИИ:
+{analysis_text}
+
+Твоя задача: написать детальное обоснование, ПОЧЕМУ этот звонок был определен как ЦЕЛЕВОЙ или НЕ ЦЕЛЕВОЙ согласно логике промпта якоря.
+
+В обосновании укажи:
+1. Итоговый статус (Целевой или Не целевой) и краткое резюме.
+2. Ключевые фразы или моменты из транскрипта, которые подтверждают этот статус.
+3. Объяснение логики классификации на основе правил, описанных в промпте якоря.
+
+Обоснование должно быть четким, аргументированным и ссылаться на реальные фрагменты диалога."""
+
+    try:
+        runtime_cfg = build_user_runtime_config()
+        thebai_api_key = (runtime_cfg.get('api_keys') or {}).get('thebai_api_key', '')
+        thebai_url = (runtime_cfg.get('api_keys') or {}).get('thebai_url', 'https://api.deepseek.com/v1/chat/completions')
+        
+        if not thebai_api_key:
+            return jsonify({'success': False, 'message': 'API ключ для анализа не настроен.'}), 400
+        
+        # Отправляем запрос к TheB.ai / DeepSeek
+        payload = {
+            "model": (runtime_cfg.get('api_keys') or {}).get('thebai_model', 'deepseek-reasoner'),
+            "messages": [
+                {"role": "system", "content": "Ты эксперт по анализу клиентских звонков."},
+                {"role": "user", "content": analysis_prompt}
+            ],
+            "temperature": 0.3,
+        }
+        
+        response = requests.post(
+            thebai_url,
+            headers={
+                'Authorization': f'Bearer {thebai_api_key}',
+                'Content-Type': 'application/json',
+            },
+            json=payload,
+            timeout=120
+        )
+        
+        if response.status_code != 200:
+            app.logger.error(f"Ошибка API при анализе якоря: {response.status_code} - {response.text}")
+            return jsonify({'success': False, 'message': f'Ошибка API: {response.status_code}'}), 502
+        
+        result = response.json()
+        explanation = (result.get('choices', [{}])[0]
+                          .get('message', {})
+                          .get('content', '')).strip()
+        
+        return jsonify({'success': True, 'explanation': explanation})
+    except Exception as exc:
+        app.logger.error("Сбой при анализе якоря: %s", exc, exc_info=True)
+        return jsonify({'success': False, 'message': str(exc)}), 500
 
 @app.route('/api/vocabulary')
 @login_required
