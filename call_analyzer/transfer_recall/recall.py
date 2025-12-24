@@ -231,6 +231,47 @@ def notify_recall_lost(recall_record: dict):
 
     logger.info(f"[recall_tracker] Отправлено уведомление о потере клиента в канал {channel}.")
 
+
+def notify_recall_started(recall_record: dict):
+    station_code = recall_record["station_code"]
+    station_name = get_station_name(station_code)
+    phone_number = recall_record["phone_number"]
+
+    if station_code in config.NIZH_STATION_CODES:
+        channel = config.TG_CHANNEL_NIZH
+    else:
+        channel = config.TG_CHANNEL_OTHER
+
+    msg = (
+        f"🔴 [Перезвонить в течение часа]: {phone_number}\n"
+        f"Станция: {station_name}"
+    )
+    if recall_record.get("recall_station"):
+        msg += f"\nПерезвонить с: {recall_record['recall_station']}"
+    if recall_record.get("recall_when"):
+        msg += f"\nКогда: {recall_record['recall_when']}"
+
+    message_id = send_alert(msg, chat_id=channel)
+    recall_record['tg_msg_id'] = message_id
+    save_recall_cases()
+    logger.info(f"[recall_tracker] Уведомление о начале перезвона отправлено в канал {channel}.")
+
+
+def notify_recall_completed(recall_record: dict):
+    phone_number = recall_record["phone_number"]
+    station_code = recall_record["station_code"]
+    station_name = get_station_name(station_code)
+
+    if station_code in config.NIZH_STATION_CODES:
+        channel = config.TG_CHANNEL_NIZH
+    else:
+        channel = config.TG_CHANNEL_OTHER
+
+    msg = f"🟢 Клиенту перезвонили: {phone_number}, {station_name}"
+    reply_to = recall_record.get('tg_msg_id')
+    send_alert(msg, chat_id=channel, reply_to_message_id=reply_to)
+    logger.info(f"[recall_tracker] Уведомление о завершённом перезвоне отправлено в канал {channel}.")
+
 def add_recall_case(phone_number: str, station_code: str, call_time: datetime, station: str = None, when: str = None, analysis: str = None):
     """
     Добавляет новую запись перезвона. Если указано when (например, "завтра утром"),
