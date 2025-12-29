@@ -94,6 +94,54 @@
             border: 1px solid #ced4da;
             border-radius: 4px;
         }
+        .checklist-item {
+            cursor: move;
+            transition: all 0.2s ease;
+            position: relative;
+        }
+        .checklist-item:hover {
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+        .checklist-item.dragging {
+            opacity: 0.5;
+            cursor: grabbing;
+        }
+        .checklist-item.drag-over {
+            border-top: 3px solid #667eea;
+            padding-top: 5px;
+        }
+        .checklist-number {
+            position: absolute;
+            left: -35px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 30px;
+            height: 30px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 0.9rem;
+        }
+        .checklist-items-container {
+            position: relative;
+            padding-left: 45px;
+        }
+        .drag-handle {
+            cursor: grab;
+            color: #999;
+            padding: 5px;
+            margin-right: 10px;
+        }
+        .drag-handle:hover {
+            color: #667eea;
+        }
+        .drag-handle:active {
+            cursor: grabbing;
+        }
     </style>
 </head>
 <body>
@@ -860,7 +908,7 @@
                 <h3 class="prompt-title">
                     <i class="fas fa-list-check me-2"></i>Чек-лист
                 </h3>
-                <div id="checklistItems"></div>
+                <div id="checklistItems" class="checklist-items-container"></div>
                 <button class="btn btn-outline-success mt-3" onclick="addChecklistItem()">
                     <i class="fas fa-plus me-2"></i>Добавить пункт
                 </button>
@@ -894,13 +942,19 @@
             if (!holder) return;
             const items = Array.isArray(scriptPromptData.checklist) ? scriptPromptData.checklist : [];
             holder.innerHTML = items.map((item, idx) => `
-                <div class="anchor-section" data-index="${idx}">
+                <div class="anchor-section checklist-item" data-index="${idx}" draggable="true">
+                    <div class="checklist-number">${idx + 1}</div>
                     <div class="row g-3 mb-2">
+                        <div class="col-auto d-flex align-items-center">
+                            <span class="drag-handle" title="Перетащите для изменения порядка">
+                                <i class="fas fa-grip-vertical"></i>
+                            </span>
+                        </div>
                         <div class="col-md-4">
                             <label class="form-label">Название пункта</label>
                             <input type="text" class="form-control" value="${(item.title||'')}" onchange="updateChecklistTitle(${idx}, this.value)">
                         </div>
-                        <div class="col-md-5">
+                        <div class="col-md-4">
                             <label class="form-label">Промпт для пункта</label>
                             <textarea class="form-control" id="prompt_${idx}" rows="2" onchange="updateChecklistPrompt(${idx}, this.value)" placeholder="Введите промпт...">${(item.prompt||'')}</textarea>
                         </div>
@@ -938,6 +992,88 @@
                     </div>
                 </div>
             `).join('');
+            
+            // Добавляем обработчики drag-and-drop после рендера
+            setupDragAndDrop();
+        }
+
+        function setupDragAndDrop() {
+            const items = document.querySelectorAll('.checklist-item');
+            
+            items.forEach(item => {
+                item.addEventListener('dragstart', handleDragStart);
+                item.addEventListener('dragend', handleDragEnd);
+                item.addEventListener('dragover', handleDragOver);
+                item.addEventListener('drop', handleDrop);
+                item.addEventListener('dragleave', handleDragLeave);
+            });
+        }
+
+        let draggedElement = null;
+
+        function handleDragStart(e) {
+            draggedElement = this;
+            this.classList.add('dragging');
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/html', this.innerHTML);
+        }
+
+        function handleDragEnd(e) {
+            this.classList.remove('dragging');
+            
+            // Убираем классы drag-over у всех элементов
+            document.querySelectorAll('.checklist-item').forEach(item => {
+                item.classList.remove('drag-over');
+            });
+        }
+
+        function handleDragOver(e) {
+            if (e.preventDefault) {
+                e.preventDefault();
+            }
+            
+            e.dataTransfer.dropEffect = 'move';
+            
+            if (this !== draggedElement) {
+                this.classList.add('drag-over');
+            }
+            
+            return false;
+        }
+
+        function handleDragLeave(e) {
+            this.classList.remove('drag-over');
+        }
+
+        function handleDrop(e) {
+            if (e.stopPropagation) {
+                e.stopPropagation();
+            }
+            
+            if (draggedElement !== this) {
+                const draggedIndex = parseInt(draggedElement.getAttribute('data-index'));
+                const targetIndex = parseInt(this.getAttribute('data-index'));
+                
+                // Перемещаем элемент в массиве
+                const items = scriptPromptData.checklist;
+                const draggedItem = items[draggedIndex];
+                
+                // Удаляем элемент из старой позиции
+                items.splice(draggedIndex, 1);
+                
+                // Вставляем элемент в новую позицию
+                items.splice(targetIndex, 0, draggedItem);
+                
+                // Перерисовываем список
+                renderChecklistItems();
+                
+                // Обновляем собранный промпт
+                generateAssembledPrompt();
+            }
+            
+            this.classList.remove('drag-over');
+            
+            return false;
         }
 
         function addChecklistItem() {
