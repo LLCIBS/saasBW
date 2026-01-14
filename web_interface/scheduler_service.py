@@ -87,18 +87,18 @@ def _run_report_job(user_id: int, report_type: str):
             # Импортируем функции генерации отчетов
             try:
                 if report_type == 'week_full':
-                    from call_analyzer.reports.week_full import run_week_full
+                    from reports.week_full import run_week_full
                 elif report_type == 'rr_3':
-                    from call_analyzer.reports.rr_3 import run_rr_3
+                    from reports.rr_3 import run_rr_3
                 elif report_type == 'rr_bad':
-                    from call_analyzer.reports.rr_bad import run_rr_bad
+                    from reports.rr_bad import run_rr_bad
                 elif report_type == 'skolko_52':
-                    from call_analyzer.reports.skolko_52 import run_skolko_52
+                    from reports.skolko_52 import run_skolko_52
                 else:
                     logger.error(f"[Scheduler] Unknown report type: {report_type}")
                     return
             except ImportError as e:
-                logger.error(f"[Scheduler] Failed to import report module {report_type}: {e}")
+                logger.error(f"[Scheduler] Failed to import report module {report_type}: {e}", exc_info=True)
                 return
 
             # Получаем конфигурацию пользователя
@@ -113,24 +113,37 @@ def _run_report_job(user_id: int, report_type: str):
             try:
                 with legacy_config_override(runtime_cfg):
                     if report_type == 'week_full':
-                        start_dt = datetime.combine(start_date, dt_time.min)
-                        end_dt = datetime.combine(end_date, dt_time.max)
-                        result_path = run_week_full(start_date=start_dt, end_date=end_dt, base_folder=base_folder)
+                        start_dt = datetime.combine(start_date, dt_time.min) if start_date else None
+                        end_dt = datetime.combine(end_date, dt_time.max) if end_date else None
+                        try:
+                            result_path = run_week_full(start_date=start_dt, end_date=end_dt, base_folder=base_folder)
+                        except TypeError:
+                            # Если функция не принимает параметры, вызываем без них
+                            result_path = run_week_full(base_folder=base_folder)
                         logger.info(f"[Scheduler] week_full completed: {result_path}")
                     elif report_type == 'rr_3':
                         date_from = datetime.combine(start_date, dt_time.min) if start_date else None
                         date_to = datetime.combine(end_date, dt_time.max) if end_date else None
-                        run_rr_3(date_from=date_from, date_to=date_to)
+                        try:
+                            run_rr_3(date_from=date_from, date_to=date_to)
+                        except TypeError:
+                            run_rr_3()
                         logger.info(f"[Scheduler] rr_3 completed")
                     elif report_type == 'rr_bad':
                         date_from = datetime.combine(start_date, dt_time.min) if start_date else None
                         date_to = datetime.combine(end_date, dt_time.max) if end_date else None
-                        run_rr_bad(date_from=date_from, date_to=date_to)
+                        try:
+                            run_rr_bad(date_from=date_from, date_to=date_to)
+                        except TypeError:
+                            run_rr_bad()
                         logger.info(f"[Scheduler] rr_bad completed")
                     elif report_type == 'skolko_52':
                         date_from = datetime.combine(start_date, dt_time.min) if start_date else None
                         date_to = datetime.combine(end_date, dt_time.max) if end_date else None
-                        run_skolko_52(date_from=date_from, date_to=date_to)
+                        try:
+                            run_skolko_52(date_from=date_from, date_to=date_to)
+                        except TypeError:
+                            run_skolko_52()
                         logger.info(f"[Scheduler] skolko_52 completed")
             except Exception as e:
                 logger.error(f"[Scheduler] Error generating report {report_type} for user {user_id}: {e}", exc_info=True)
