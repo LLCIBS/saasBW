@@ -149,6 +149,64 @@
                             </div>
                             <div class="progress-text-custom" id="weekFullProgressText"></div>
                         </div>
+                        
+                        <!-- Настройка расписания -->
+                        <div class="mt-3 pt-3 border-top">
+                            <div class="small text-muted mb-2">
+                                <i class="fas fa-clock me-1"></i>Автоматическая генерация отчета
+                            </div>
+                            <div class="row g-2 align-items-end">
+                                <div class="col-auto">
+                                    <select class="form-select form-select-sm" id="week_full_schedule_type" onchange="updateScheduleUIBlocks('week_full')">
+                                        <option value="daily">Ежедневно</option>
+                                        <option value="interval">С интервалом</option>
+                                        <option value="weekly">Еженедельно</option>
+                                        <option value="custom">CRON</option>
+                                    </select>
+                                </div>
+                                <div class="col-auto" id="week_full_daily_block">
+                                    <label class="form-label small mb-0">Время</label>
+                                    <input type="time" class="form-control form-control-sm" id="week_full_daily_time" value="12:00">
+                                </div>
+                                <div class="col-auto d-none" id="week_full_interval_block">
+                                    <label class="form-label small mb-0">Интервал</label>
+                                    <div class="d-flex gap-1">
+                                        <input type="number" min="1" class="form-control form-control-sm" id="week_full_interval_value" value="2" style="width: 70px;">
+                                        <select class="form-select form-select-sm" id="week_full_interval_unit" style="width: 90px;">
+                                            <option value="days">дней</option>
+                                            <option value="hours">часов</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="col-auto d-none" id="week_full_weekly_block">
+                                    <label class="form-label small mb-0">День и время</label>
+                                    <div class="d-flex gap-1">
+                                        <select class="form-select form-select-sm" id="week_full_weekly_day" style="width: 100px;">
+                                            <option value="0">Понедельник</option>
+                                            <option value="1">Вторник</option>
+                                            <option value="2">Среда</option>
+                                            <option value="3">Четверг</option>
+                                            <option value="4">Пятница</option>
+                                            <option value="5">Суббота</option>
+                                            <option value="6">Воскресенье</option>
+                                        </select>
+                                        <input type="time" class="form-control form-control-sm" id="week_full_weekly_time" value="12:00" style="width: 100px;">
+                                    </div>
+                                </div>
+                                <div class="col-auto d-none" id="week_full_custom_block">
+                                    <label class="form-label small mb-0">Cron выражение</label>
+                                    <input type="text" class="form-control form-control-sm" id="week_full_cron" placeholder="0 12 * * *" style="width: 150px;">
+                                </div>
+                                <div class="col-auto">
+                                    <button class="btn btn-sm btn-outline-primary" onclick="saveSchedule('week_full')">
+                                        <i class="fas fa-save me-1"></i>Сохранить
+                                    </button>
+                                </div>
+                                <div class="col-auto">
+                                    <small class="text-muted" id="week_full_next_run"></small>
+                                </div>
+                            </div>
+                        </div>
                     </div>
 
                     <!-- Отчет Ретрак за неделю -->
@@ -177,6 +235,64 @@
                                 <div class="progress-fill-custom" id="rr3ProgressFill"></div>
                             </div>
                             <div class="progress-text-custom" id="rr3ProgressText"></div>
+                        </div>
+                        
+                        <!-- Настройка расписания -->
+                        <div class="mt-3 pt-3 border-top">
+                            <div class="small text-muted mb-2">
+                                <i class="fas fa-clock me-1"></i>Автоматическая генерация отчета
+                            </div>
+                            <div class="row g-2 align-items-end">
+                                <div class="col-auto">
+                                    <select class="form-select form-select-sm" id="rr_3_schedule_type" onchange="updateScheduleUIBlocks('rr_3')">
+                                        <option value="daily">Ежедневно</option>
+                                        <option value="interval">С интервалом</option>
+                                        <option value="weekly">Еженедельно</option>
+                                        <option value="custom">CRON</option>
+                                    </select>
+                                </div>
+                                <div class="col-auto" id="rr_3_daily_block">
+                                    <label class="form-label small mb-0">Время</label>
+                                    <input type="time" class="form-control form-control-sm" id="rr_3_daily_time" value="12:00">
+                                </div>
+                                <div class="col-auto d-none" id="rr_3_interval_block">
+                                    <label class="form-label small mb-0">Интервал</label>
+                                    <div class="d-flex gap-1">
+                                        <input type="number" min="1" class="form-control form-control-sm" id="rr_3_interval_value" value="2" style="width: 70px;">
+                                        <select class="form-select form-select-sm" id="rr_3_interval_unit" style="width: 90px;">
+                                            <option value="days">дней</option>
+                                            <option value="hours">часов</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="col-auto d-none" id="rr_3_weekly_block">
+                                    <label class="form-label small mb-0">День и время</label>
+                                    <div class="d-flex gap-1">
+                                        <select class="form-select form-select-sm" id="rr_3_weekly_day" style="width: 100px;">
+                                            <option value="0">Понедельник</option>
+                                            <option value="1">Вторник</option>
+                                            <option value="2">Среда</option>
+                                            <option value="3">Четверг</option>
+                                            <option value="4">Пятница</option>
+                                            <option value="5">Суббота</option>
+                                            <option value="6">Воскресенье</option>
+                                        </select>
+                                        <input type="time" class="form-control form-control-sm" id="rr_3_weekly_time" value="12:00" style="width: 100px;">
+                                    </div>
+                                </div>
+                                <div class="col-auto d-none" id="rr_3_custom_block">
+                                    <label class="form-label small mb-0">Cron выражение</label>
+                                    <input type="text" class="form-control form-control-sm" id="rr_3_cron" placeholder="0 12 * * *" style="width: 150px;">
+                                </div>
+                                <div class="col-auto">
+                                    <button class="btn btn-sm btn-outline-primary" onclick="saveSchedule('rr_3')">
+                                        <i class="fas fa-save me-1"></i>Сохранить
+                                    </button>
+                                </div>
+                                <div class="col-auto">
+                                    <small class="text-muted" id="rr_3_next_run"></small>
+                                </div>
+                            </div>
                         </div>
                     </div>
 
@@ -207,6 +323,64 @@
                             </div>
                             <div class="progress-text-custom" id="rrBadProgressText"></div>
                         </div>
+                        
+                        <!-- Настройка расписания -->
+                        <div class="mt-3 pt-3 border-top">
+                            <div class="small text-muted mb-2">
+                                <i class="fas fa-clock me-1"></i>Автоматическая генерация отчета
+                            </div>
+                            <div class="row g-2 align-items-end">
+                                <div class="col-auto">
+                                    <select class="form-select form-select-sm" id="rr_bad_schedule_type" onchange="updateScheduleUIBlocks('rr_bad')">
+                                        <option value="daily">Ежедневно</option>
+                                        <option value="interval">С интервалом</option>
+                                        <option value="weekly">Еженедельно</option>
+                                        <option value="custom">CRON</option>
+                                    </select>
+                                </div>
+                                <div class="col-auto" id="rr_bad_daily_block">
+                                    <label class="form-label small mb-0">Время</label>
+                                    <input type="time" class="form-control form-control-sm" id="rr_bad_daily_time" value="12:00">
+                                </div>
+                                <div class="col-auto d-none" id="rr_bad_interval_block">
+                                    <label class="form-label small mb-0">Интервал</label>
+                                    <div class="d-flex gap-1">
+                                        <input type="number" min="1" class="form-control form-control-sm" id="rr_bad_interval_value" value="2" style="width: 70px;">
+                                        <select class="form-select form-select-sm" id="rr_bad_interval_unit" style="width: 90px;">
+                                            <option value="days">дней</option>
+                                            <option value="hours">часов</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="col-auto d-none" id="rr_bad_weekly_block">
+                                    <label class="form-label small mb-0">День и время</label>
+                                    <div class="d-flex gap-1">
+                                        <select class="form-select form-select-sm" id="rr_bad_weekly_day" style="width: 100px;">
+                                            <option value="0">Понедельник</option>
+                                            <option value="1">Вторник</option>
+                                            <option value="2">Среда</option>
+                                            <option value="3">Четверг</option>
+                                            <option value="4">Пятница</option>
+                                            <option value="5">Суббота</option>
+                                            <option value="6">Воскресенье</option>
+                                        </select>
+                                        <input type="time" class="form-control form-control-sm" id="rr_bad_weekly_time" value="12:00" style="width: 100px;">
+                                    </div>
+                                </div>
+                                <div class="col-auto d-none" id="rr_bad_custom_block">
+                                    <label class="form-label small mb-0">Cron выражение</label>
+                                    <input type="text" class="form-control form-control-sm" id="rr_bad_cron" placeholder="0 12 * * *" style="width: 150px;">
+                                </div>
+                                <div class="col-auto">
+                                    <button class="btn btn-sm btn-outline-primary" onclick="saveSchedule('rr_bad')">
+                                        <i class="fas fa-save me-1"></i>Сохранить
+                                    </button>
+                                </div>
+                                <div class="col-auto">
+                                    <small class="text-muted" id="rr_bad_next_run"></small>
+                                </div>
+                            </div>
+                        </div>
                     </div>
 
                     <!-- Отчет "Сколько" за 52 недели -->
@@ -234,6 +408,64 @@
                                 <div class="progress-fill-custom" id="skolko52ProgressFill"></div>
                             </div>
                             <div class="progress-text-custom" id="skolko52ProgressText"></div>
+                        </div>
+                        
+                        <!-- Настройка расписания -->
+                        <div class="mt-3 pt-3 border-top">
+                            <div class="small text-muted mb-2">
+                                <i class="fas fa-clock me-1"></i>Автоматическая генерация отчета
+                            </div>
+                            <div class="row g-2 align-items-end">
+                                <div class="col-auto">
+                                    <select class="form-select form-select-sm" id="skolko_52_schedule_type" onchange="updateScheduleUIBlocks('skolko_52')">
+                                        <option value="daily">Ежедневно</option>
+                                        <option value="interval">С интервалом</option>
+                                        <option value="weekly">Еженедельно</option>
+                                        <option value="custom">CRON</option>
+                                    </select>
+                                </div>
+                                <div class="col-auto" id="skolko_52_daily_block">
+                                    <label class="form-label small mb-0">Время</label>
+                                    <input type="time" class="form-control form-control-sm" id="skolko_52_daily_time" value="12:00">
+                                </div>
+                                <div class="col-auto d-none" id="skolko_52_interval_block">
+                                    <label class="form-label small mb-0">Интервал</label>
+                                    <div class="d-flex gap-1">
+                                        <input type="number" min="1" class="form-control form-control-sm" id="skolko_52_interval_value" value="2" style="width: 70px;">
+                                        <select class="form-select form-select-sm" id="skolko_52_interval_unit" style="width: 90px;">
+                                            <option value="days">дней</option>
+                                            <option value="hours">часов</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="col-auto d-none" id="skolko_52_weekly_block">
+                                    <label class="form-label small mb-0">День и время</label>
+                                    <div class="d-flex gap-1">
+                                        <select class="form-select form-select-sm" id="skolko_52_weekly_day" style="width: 100px;">
+                                            <option value="0">Понедельник</option>
+                                            <option value="1">Вторник</option>
+                                            <option value="2">Среда</option>
+                                            <option value="3">Четверг</option>
+                                            <option value="4">Пятница</option>
+                                            <option value="5">Суббота</option>
+                                            <option value="6">Воскресенье</option>
+                                        </select>
+                                        <input type="time" class="form-control form-control-sm" id="skolko_52_weekly_time" value="12:00" style="width: 100px;">
+                                    </div>
+                                </div>
+                                <div class="col-auto d-none" id="skolko_52_custom_block">
+                                    <label class="form-label small mb-0">Cron выражение</label>
+                                    <input type="text" class="form-control form-control-sm" id="skolko_52_cron" placeholder="0 12 * * *" style="width: 150px;">
+                                </div>
+                                <div class="col-auto">
+                                    <button class="btn btn-sm btn-outline-primary" onclick="saveSchedule('skolko_52')">
+                                        <i class="fas fa-save me-1"></i>Сохранить
+                                    </button>
+                                </div>
+                                <div class="col-auto">
+                                    <small class="text-muted" id="skolko_52_next_run"></small>
+                                </div>
+                            </div>
                         </div>
                     </div>
 
@@ -428,6 +660,129 @@
                 }
             }, 5000);
         }
+
+        // Функции для работы с расписаниями
+        async function loadSchedules() {
+            try {
+                const resp = await fetch('/api/reports/schedules');
+                const data = await resp.json();
+                if (!data.success) return;
+                (data.items || []).forEach(applyScheduleToUI);
+            } catch (e) {
+                console.error('Ошибка загрузки расписаний', e);
+            }
+        }
+
+        function applyScheduleToUI(s) {
+            const prefix = s.report_type;
+            const typeSelect = document.getElementById(`${prefix}_schedule_type`);
+            if (!typeSelect) return;
+            
+            typeSelect.value = s.schedule_type || 'daily';
+            
+            if (s.daily_time) {
+                const dailyTime = document.getElementById(`${prefix}_daily_time`);
+                if (dailyTime) dailyTime.value = s.daily_time;
+            }
+            if (s.interval_value) {
+                const intervalValue = document.getElementById(`${prefix}_interval_value`);
+                if (intervalValue) intervalValue.value = s.interval_value;
+            }
+            if (s.interval_unit) {
+                const intervalUnit = document.getElementById(`${prefix}_interval_unit`);
+                if (intervalUnit) intervalUnit.value = s.interval_unit;
+            }
+            if (s.weekly_day !== null && s.weekly_day !== undefined) {
+                const weeklyDay = document.getElementById(`${prefix}_weekly_day`);
+                if (weeklyDay) weeklyDay.value = s.weekly_day;
+            }
+            if (s.weekly_time) {
+                const weeklyTime = document.getElementById(`${prefix}_weekly_time`);
+                if (weeklyTime) weeklyTime.value = s.weekly_time;
+            }
+            if (s.cron_expression) {
+                const cron = document.getElementById(`${prefix}_cron`);
+                if (cron) cron.value = s.cron_expression;
+            }
+            
+            const nextRunEl = document.getElementById(`${prefix}_next_run`);
+            if (nextRunEl && s.next_run_at) {
+                const nextRun = new Date(s.next_run_at);
+                nextRunEl.textContent = `Следующий запуск: ${nextRun.toLocaleString('ru-RU')}`;
+            }
+            
+            updateScheduleUIBlocks(prefix);
+        }
+
+        function updateScheduleUIBlocks(reportType) {
+            const prefix = reportType;
+            const type = document.getElementById(`${prefix}_schedule_type`)?.value || 'daily';
+            
+            ['daily', 'interval', 'weekly', 'custom'].forEach(t => {
+                const block = document.getElementById(`${prefix}_${t}_block`);
+                if (block) {
+                    block.classList.toggle('d-none', t !== type);
+                }
+            });
+        }
+
+        async function saveSchedule(reportType) {
+            const prefix = reportType;
+            const payload = {
+                report_type: reportType,
+                schedule_type: document.getElementById(`${prefix}_schedule_type`)?.value || 'daily',
+                enabled: true,
+            };
+
+            const type = payload.schedule_type;
+            
+            if (type === 'daily') {
+                const dailyTime = document.getElementById(`${prefix}_daily_time`);
+                if (dailyTime) payload.daily_time = dailyTime.value;
+            } else if (type === 'interval') {
+                const intervalValue = document.getElementById(`${prefix}_interval_value`);
+                const intervalUnit = document.getElementById(`${prefix}_interval_unit`);
+                if (intervalValue) payload.interval_value = parseInt(intervalValue.value || '1', 10);
+                if (intervalUnit) payload.interval_unit = intervalUnit.value;
+            } else if (type === 'weekly') {
+                const weeklyDay = document.getElementById(`${prefix}_weekly_day`);
+                const weeklyTime = document.getElementById(`${prefix}_weekly_time`);
+                if (weeklyDay) payload.weekly_day = parseInt(weeklyDay.value, 10);
+                if (weeklyTime) payload.weekly_time = weeklyTime.value;
+            } else if (type === 'custom') {
+                const cron = document.getElementById(`${prefix}_cron`);
+                if (cron) payload.cron_expression = cron.value;
+            }
+
+            try {
+                const resp = await fetch('/api/reports/schedules', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(payload)
+                });
+                const data = await resp.json();
+                if (data.success) {
+                    applyScheduleToUI(data.item);
+                    showAlert('Расписание успешно сохранено', 'success');
+                } else {
+                    showAlert(data.message || 'Ошибка сохранения расписания', 'danger');
+                }
+            } catch (e) {
+                console.error('Ошибка сохранения расписания', e);
+                showAlert('Ошибка сохранения расписания', 'danger');
+            }
+        }
+
+        // Инициализация при загрузке страницы
+        document.addEventListener('DOMContentLoaded', function() {
+            loadSchedules();
+            ['week_full', 'rr_3', 'rr_bad', 'skolko_52'].forEach(rt => {
+                const sel = document.getElementById(`${rt}_schedule_type`);
+                if (sel) {
+                    sel.addEventListener('change', () => updateScheduleUIBlocks(rt));
+                }
+            });
+        });
     </script>
 </body>
 </html>

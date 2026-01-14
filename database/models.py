@@ -466,3 +466,48 @@ class UserScriptPrompt(db.Model):
     
     def __repr__(self):
         return f'<UserScriptPrompt user_id={self.user_id}>'
+
+
+class ReportSchedule(db.Model):
+    """Модель для расписания автоматической генерации отчетов"""
+    __tablename__ = 'report_schedules'
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
+
+    report_type = db.Column(db.String(50), nullable=False)  # 'week_full', 'rr_3', 'rr_bad', 'skolko_52'
+    schedule_type = db.Column(db.String(20), nullable=False)  # 'daily', 'interval', 'weekly', 'custom'
+    enabled = db.Column(db.Boolean, nullable=False, default=True)
+
+    # Для daily: время (HH:MM)
+    daily_time = db.Column(db.String(5), nullable=True)  # '12:00'
+
+    # Для interval: интервал в днях/часах
+    interval_value = db.Column(db.Integer, nullable=True)  # 2
+    interval_unit = db.Column(db.String(10), nullable=True)  # 'days' или 'hours'
+
+    # Для weekly: день недели и время
+    weekly_day = db.Column(db.Integer, nullable=True)  # 0-6 (понедельник-воскресенье)
+    weekly_time = db.Column(db.String(5), nullable=True)
+
+    # Для custom: cron expression
+    cron_expression = db.Column(db.String(100), nullable=True)
+
+    # Параметры генерации
+    auto_start_date = db.Column(db.Boolean, nullable=False, default=True)
+    auto_end_date = db.Column(db.Boolean, nullable=False, default=True)
+    date_offset_days = db.Column(db.Integer, nullable=False, default=0)
+
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+    last_run_at = db.Column(db.DateTime, nullable=True)
+    next_run_at = db.Column(db.DateTime, nullable=True)
+
+    user = db.relationship('User', backref=db.backref('report_schedules', lazy='dynamic', cascade='all, delete-orphan'))
+
+    __table_args__ = (
+        db.UniqueConstraint('user_id', 'report_type', name='uq_report_schedule_user_report'),
+    )
+
+    def __repr__(self):
+        return f'<ReportSchedule user_id={self.user_id} type={self.report_type} {self.schedule_type}>'

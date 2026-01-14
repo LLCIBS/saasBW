@@ -58,6 +58,7 @@ from database.models import (
     UserStationMapping,
     UserStationChatId,
     UserEmployeeExtension,
+    ReportSchedule,
 )
 from auth import login_manager
 from auth.routes import auth_bp
@@ -1211,6 +1212,14 @@ def initialize_app():
         app.logger.info("Автоматическая синхронизация промптов выполнена")
         # Автозапуск сервиса анализа при старте веб-интерфейса
         ensure_service_running()
+        
+        # Инициализация планировщика отчетов
+        try:
+            from web_interface.scheduler_service import init_scheduler
+            init_scheduler(app)
+            app.logger.info("Планировщик отчетов инициализирован")
+        except Exception as e:
+            app.logger.error(f"Ошибка инициализации планировщика отчетов: {e}", exc_info=True)
     except Exception as e:
         app.logger.error(f"Ошибка автоматической синхронизации: {e}")
 
@@ -3248,6 +3257,145 @@ def api_reports_status():
 def api_reports_progress():
     """API для получения прогресса генерации отчетов"""
     return jsonify(report_generation_progress)
+
+# API для управления расписаниями отчетов
+def _schedule_to_dict(s: ReportSchedule):
+    """Преобразовать модель расписания в словарь для JSON"""
+    return {
+        'id': s.id,
+        'report_type': s.report_type,
+        'schedule_type': s.schedule_type,
+        'enabled': s.enabled,
+        'daily_time': s.daily_time,
+        'interval_value': s.interval_value,
+        'interval_unit': s.interval_unit,
+        'weekly_day': s.weekly_day,
+        'weekly_time': s.weekly_time,
+        'cron_expression': s.cron_expression,
+        'auto_start_date': s.auto_start_date,
+        'auto_end_date': s.auto_end_date,
+        'date_offset_days': s.date_offset_days,
+        'last_run_at': s.last_run_at.isoformat() if s.last_run_at else None,
+        'next_run_at': s.next_run_at.isoformat() if s.next_run_at else None,
+    }
+
+@app.route('/api/reports/schedules', methods=['GET'])
+@login_required
+def api_get_report_schedules():
+    """Получить все расписания пользователя"""
+    try:
+        schedules = ReportSchedule.query.filter_by(user_id=current_user.id).all()
+        return jsonify({'success': True, 'items': [_schedule_to_dict(s) for s in schedules]})
+    except Exception as e:
+        app.logger.error(f"Ошибка получения расписаний: {e}", exc_info=True)
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+@app.route('/api/reports/schedules', methods=['POST'])
+@login_required
+def api_save_report_schedule():
+    """Создать или обновить расписание"""
+    try:
+        data = request.get_json() or {}
+        report_type = data.get('report_type')
+        
+        if report_type not in ('week_full', 'rr_3', 'rr_bad', 'skolko_52'):
+            return jsonify({'success': False, 'message': 'Неверный тип отчета'}), 400
+
+        schedule = ReportSchedule.query.filter_by(
+            user_id=current_user.id, 
+            report_type=report_type
+        ).first()
+        
+        if not schedule:
+            schedule = ReportSchedule(user_id=current_user.id, report_type=report_type)
+
+        schedule.schedule_type = data.get('schedule_type') or 'daily'
+        schedule.enabled = bool(data.get('enabled', True))
+        schedule.daily_time = data.get('daily_time')
+        schedule.interval_value = data.get('interval_value')
+        schedule.interval_unit = data.get('interval_unit')
+        schedule.weekly_day = data.get('weekly_day')
+        schedule.weekly_time = data.get('weekly_time')
+        schedule.cron_expression = data.get('cron_expression')
+        schedule.auto_start_date = bool(data.get('auto_start_date', True))
+        schedule.auto_end_date = bool(data.get('auto_end_date', True))
+        schedule.date_offset_days = int(data.get('date_offset_days', 0) or 0)
+
+        db.session.add(schedule)
+        db.session.commit()
+
+        # Обновляем задачу в планировщике
+        from web_interface.scheduler_service import refresh_schedule
+        refresh_schedule(schedule.id, app)
+
+        app.logger.info(f"Расписание сохранено: user={current_user.id}, report={report_type}, type={schedule.schedule_type}")
+        return jsonify({'success': True, 'item': _schedule_to_dict(schedule)})
+        
+    except Exception as e:
+        app.logger.error(f"Ошибка сохранения расписания: {e}", exc_info=True)
+        db.session.rollback()
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+@app.route('/api/reports/schedules/<int:schedule_id>', methods=['DELETE'])
+@login_required
+def api_delete_report_schedule(schedule_id):
+    """Удалить расписание"""
+    try:
+        schedule = ReportSchedule.query.filter_by(
+            id=schedule_id, 
+            user_id=current_user.id
+        ).first()
+        
+        if not schedule:
+            return jsonify({'success': False, 'message': 'Расписание не найдено'}), 404
+
+        # Удаляем задачу из планировщика
+        from web_interface.scheduler_service import scheduler
+        if scheduler:
+            job_id = f"user_{schedule.user_id}_{schedule.report_type}"
+            try:
+                scheduler.remove_job(job_id)
+            except Exception:
+                pass
+
+        db.session.delete(schedule)
+        db.session.commit()
+
+        app.logger.info(f"Расписание удалено: id={schedule_id}, user={current_user.id}")
+        return jsonify({'success': True})
+        
+    except Exception as e:
+        app.logger.error(f"Ошибка удаления расписания: {e}", exc_info=True)
+        db.session.rollback()
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+@app.route('/api/reports/schedules/<int:schedule_id>/toggle', methods=['POST'])
+@login_required
+def api_toggle_report_schedule(schedule_id):
+    """Включить/выключить расписание"""
+    try:
+        schedule = ReportSchedule.query.filter_by(
+            id=schedule_id, 
+            user_id=current_user.id
+        ).first()
+        
+        if not schedule:
+            return jsonify({'success': False, 'message': 'Расписание не найдено'}), 404
+
+        schedule.enabled = not schedule.enabled
+        db.session.commit()
+
+        # Обновляем задачу в планировщике
+        from web_interface.scheduler_service import refresh_schedule
+        refresh_schedule(schedule.id, app)
+
+        app.logger.info(f"Расписание {'включено' if schedule.enabled else 'выключено'}: id={schedule_id}, user={current_user.id}")
+        return jsonify({'success': True, 'item': _schedule_to_dict(schedule)})
+        
+    except Exception as e:
+        app.logger.error(f"Ошибка переключения расписания: {e}", exc_info=True)
+        db.session.rollback()
+        return jsonify({'success': False, 'message': str(e)}), 500
 
 @app.route('/api/check-excel')
 @login_required
