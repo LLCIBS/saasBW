@@ -15,9 +15,8 @@ CREATE TABLE IF NOT EXISTS report_schedules (
     weekly_time VARCHAR(5),
     cron_expression VARCHAR(100),
 
-    auto_start_date BOOLEAN NOT NULL DEFAULT TRUE,
-    auto_end_date BOOLEAN NOT NULL DEFAULT TRUE,
-    date_offset_days INTEGER NOT NULL DEFAULT 0,
+    period_type VARCHAR(20) NOT NULL DEFAULT 'last_week',
+    period_n_days INTEGER,
 
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,

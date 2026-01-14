@@ -3272,9 +3272,8 @@ def _schedule_to_dict(s: ReportSchedule):
         'weekly_day': s.weekly_day,
         'weekly_time': s.weekly_time,
         'cron_expression': s.cron_expression,
-        'auto_start_date': s.auto_start_date,
-        'auto_end_date': s.auto_end_date,
-        'date_offset_days': s.date_offset_days,
+        'period_type': s.period_type or 'last_week',
+        'period_n_days': s.period_n_days,
         'last_run_at': s.last_run_at.isoformat() if s.last_run_at else None,
         'next_run_at': s.next_run_at.isoformat() if s.next_run_at else None,
     }
@@ -3317,9 +3316,14 @@ def api_save_report_schedule():
         schedule.weekly_day = data.get('weekly_day')
         schedule.weekly_time = data.get('weekly_time')
         schedule.cron_expression = data.get('cron_expression')
-        schedule.auto_start_date = bool(data.get('auto_start_date', True))
-        schedule.auto_end_date = bool(data.get('auto_end_date', True))
-        schedule.date_offset_days = int(data.get('date_offset_days', 0) or 0)
+        
+        # Период генерации
+        schedule.period_type = data.get('period_type') or 'last_week'
+        period_n_days = data.get('period_n_days')
+        if period_n_days:
+            schedule.period_n_days = int(period_n_days)
+        else:
+            schedule.period_n_days = None
 
         db.session.add(schedule)
         db.session.commit()

@@ -21,24 +21,35 @@ scheduler: Optional[BackgroundScheduler] = None
 
 
 def _calc_dates(schedule: ReportSchedule):
-    """Вычислить start_date и end_date для отчета на основе настроек."""
+    """Вычислить start_date и end_date для отчета на основе настроек периода."""
     today = datetime.now().date()
-    end_date = today
+    period_type = schedule.period_type or 'last_week'
     
-    if schedule.auto_end_date:
-        end_date = today
+    if period_type == 'last_day':
+        # Последний день (вчера)
+        end_date = today - timedelta(days=1)
+        start_date = end_date
     
-    # Смещение (например, -7 для прошлой недели)
-    if schedule.date_offset_days:
-        end_date = end_date + timedelta(days=schedule.date_offset_days)
+    elif period_type == 'last_week':
+        # Последняя неделя (7 дней назад до вчера)
+        end_date = today - timedelta(days=1)
+        start_date = end_date - timedelta(days=6)
     
-    start_date = end_date
-    if schedule.auto_start_date:
-        # Для week_full - 7 дней, для других можно сделать по-разному
-        if schedule.report_type == 'week_full':
-            start_date = end_date - timedelta(days=6)
-        else:
-            start_date = end_date
+    elif period_type == 'last_month':
+        # Последний месяц (30 дней назад до вчера)
+        end_date = today - timedelta(days=1)
+        start_date = end_date - timedelta(days=29)
+    
+    elif period_type == 'last_n_days':
+        # Последний выбранный интервал дней
+        n_days = schedule.period_n_days or 7
+        end_date = today - timedelta(days=1)
+        start_date = end_date - timedelta(days=n_days - 1)
+    
+    else:
+        # По умолчанию - последняя неделя
+        end_date = today - timedelta(days=1)
+        start_date = end_date - timedelta(days=6)
     
     return start_date, end_date
 

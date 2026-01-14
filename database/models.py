@@ -493,10 +493,9 @@ class ReportSchedule(db.Model):
     # Для custom: cron expression
     cron_expression = db.Column(db.String(100), nullable=True)
 
-    # Параметры генерации
-    auto_start_date = db.Column(db.Boolean, nullable=False, default=True)
-    auto_end_date = db.Column(db.Boolean, nullable=False, default=True)
-    date_offset_days = db.Column(db.Integer, nullable=False, default=0)
+    # Параметры генерации периода
+    period_type = db.Column(db.String(20), nullable=False, default='last_week')  # 'last_day', 'last_week', 'last_month', 'last_n_days'
+    period_n_days = db.Column(db.Integer, nullable=True)  # Для period_type='last_n_days' - количество дней
 
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
