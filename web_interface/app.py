@@ -1666,11 +1666,53 @@ def api_summary_realtime():
                 for c in st.get('consultants', []):
                     total_calls += int(c.get('calls', 0))
 
+        # Считаем активные переводы и перезвоны
+        active_transfers = 0
+        active_recalls = 0
+        try:
+            # Сначала пытаемся получить из БД
+            user = current_user if hasattr(current_user, 'is_authenticated') and current_user.is_authenticated else None
+            if user:
+                from database.models import TransferCase, RecallCase
+                # Считаем только активные (status = 'waiting')
+                active_transfers = TransferCase.query.filter_by(
+                    user_id=user.id,
+                    status='waiting'
+                ).count()
+                active_recalls = RecallCase.query.filter_by(
+                    user_id=user.id,
+                    status='waiting'
+                ).count()
+            
+            # Если в БД нет данных, пытаемся из JSON (fallback для старых установок)
+            if active_transfers == 0 and active_recalls == 0:
+                _, runtime_dir = get_runtime_context()
+                
+                # Подсчет активных переводов из JSON
+                transfers_file = runtime_dir / 'transfer_cases.json'
+                if transfers_file.exists():
+                    with open(transfers_file, 'r', encoding='utf-8') as f:
+                        transfers = json.load(f)
+                        # Считаем только активные (status = 'waiting')
+                        active_transfers = sum(1 for t in transfers if t.get('status') == 'waiting')
+                
+                # Подсчет активных перезвонов из JSON
+                recalls_file = runtime_dir / 'recall_cases.json'
+                if recalls_file.exists():
+                    with open(recalls_file, 'r', encoding='utf-8') as f:
+                        recalls = json.load(f)
+                        # Считаем только активные (status = 'waiting')
+                        active_recalls = sum(1 for r in recalls if r.get('status') == 'waiting')
+        except Exception as e:
+            app.logger.error(f"Ошибка подсчета активных переводов/перезвонов: {e}")
+
         return jsonify({
             'success': True,
             'generated_at': summary.get('generated_at'),
             'total_calls': total_calls,
             'stations_count': stations_count,
+            'active_transfers': active_transfers,
+            'active_recalls': active_recalls,
             'ranking': summary.get('ranking', []),
             'stations': summary.get('stations', []),
             'total_questions': summary.get('total_questions', 0)

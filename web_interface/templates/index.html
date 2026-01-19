@@ -313,11 +313,15 @@
                     if (!summary || summary.success === false) {
                         document.getElementById('totalCalls').textContent = '-';
                         document.getElementById('stationsCount').textContent = '-';
+                        document.getElementById('activeTransfers').textContent = '-';
+                        document.getElementById('activeRecalls').textContent = '-';
                         document.getElementById('realtimeBlocks').style.display = 'none';
                         return;
                     }
                     document.getElementById('totalCalls').textContent = summary.total_calls ?? '-';
                     document.getElementById('stationsCount').textContent = summary.stations_count ?? '-';
+                    document.getElementById('activeTransfers').textContent = summary.active_transfers ?? '0';
+                    document.getElementById('activeRecalls').textContent = summary.active_recalls ?? '0';
 
                     // Лидерборд
                     const lb = (summary.ranking || []).slice(0, 10);
@@ -382,11 +386,10 @@
                 .catch(() => {
                     document.getElementById('totalCalls').textContent = '-';
                     document.getElementById('stationsCount').textContent = '-';
+                    document.getElementById('activeTransfers').textContent = '-';
+                    document.getElementById('activeRecalls').textContent = '-';
                     document.getElementById('realtimeBlocks').style.display = 'none';
                 });
-            // Плейсхолдеры для будущих метрик
-            document.getElementById('activeTransfers').textContent = '-';
-            document.getElementById('activeRecalls').textContent = '-';
         }
 
         function updateLogs(logs) {
