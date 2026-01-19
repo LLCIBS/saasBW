@@ -114,7 +114,7 @@ def parse_tg_calls(tg_calls_file):
                 continue
             phone = parts[2].lstrip("+")
             c_full = parts[4].strip()
-            surname = c_full.split()[0]
+            surname = c_full  # Используем полное ФИО
             day_str = parts[5]
             month_str = parts[6]
             year_hour = parts[7].split()

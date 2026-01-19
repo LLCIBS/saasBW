@@ -38,7 +38,7 @@ except ImportError:
         if station_code:
             employee_full = main_config.EMPLOYEE_BY_EXTENSION.get(station_code)
             if employee_full:
-                return employee_full.split()[0] if employee_full else 'Не указано'
+                return employee_full
         return 'Не указано'
     def extract_dialog_from_txt(txt_path):
         return ""
@@ -230,7 +230,7 @@ def parse_tg_bw_calls(file_path):
                 date_time_str = f"{date_str} {time_str.replace('-', ':')}"
                 try:
                     date_time_obj = datetime.strptime(date_time_str, '%d-%m-%Y %H:%M')
-                    consultant_surname = consultant_full_name.split()[0]
+                    consultant_surname = consultant_full_name  # Используем полное ФИО
                     call_records.append({
                         'phone_number': phone_number,
                         'station_code': station_code,

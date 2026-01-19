@@ -494,10 +494,8 @@ def get_operator_name(dialog_text: str = None, station_code: str = None) -> str:
     if station_code:
         employee_full = config.EMPLOYEE_BY_EXTENSION.get(station_code)
         if employee_full:
-            # Берем только имя (первое слово)
-            name = employee_full.split()[0] if employee_full else None
-            if name:
-                return name
+            # Берем полное ФИО
+            return employee_full
     
     return 'Не указано'
 
