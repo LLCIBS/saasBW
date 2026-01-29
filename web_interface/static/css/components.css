@@ -1,0 +1,881 @@
+/* ===== Компоненты интерфейса для Call Analyzer ===== */
+
+/* ===== Боковая панель (Sidebar) ===== */
+.sidebar {
+    min-height: 100vh;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    padding: 0;
+    box-shadow: 4px 0 20px rgba(0, 0, 0, 0.1);
+    position: relative;
+    z-index: 100;
+}
+
+.sidebar::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: url('data:image/svg+xml,<svg width="100" height="100" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><circle cx="50" cy="50" r="1" fill="rgba(255,255,255,0.05)"/></svg>');
+    background-size: 30px 30px;
+    pointer-events: none;
+}
+
+.sidebar .p-3 {
+    position: relative;
+    z-index: 1;
+}
+
+.sidebar h4 {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: white;
+    margin-bottom: 2rem;
+    padding: 1rem 0.75rem;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.sidebar h4 i {
+    font-size: 1.25rem;
+    animation: bounce 2s infinite;
+}
+
+.sidebar .nav {
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.sidebar .nav-item {
+    margin: 0;
+}
+
+.sidebar .nav-link {
+    color: rgba(255, 255, 255, 0.85);
+    padding: 0.875rem 1.25rem;
+    border-radius: var(--border-radius-md);
+    margin: 0 0.5rem;
+    transition: all var(--transition-normal);
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    font-weight: 500;
+    position: relative;
+    overflow: hidden;
+}
+
+.sidebar .nav-link::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 3px;
+    background: white;
+    transform: scaleY(0);
+    transition: transform var(--transition-normal);
+}
+
+.sidebar .nav-link:hover {
+    color: white;
+    background: rgba(255, 255, 255, 0.15);
+    transform: translateX(5px);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.sidebar .nav-link:hover::before {
+    transform: scaleY(1);
+}
+
+.sidebar .nav-link.active {
+    color: white;
+    background: rgba(255, 255, 255, 0.2);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.sidebar .nav-link.active::before {
+    transform: scaleY(1);
+}
+
+.sidebar .nav-link i {
+    width: 20px;
+    text-align: center;
+    transition: transform var(--transition-normal);
+}
+
+.sidebar .nav-link:hover i {
+    transform: scale(1.2);
+}
+
+.sidebar .text-danger {
+    margin-top: 1.5rem !important;
+    color: rgba(255, 200, 200, 0.9) !important;
+}
+
+.sidebar .text-danger:hover {
+    color: white !important;
+    background: rgba(220, 53, 69, 0.3) !important;
+}
+
+/* ===== Основной контент ===== */
+.main-content {
+    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+    min-height: 100vh;
+    padding: 0;
+}
+
+.main-content .p-4 {
+    max-width: 1400px;
+    margin: 0 auto;
+}
+
+.main-content h3 {
+    font-weight: 700;
+    color: var(--text-dark);
+    margin-bottom: 1.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.main-content h3::before {
+    content: '';
+    width: 4px;
+    height: 2rem;
+    background: var(--primary-gradient);
+    border-radius: 2px;
+}
+
+/* ===== Статус карточки ===== */
+.status-card {
+    border: none;
+    border-radius: var(--border-radius-xl);
+    box-shadow: var(--shadow-lg);
+    overflow: hidden;
+    position: relative;
+}
+
+.status-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: url('data:image/svg+xml,<svg width="50" height="50" viewBox="0 0 50 50" xmlns="http://www.w3.org/2000/svg"><circle cx="25" cy="25" r="1" fill="rgba(255,255,255,0.1)"/></svg>');
+    background-size: 20px 20px;
+    pointer-events: none;
+}
+
+.status-card .card-body {
+    position: relative;
+    z-index: 1;
+    padding: 2rem;
+}
+
+.status-running {
+    background: var(--success-gradient);
+    color: white;
+}
+
+.status-stopped {
+    background: var(--warning-gradient);
+    color: white;
+}
+
+.status-card h4 {
+    color: white;
+    margin-bottom: 0.5rem;
+}
+
+.status-card p {
+    color: rgba(255, 255, 255, 0.95);
+    font-size: 1.1rem;
+}
+
+.status-card .spinner-border {
+    width: 3rem;
+    height: 3rem;
+}
+
+/* ===== Метрические карточки ===== */
+.metric-card {
+    background: white;
+    border-radius: var(--border-radius-lg);
+    padding: 1.5rem;
+    box-shadow: var(--shadow-sm);
+    transition: all var(--transition-normal);
+    border: 1px solid #e2e8f0;
+    position: relative;
+    overflow: hidden;
+}
+
+.metric-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 4px;
+    height: 100%;
+    background: var(--primary-gradient);
+    transform: scaleY(0);
+    transition: transform var(--transition-normal);
+}
+
+.metric-card:hover {
+    transform: translateY(-5px);
+    box-shadow: var(--shadow-lg);
+}
+
+.metric-card:hover::before {
+    transform: scaleY(1);
+}
+
+.metric-value {
+    font-size: 2.5rem;
+    font-weight: 800;
+    background: var(--primary-gradient);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    line-height: 1.2;
+    margin-bottom: 0.5rem;
+}
+
+.metric-label {
+    color: var(--text-muted);
+    font-size: 0.9rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+/* ===== Логи ===== */
+.log-entry {
+    border-left: 4px solid;
+    padding: 1rem 1.25rem;
+    margin: 0.5rem 0;
+    background: white;
+    border-radius: 0 var(--border-radius-md) var(--border-radius-md) 0;
+    box-shadow: var(--shadow-sm);
+    transition: all var(--transition-fast);
+}
+
+.log-entry:hover {
+    transform: translateX(5px);
+    box-shadow: var(--shadow-md);
+}
+
+.log-entry.info {
+    border-left-color: var(--info-color);
+    background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+}
+
+.log-entry.warning {
+    border-left-color: var(--warning-color);
+    background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%);
+}
+
+.log-entry.error {
+    border-left-color: var(--danger-color);
+    background: linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%);
+}
+
+.log-entry.success {
+    border-left-color: var(--success-color);
+    background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
+}
+
+.log-entry .fw-bold {
+    color: var(--text-dark);
+    font-size: 0.9rem;
+}
+
+.log-entry small {
+    font-size: 0.8rem;
+}
+
+/* ===== Лидерборд ===== */
+.leaderboard-card,
+.consultants-card {
+    background: white;
+    border-radius: var(--border-radius-lg);
+    padding: 1.5rem;
+    box-shadow: var(--shadow-sm);
+    border: 1px solid #e2e8f0;
+}
+
+.leaderboard-card h5,
+.consultants-card h5 {
+    color: var(--text-dark);
+    font-weight: 700;
+    margin-bottom: 1.25rem;
+    padding-bottom: 0.75rem;
+    border-bottom: 2px solid #e2e8f0;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.leaderboard-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.75rem 0;
+    border-bottom: 1px solid #f1f3f5;
+    transition: all var(--transition-fast);
+}
+
+.leaderboard-item:hover {
+    background: #f8fafc;
+    padding-left: 0.5rem;
+    padding-right: 0.5rem;
+    border-radius: var(--border-radius-sm);
+}
+
+.leaderboard-item:last-child {
+    border-bottom: none;
+}
+
+.leaderboard-item .badge {
+    min-width: 30px;
+    font-size: 0.85rem;
+    font-weight: 700;
+}
+
+.leaderboard-item .percent {
+    font-weight: 700;
+    color: var(--success-color);
+    font-size: 1.1rem;
+}
+
+/* ===== Таблица консультантов ===== */
+.consultant-row {
+    cursor: pointer;
+    transition: all var(--transition-fast);
+}
+
+.consultant-row:hover {
+    background-color: #f8fafc;
+    transform: scale(1.01);
+}
+
+/* ===== Детализация вопросов ===== */
+.question-detail {
+    margin: 0.75rem 0;
+    padding: 1rem;
+    background: #f8fafc;
+    border-radius: var(--border-radius-md);
+    border-left: 3px solid var(--primary-color);
+    transition: all var(--transition-fast);
+}
+
+.question-detail:hover {
+    transform: translateX(5px);
+    box-shadow: var(--shadow-sm);
+}
+
+.question-detail .question-title {
+    font-weight: 600;
+    color: var(--text-dark);
+    margin-bottom: 0.5rem;
+}
+
+.question-detail .question-percent {
+    font-weight: 700;
+    font-size: 1.1rem;
+}
+
+.question-detail .text-success {
+    color: var(--success-color);
+}
+
+.question-detail .text-warning {
+    color: var(--warning-color);
+}
+
+.question-detail .text-danger {
+    color: var(--danger-color);
+}
+
+/* ===== Конфигурационные секции ===== */
+.config-section {
+    background: white;
+    border-radius: var(--border-radius-lg);
+    padding: 1.75rem;
+    margin-bottom: 1.5rem;
+    box-shadow: var(--shadow-sm);
+    border: 1px solid #e2e8f0;
+    transition: all var(--transition-normal);
+}
+
+.config-section:hover {
+    box-shadow: var(--shadow-md);
+}
+
+.config-section h3 {
+    color: var(--primary-color);
+    border-bottom: 2px solid #e9ecef;
+    padding-bottom: 1rem;
+    margin-bottom: 1.5rem;
+    font-size: 1.25rem;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.config-section h3 i {
+    background: var(--primary-gradient);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+/* ===== Кнопки сохранения ===== */
+.btn-save,
+.btn-add-station,
+.btn-generate {
+    background: var(--primary-gradient);
+    border: none;
+    color: white;
+    padding: 0.875rem 1.75rem;
+    border-radius: 50px;
+    font-weight: 700;
+    transition: all var(--transition-normal);
+    box-shadow: var(--shadow-sm);
+}
+
+.btn-save:hover,
+.btn-add-station:hover,
+.btn-generate:hover {
+    transform: translateY(-3px);
+    box-shadow: var(--shadow-lg);
+    color: white;
+}
+
+/* ===== Теги ключевых слов ===== */
+.keyword-tag {
+    background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
+    color: #1976d2;
+    padding: 0.5rem 0.875rem;
+    border-radius: 20px;
+    font-size: 0.85rem;
+    margin: 0.25rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-weight: 600;
+    box-shadow: 0 2px 4px rgba(25, 118, 210, 0.1);
+    transition: all var(--transition-fast);
+}
+
+.keyword-tag:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(25, 118, 210, 0.2);
+}
+
+.keyword-tag .remove-keyword {
+    cursor: pointer;
+    margin-left: 0.25rem;
+    color: #d32f2f;
+    font-size: 1rem;
+    transition: transform var(--transition-fast);
+}
+
+.keyword-tag .remove-keyword:hover {
+    transform: scale(1.3);
+}
+
+/* ===== Карточки станций ===== */
+.station-card {
+    background: white;
+    border-radius: var(--border-radius-lg);
+    padding: 1.5rem;
+    margin-bottom: 1.5rem;
+    box-shadow: var(--shadow-sm);
+    border: 1px solid #e2e8f0;
+    transition: all var(--transition-normal);
+}
+
+.station-card:hover {
+    transform: translateY(-3px);
+    box-shadow: var(--shadow-lg);
+}
+
+.station-header {
+    border-bottom: 2px solid #e9ecef;
+    padding-bottom: 1rem;
+    margin-bottom: 1.25rem;
+}
+
+.station-code {
+    background: var(--primary-gradient);
+    color: white;
+    padding: 0.5rem 1rem;
+    border-radius: 25px;
+    font-weight: 700;
+    font-size: 0.9rem;
+    box-shadow: var(--shadow-sm);
+    display: inline-block;
+}
+
+.chat-id-tag {
+    background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
+    color: #1976d2;
+    padding: 0.375rem 0.75rem;
+    border-radius: 20px;
+    font-size: 0.8rem;
+    margin: 0.25rem;
+    display: inline-block;
+    font-weight: 600;
+}
+
+.sub-station-tag {
+    background: linear-gradient(135deg, #f3e5f5 0%, #e1bee7 100%);
+    color: #7b1fa2;
+    padding: 0.375rem 0.75rem;
+    border-radius: 20px;
+    font-size: 0.8rem;
+    margin: 0.25rem;
+    display: inline-block;
+    font-weight: 600;
+}
+
+/* ===== Карточки отчетов ===== */
+.report-card {
+    background: white;
+    border-radius: var(--border-radius-lg);
+    padding: 2rem;
+    margin-bottom: 1.5rem;
+    box-shadow: var(--shadow-sm);
+    border: 1px solid #e2e8f0;
+    transition: all var(--transition-normal);
+}
+
+.report-card:hover {
+    transform: translateY(-3px);
+    box-shadow: var(--shadow-lg);
+}
+
+.report-title {
+    color: var(--primary-color);
+    border-bottom: 2px solid #e9ecef;
+    padding-bottom: 1rem;
+    margin-bottom: 1.5rem;
+    font-size: 1.5rem;
+    font-weight: 700;
+}
+
+.report-description {
+    color: var(--text-muted);
+    font-size: 0.95rem;
+    margin-bottom: 1.5rem;
+    line-height: 1.6;
+}
+
+/* ===== Статус отчета ===== */
+.report-status {
+    padding: 0.5rem 1rem;
+    border-radius: 25px;
+    font-size: 0.85rem;
+    font-weight: 700;
+    display: inline-block;
+    box-shadow: var(--shadow-sm);
+}
+
+.status-generating {
+    background: linear-gradient(135deg, #fff3cd 0%, #ffeeba 100%);
+    color: #856404;
+}
+
+.status-ready {
+    background: linear-gradient(135deg, #d1ecf1 0%, #bee5eb 100%);
+    color: #0c5460;
+}
+
+.status-error {
+    background: linear-gradient(135deg, #f8d7da 0%, #f5c6cb 100%);
+    color: #721c24;
+}
+
+/* ===== Прогресс бар отчетов ===== */
+.progress-container {
+    margin-top: 1.25rem;
+    display: none;
+}
+
+.progress-bar-custom {
+    width: 100%;
+    height: 0.75rem;
+    background-color: #e2e8f0;
+    border-radius: 10px;
+    overflow: hidden;
+    margin-bottom: 0.5rem;
+    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.progress-fill-custom {
+    height: 100%;
+    background: var(--primary-gradient);
+    width: 0%;
+    transition: width 0.3s ease;
+    position: relative;
+    overflow: hidden;
+}
+
+.progress-fill-custom::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+    animation: pulse 1.5s infinite;
+}
+
+.progress-text-custom {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    text-align: center;
+    font-weight: 600;
+}
+
+/* ===== Модальные окна ===== */
+.modal-content {
+    border-radius: var(--border-radius-xl);
+    border: none;
+    box-shadow: var(--shadow-xl);
+    overflow: hidden;
+}
+
+.modal-header {
+    background: var(--primary-gradient);
+    color: white;
+    padding: 1.25rem 1.5rem;
+    border-bottom: none;
+}
+
+.modal-header .modal-title {
+    color: white;
+    font-weight: 700;
+}
+
+.modal-header .btn-close {
+    filter: brightness(0) invert(1);
+}
+
+.modal-body {
+    padding: 1.5rem;
+}
+
+.modal-footer {
+    padding: 1.25rem 1.5rem;
+    border-top: 1px solid #e2e8f0;
+    background: #f8f9fa;
+}
+
+/* ===== Login/Register страницы ===== */
+.login-container,
+.register-container {
+    background: white;
+    border-radius: var(--border-radius-xl);
+    box-shadow: var(--shadow-xl);
+    padding: 2.5rem;
+    width: 100%;
+    max-width: 450px;
+    position: relative;
+    overflow: hidden;
+}
+
+.login-container::before,
+.register-container::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 5px;
+    background: var(--primary-gradient);
+}
+
+.login-container h2,
+.register-container h2 {
+    color: var(--text-dark);
+    margin-bottom: 2rem;
+    text-align: center;
+    font-weight: 700;
+    font-size: 1.75rem;
+}
+
+/* ===== Формы авторизации ===== */
+.login-container input[type="text"],
+.login-container input[type="password"],
+.register-container input[type="text"],
+.register-container input[type="password"] {
+    width: 100%;
+    padding: 0.875rem 1rem;
+    border: 2px solid #e2e8f0;
+    border-radius: var(--border-radius-md);
+    font-size: 1rem;
+    transition: all var(--transition-fast);
+    background: #f8f9fa;
+}
+
+.login-container input[type="text"]:focus,
+.login-container input[type="password"]:focus,
+.register-container input[type="text"]:focus,
+.register-container input[type="password"]:focus {
+    border-color: var(--primary-color);
+    background: white;
+    box-shadow: 0 0 0 0.2rem rgba(102, 126, 234, 0.15);
+}
+
+.login-container button,
+.register-container button {
+    width: 100%;
+    padding: 0.875rem;
+    background: var(--primary-gradient);
+    color: white;
+    border: none;
+    border-radius: var(--border-radius-md);
+    font-size: 1rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all var(--transition-normal);
+    box-shadow: var(--shadow-sm);
+}
+
+.login-container button:hover,
+.register-container button:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-lg);
+}
+
+/* ===== Checkbox группы ===== */
+.checkbox-group {
+    display: flex;
+    align-items: center;
+    margin-bottom: 1.5rem;
+    font-size: 0.95rem;
+    color: var(--text-dark);
+    cursor: pointer;
+}
+
+.checkbox-group input {
+    margin-right: 0.75rem;
+    width: 1.25rem;
+    height: 1.25rem;
+    cursor: pointer;
+}
+
+/* ===== Alerts на auth страницах ===== */
+.alert-error {
+    background: linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%);
+    color: #dc2626;
+    border: 1px solid #fecaca;
+    border-radius: var(--border-radius-md);
+    padding: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+.alert-info {
+    background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+    color: #2563eb;
+    border: 1px solid #bfdbfe;
+    border-radius: var(--border-radius-md);
+    padding: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+/* ===== Ссылки на регистрации ===== */
+.register-link {
+    margin-top: 1.5rem;
+    text-align: center;
+    font-size: 0.9rem;
+    color: var(--text-muted);
+}
+
+.register-link a {
+    color: var(--primary-color);
+    text-decoration: none;
+    font-weight: 600;
+    transition: all var(--transition-fast);
+}
+
+.register-link a:hover {
+    color: var(--secondary-color);
+    text-decoration: underline;
+}
+
+/* ===== Адаптивность для sidebar ===== */
+@media (max-width: 991.98px) {
+    .sidebar {
+        position: fixed;
+        left: -100%;
+        top: 0;
+        bottom: 0;
+        width: 280px;
+        transition: left var(--transition-normal);
+        z-index: 1050;
+    }
+    
+    .sidebar.show {
+        left: 0;
+    }
+    
+    .sidebar-overlay {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.5);
+        z-index: 1040;
+    }
+    
+    .sidebar-overlay.show {
+        display: block;
+    }
+    
+    .main-content {
+        margin-left: 0;
+    }
+}
+
+/* ===== Адаптивность для метрик ===== */
+@media (max-width: 768px) {
+    .metric-card {
+        margin-bottom: 1rem;
+    }
+    
+    .metric-value {
+        font-size: 2rem;
+    }
+    
+    .leaderboard-card,
+    .consultants-card {
+        margin-bottom: 1rem;
+    }
+}
+
+/* ===== Анимация загрузки ===== */
+@keyframes shimmer {
+    0% {
+        background-position: -1000px 0;
+    }
+    100% {
+        background-position: 1000px 0;
+    }
+}
+
+.loading-shimmer {
+    background: linear-gradient(to right, #f8f9fa 0%, #e9ecef 20%, #f8f9fa 40%, #f8f9fa 100%);
+    background-size: 1000px 100%;
+    animation: shimmer 2s infinite linear;
+}

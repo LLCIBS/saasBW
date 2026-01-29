@@ -1,86 +1,86 @@
 <nav class="col-md-3 col-lg-2 sidebar p-0">
     <div class="p-3">
-        <h4 class="text-white mb-4">
-            <i class="fas fa-phone-alt me-2"></i>
-            Call Analyzer
+        <h4>
+            <i class="fas fa-phone-alt"></i>
+            <span>Call Analyzer</span>
         </h4>
-        <ul class="nav flex-column">
+        <ul class="nav">
             <li class="nav-item">
                 <a class="nav-link {{ 'active' if active_page == 'dashboard' else '' }}" href="/">
-                    <i class="fas fa-tachometer-alt me-2"></i>
-                    Панель управления
+                    <i class="fas fa-tachometer-alt"></i>
+                    <span>Панель управления</span>
                 </a>
             </li>
             <li class="nav-item">
                 <a class="nav-link {{ 'active' if active_page == 'config' else '' }}" href="/config">
-                    <i class="fas fa-cog me-2"></i>
-                    Конфигурация
+                    <i class="fas fa-cog"></i>
+                    <span>Конфигурация</span>
                 </a>
             </li>
             <li class="nav-item">
                 <a class="nav-link {{ 'active' if active_page == 'stations' else '' }}" href="/stations">
-                    <i class="fas fa-building me-2"></i>
-                    Станции
+                    <i class="fas fa-building"></i>
+                    <span>Станции</span>
                 </a>
             </li>
             <li class="nav-item">
                 <a class="nav-link {{ 'active' if active_page == 'ftp' else '' }}" href="/ftp">
-                    <i class="fas fa-server me-2"></i>
-                    FTP подключения
+                    <i class="fas fa-server"></i>
+                    <span>FTP подключения</span>
                 </a>
             </li>
             <li class="nav-item">
                 <a class="nav-link {{ 'active' if active_page == 'prompts' else '' }}" href="/prompts">
-                    <i class="fas fa-comments me-2"></i>
-                    Промпты
+                    <i class="fas fa-comments"></i>
+                    <span>Промпты</span>
                 </a>
             </li>
             <li class="nav-item">
                 <a class="nav-link {{ 'active' if active_page == 'vocabulary' else '' }}" href="/vocabulary">
-                    <i class="fas fa-book me-2"></i>
-                    Словарь
+                    <i class="fas fa-book"></i>
+                    <span>Словарь</span>
                 </a>
             </li>
             <li class="nav-item">
                 <a class="nav-link {{ 'active' if active_page == 'checklists' else '' }}" href="/checklists">
-                    <i class="fas fa-list-check me-2"></i>
-                    Настройка чек-листов
+                    <i class="fas fa-list-check"></i>
+                    <span>Настройка чек-листов</span>
                 </a>
             </li>
             <li class="nav-item">
                 <a class="nav-link {{ 'active' if active_page == 'reports' else '' }}" href="/reports">
-                    <i class="fas fa-chart-bar me-2"></i>
-                    Отчеты
+                    <i class="fas fa-chart-bar"></i>
+                    <span>Отчеты</span>
                 </a>
             </li>
             <li class="nav-item">
                 <a class="nav-link {{ 'active' if active_page == 'transfers' else '' }}" href="/transfers">
-                    <i class="fas fa-exchange-alt me-2"></i>
-                    Переводы
+                    <i class="fas fa-exchange-alt"></i>
+                    <span>Переводы</span>
                 </a>
             </li>
             <li class="nav-item">
                 <a class="nav-link {{ 'active' if active_page == 'recalls' else '' }}" href="/recalls">
-                    <i class="fas fa-redo me-2"></i>
-                    Перезвоны
+                    <i class="fas fa-redo"></i>
+                    <span>Перезвоны</span>
                 </a>
             </li>
             <li class="nav-item">
                 <a class="nav-link {{ 'active' if active_page == 'logs' else '' }}" href="/logs">
-                    <i class="fas fa-file-alt me-2"></i>
-                    Логи
+                    <i class="fas fa-file-alt"></i>
+                    <span>Логи</span>
                 </a>
             </li>
             <li class="nav-item">
                 <a class="nav-link {{ 'active' if active_page == 'settings' else '' }}" href="/settings">
-                    <i class="fas fa-user-cog me-2"></i>
-                    Настройки
+                    <i class="fas fa-user-cog"></i>
+                    <span>Настройки</span>
                 </a>
             </li>
-            <li class="nav-item mt-3">
+            <li class="nav-item">
                 <a class="nav-link text-danger" href="/auth/logout">
-                    <i class="fas fa-sign-out-alt me-2"></i>
-                    Выход
+                    <i class="fas fa-sign-out-alt"></i>
+                    <span>Выход</span>
                 </a>
             </li>
         </ul>

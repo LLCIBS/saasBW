@@ -1,658 +1,660 @@
-<!DOCTYPE html>
-<html lang="ru">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Настройки - Call Analyzer</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-    <style>
-        .sidebar {
-            min-height: 100vh;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        }
-        .sidebar .nav-link {
-            color: rgba(255, 255, 255, 0.8);
-            padding: 12px 20px;
-            border-radius: 8px;
-            margin: 2px 0;
-            transition: all 0.3s;
-        }
-        .sidebar .nav-link:hover {
-            color: white;
-            background: rgba(255, 255, 255, 0.1);
-        }
-        .sidebar .nav-link.active {
-            color: white;
-            background: rgba(255, 255, 255, 0.2);
-        }
-        .main-content {
-            background-color: #f8f9fa;
-            min-height: 100vh;
-        }
-        .settings-section {
-            background: white;
-            border-radius: 15px;
-            padding: 25px;
-            margin-bottom: 20px;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-        }
-        .settings-title {
-            color: #667eea;
-            border-bottom: 2px solid #e9ecef;
-            padding-bottom: 10px;
-            margin-bottom: 20px;
-        }
-        .form-label {
-            font-weight: 600;
-            color: #495057;
-        }
-        .form-control:focus {
-            border-color: #667eea;
-            box-shadow: 0 0 0 0.2rem rgba(102, 126, 234, 0.25);
-        }
-        .btn-save {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            border: none;
-            color: white;
-            padding: 12px 30px;
-            border-radius: 25px;
-            font-weight: 600;
-            transition: all 0.3s;
-        }
-        .btn-save:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 8px rgba(102, 126, 234, 0.3);
-            color: white;
-        }
-        .btn-save:disabled {
-            opacity: 0.6;
-            cursor: not-allowed;
-        }
-        .input-group .btn-outline-secondary {
-            border-left: none;
-            border-color: #ced4da;
-        }
-        .input-group .btn-outline-secondary:hover {
-            background-color: #e9ecef;
-            border-color: #ced4da;
-        }
-        .input-group .form-control:focus + .btn-outline-secondary {
-            border-color: #667eea;
-        }
-        .entity-toggle {
-            display: flex;
-            align-items: center;
-            gap: 15px;
-            padding: 15px;
-            background: #f8f9fa;
-            border-radius: 10px;
-            margin-bottom: 20px;
-        }
-        .entity-toggle label {
-            margin: 0;
-            font-weight: 600;
-            color: #495057;
-        }
-        .form-check-input:checked {
-            background-color: #667eea;
-            border-color: #667eea;
-        }
-        .entity-section {
-            transition: opacity 0.3s ease, max-height 0.3s ease;
-        }
-        .entity-section.hidden {
-            display: none;
-        }
-    </style>
-</head>
-<body>
-    <div class="container-fluid">
-        <div class="row">
-            <!-- Боковая панель -->
-            {% include 'partials/sidebar.html' %}
+{% extends "base.html" %}
 
-            <!-- Основной контент -->
-            <main class="col-md-9 col-lg-10 main-content">
-                <div class="p-4">
-                    <div class="d-flex justify-content-between align-items-center mb-4">
-                        <h1 class="h3 mb-0">Настройки пользователя</h1>
+{% block title %}Настройки пользователя - Call Analyzer{% endblock %}
+
+{% block content %}
+<!-- Боковая панель -->
+{% include 'partials/sidebar.html' %}
+
+<!-- Основной контент -->
+<main class="col-md-9 col-lg-10 main-content">
+    <div class="p-4">
+        <div class="mb-4">
+            <h1 class="h3 mb-0">Настройки пользователя</h1>
+            <p class="text-muted mb-0">Управление профилем, персональными данными и настройками интерфейса</p>
+        </div>
+
+        <!-- Личные данные -->
+        <div class="card mb-4">
+            <div class="card-body">
+                <h5 class="card-title">
+                    <i class="fas fa-user me-2 text-primary"></i>Личные данные
+                </h5>
+                <form id="settingsForm">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label" for="username">Логин</label>
+                                <input type="text" class="form-control" id="username" 
+                                       placeholder="Введите логин" required>
+                                <div class="form-text">Ваш уникальный логин для входа в систему</div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label" for="email">Почта</label>
+                                <input type="email" class="form-control" id="email" 
+                                       placeholder="example@mail.com">
+                                <div class="form-text">Ваш email адрес (необязательно)</div>
+                            </div>
+                        </div>
                     </div>
-
-                    <!-- Настройки пользователя -->
-                    <div class="settings-section">
-                        <h3 class="settings-title">
-                            <i class="fas fa-user me-2"></i>Личные данные
-                        </h3>
-                        <form id="settingsForm">
-                            <div class="row">
-                                <div class="col-md-6">
-                                    <div class="mb-3">
-                                        <label class="form-label" for="username">Логин</label>
-                                        <input type="text" class="form-control" id="username" 
-                                               placeholder="Введите логин" required>
-                                        <div class="form-text">Ваш уникальный логин для входа в систему</div>
-                                    </div>
-                                </div>
-                                <div class="col-md-6">
-                                    <div class="mb-3">
-                                        <label class="form-label" for="email">Почта</label>
-                                        <input type="email" class="form-control" id="email" 
-                                               placeholder="example@mail.com">
-                                        <div class="form-text">Ваш email адрес (необязательно)</div>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="row">
-                                <div class="col-md-6">
-                                    <div class="mb-3">
-                                        <label class="form-label" for="password">Новый пароль</label>
-                                        <div class="input-group">
-                                            <input type="password" class="form-control" id="password" 
-                                                   placeholder="Оставьте пустым, чтобы не менять">
-                                            <button class="btn btn-outline-secondary" type="button" id="togglePassword" onclick="togglePasswordVisibility()">
-                                                <i class="fas fa-eye"></i>
-                                            </button>
-                                        </div>
-                                        <div class="form-text">Минимальная длина пароля: 6 символов</div>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="row">
-                                <div class="col-md-12">
-                                    <button type="submit" class="btn btn-save" id="saveButton">
-                                        <i class="fas fa-save me-2"></i>Сохранить изменения
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label" for="password">Новый пароль</label>
+                                <div class="input-group">
+                                    <input type="password" class="form-control" id="password" 
+                                           placeholder="Оставьте пустым, чтобы не менять">
+                                    <button class="btn btn-outline-secondary" type="button" id="togglePassword">
+                                        <i class="fas fa-eye"></i>
                                     </button>
                                 </div>
-                            </div>
-                        </form>
-                    </div>
-
-                    <!-- Переключатель типа лица -->
-                    <div class="settings-section">
-                        <h3 class="settings-title">
-                            <i class="fas fa-building me-2"></i>Тип лица
-                        </h3>
-                        <div class="entity-toggle">
-                            <div class="form-check">
-                                <input class="form-check-input" type="radio" name="entityType" id="entityTypeLegal" value="legal" checked>
-                                <label class="form-check-label" for="entityTypeLegal">
-                                    Юридическое лицо
-                                </label>
-                            </div>
-                            <div class="form-check">
-                                <input class="form-check-input" type="radio" name="entityType" id="entityTypePhysical" value="physical">
-                                <label class="form-check-label" for="entityTypePhysical">
-                                    Физическое лицо
-                                </label>
+                                <div class="form-text">Минимальная длина пароля: 6 символов</div>
                             </div>
                         </div>
                     </div>
-
-                    <!-- Данные юридического лица -->
-                    <div class="settings-section entity-section" id="legalEntitySection">
-                        <h3 class="settings-title">
-                            <i class="fas fa-briefcase me-2"></i>Данные организации
-                        </h3>
-                        <form id="legalEntityForm">
-                            <div class="row">
-                                <div class="col-md-12">
-                                    <div class="mb-3">
-                                        <label class="form-label" for="legalName">Название организации <span class="text-danger">*</span></label>
-                                        <input type="text" class="form-control" id="legalName" 
-                                               placeholder="Введите название организации">
-                                        <div class="form-text">Полное наименование юридического лица</div>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="row">
-                                <div class="col-md-4">
-                                    <div class="mb-3">
-                                        <label class="form-label" for="legalInn">ИНН <span class="text-danger">*</span></label>
-                                        <input type="text" class="form-control" id="legalInn" 
-                                               placeholder="10 или 12 цифр" maxlength="12">
-                                        <div class="form-text">Идентификационный номер налогоплательщика</div>
-                                    </div>
-                                </div>
-                                <div class="col-md-4">
-                                    <div class="mb-3">
-                                        <label class="form-label" for="legalKpp">КПП</label>
-                                        <input type="text" class="form-control" id="legalKpp" 
-                                               placeholder="9 цифр" maxlength="9">
-                                        <div class="form-text">Код причины постановки на учет</div>
-                                    </div>
-                                </div>
-                                <div class="col-md-4">
-                                    <div class="mb-3">
-                                        <label class="form-label" for="legalOgrn">ОГРН</label>
-                                        <input type="text" class="form-control" id="legalOgrn" 
-                                               placeholder="13 цифр" maxlength="13">
-                                        <div class="form-text">Основной государственный регистрационный номер</div>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="row">
-                                <div class="col-md-6">
-                                    <div class="mb-3">
-                                        <label class="form-label" for="legalAddress">Юридический адрес</label>
-                                        <textarea class="form-control" id="legalAddress" rows="3" 
-                                                  placeholder="Введите юридический адрес"></textarea>
-                                    </div>
-                                </div>
-                                <div class="col-md-6">
-                                    <div class="mb-3">
-                                        <label class="form-label" for="actualAddress">Фактический адрес</label>
-                                        <textarea class="form-control" id="actualAddress" rows="3" 
-                                                  placeholder="Введите фактический адрес"></textarea>
-                                    </div>
-                                </div>
-                            </div>
-                        </form>
+                    <div class="d-flex justify-content-end">
+                        <button type="submit" class="btn btn-primary" id="saveButton">
+                            <i class="fas fa-save me-2"></i>Сохранить изменения
+                        </button>
                     </div>
+                </form>
+            </div>
+        </div>
 
-                    <!-- Данные физического лица -->
-                    <div class="settings-section entity-section hidden" id="physicalEntitySection">
-                        <h3 class="settings-title">
-                            <i class="fas fa-id-card me-2"></i>Данные физического лица
-                        </h3>
-                        <form id="physicalEntityForm">
-                            <div class="row">
-                                <div class="col-md-12">
-                                    <div class="mb-3">
-                                        <label class="form-label" for="physicalFullName">ФИО <span class="text-danger">*</span></label>
-                                        <input type="text" class="form-control" id="physicalFullName" 
-                                               placeholder="Введите фамилию, имя и отчество">
-                                        <div class="form-text">Полное имя физического лица</div>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="row">
-                                <div class="col-md-6">
-                                    <div class="mb-3">
-                                        <label class="form-label" for="physicalInn">ИНН</label>
-                                        <input type="text" class="form-control" id="physicalInn" 
-                                               placeholder="12 цифр" maxlength="12">
-                                        <div class="form-text">Идентификационный номер налогоплательщика</div>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="row">
-                                <div class="col-md-4">
-                                    <div class="mb-3">
-                                        <label class="form-label" for="passportSeries">Серия паспорта</label>
-                                        <input type="text" class="form-control" id="passportSeries" 
-                                               placeholder="4 цифры" maxlength="4">
-                                    </div>
-                                </div>
-                                <div class="col-md-4">
-                                    <div class="mb-3">
-                                        <label class="form-label" for="passportNumber">Номер паспорта</label>
-                                        <input type="text" class="form-control" id="passportNumber" 
-                                               placeholder="6 цифр" maxlength="6">
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="row">
-                                <div class="col-md-12">
-                                    <div class="mb-3">
-                                        <label class="form-label" for="registrationAddress">Адрес регистрации</label>
-                                        <textarea class="form-control" id="registrationAddress" rows="3" 
-                                                  placeholder="Введите адрес регистрации"></textarea>
-                                    </div>
-                                </div>
-                            </div>
-                        </form>
+        <!-- Переключатель типа лица -->
+        <div class="card mb-4">
+            <div class="card-body">
+                <h5 class="card-title">
+                    <i class="fas fa-building me-2 text-success"></i>Тип лица
+                </h5>
+                <div class="alert alert-secondary">
+                    <div class="form-check form-check-inline me-4">
+                        <input class="form-check-input" type="radio" name="entityType" id="entityTypeLegal" value="legal" checked>
+                        <label class="form-check-label" for="entityTypeLegal">
+                            Юридическое лицо
+                        </label>
                     </div>
-
-                    <!-- Кнопка сохранения данных о лице -->
-                    <div class="settings-section">
-                        <div class="row">
-                            <div class="col-md-12">
-                                <button type="button" class="btn btn-save" id="saveEntityButton">
-                                    <i class="fas fa-save me-2"></i>Сохранить данные о лице
-                                </button>
-                            </div>
-                        </div>
+                    <div class="form-check form-check-inline">
+                        <input class="form-check-input" type="radio" name="entityType" id="entityTypePhysical" value="physical">
+                        <label class="form-check-label" for="entityTypePhysical">
+                            Физическое лицо
+                        </label>
                     </div>
                 </div>
-            </main>
+            </div>
+        </div>
+
+        <!-- Данные юридического лица -->
+        <div class="card mb-4" id="legalEntitySection">
+            <div class="card-body">
+                <h5 class="card-title">
+                    <i class="fas fa-briefcase me-2 text-warning"></i>Данные организации
+                </h5>
+                <form id="legalEntityForm">
+                    <div class="row">
+                        <div class="col-md-12">
+                            <div class="mb-3">
+                                <label class="form-label" for="legalName">Название организации <span class="text-danger">*</span></label>
+                                <input type="text" class="form-control" id="legalName" 
+                                       placeholder="Введите название организации">
+                                <div class="form-text">Полное наименование юридического лица</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-4">
+                            <div class="mb-3">
+                                <label class="form-label" for="legalInn">ИНН <span class="text-danger">*</span></label>
+                                <input type="text" class="form-control" id="legalInn" 
+                                       placeholder="10 или 12 цифр" maxlength="12">
+                                <div class="form-text">Идентификационный номер налогоплательщика</div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="mb-3">
+                                <label class="form-label" for="legalKpp">КПП</label>
+                                <input type="text" class="form-control" id="legalKpp" 
+                                       placeholder="9 цифр" maxlength="9">
+                                <div class="form-text">Код причины постановки на учет</div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="mb-3">
+                                <label class="form-label" for="legalOgrn">ОГРН</label>
+                                <input type="text" class="form-control" id="legalOgrn" 
+                                       placeholder="13 цифр" maxlength="13">
+                                <div class="form-text">Основной государственный регистрационный номер</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label" for="legalAddress">Юридический адрес</label>
+                                <textarea class="form-control" id="legalAddress" rows="3" 
+                                          placeholder="Введите юридический адрес"></textarea>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label" for="actualAddress">Фактический адрес</label>
+                                <textarea class="form-control" id="actualAddress" rows="3" 
+                                          placeholder="Введите фактический адрес"></textarea>
+                            </div>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Данные физического лица -->
+        <div class="card mb-4 d-none" id="physicalEntitySection">
+            <div class="card-body">
+                <h5 class="card-title">
+                    <i class="fas fa-id-card me-2 text-info"></i>Данные физического лица
+                </h5>
+                <form id="physicalEntityForm">
+                    <div class="row">
+                        <div class="col-md-12">
+                            <div class="mb-3">
+                                <label class="form-label" for="physicalFullName">ФИО <span class="text-danger">*</span></label>
+                                <input type="text" class="form-control" id="physicalFullName" 
+                                       placeholder="Введите фамилию, имя и отчество">
+                                <div class="form-text">Полное имя физического лица</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label" for="physicalInn">ИНН</label>
+                                <input type="text" class="form-control" id="physicalInn" 
+                                       placeholder="12 цифр" maxlength="12">
+                                <div class="form-text">Идентификационный номер налогоплательщика</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-4">
+                            <div class="mb-3">
+                                <label class="form-label" for="passportSeries">Серия паспорта</label>
+                                <input type="text" class="form-control" id="passportSeries" 
+                                       placeholder="4 цифры" maxlength="4">
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="mb-3">
+                                <label class="form-label" for="passportNumber">Номер паспорта</label>
+                                <input type="text" class="form-control" id="passportNumber" 
+                                       placeholder="6 цифр" maxlength="6">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-12">
+                            <div class="mb-3">
+                                <label class="form-label" for="registrationAddress">Адрес регистрации</label>
+                                <textarea class="form-control" id="registrationAddress" rows="3" 
+                                          placeholder="Введите адрес регистрации"></textarea>
+                            </div>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Кнопка сохранения данных о лице -->
+        <div class="card mb-4">
+            <div class="card-body">
+                <div class="d-flex justify-content-end">
+                    <button type="button" class="btn btn-success" id="saveEntityButton">
+                        <i class="fas fa-save me-2"></i>Сохранить данные о лице
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Настройки интерфейса -->
+        <div class="card mb-4">
+            <div class="card-body">
+                <h5 class="card-title">
+                    <i class="fas fa-palette me-2 text-info"></i>Настройки интерфейса
+                </h5>
+                <div class="mb-3">
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="autoRefresh" checked>
+                        <label class="form-check-label" for="autoRefresh">
+                            Автоматическое обновление данных
+                        </label>
+                        <div class="form-text">Обновлять данные каждые 5 секунд</div>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="showNotifications" checked>
+                        <label class="form-check-label" for="showNotifications">
+                            Показывать уведомления
+                        </label>
+                        <div class="form-text">Отображать всплывающие уведомления о событиях</div>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Количество записей на странице</label>
+                    <select class="form-select" id="itemsPerPage">
+                        <option value="25">25</option>
+                        <option value="50" selected>50</option>
+                        <option value="100">100</option>
+                        <option value="200">200</option>
+                    </select>
+                </div>
+                <div class="d-flex justify-content-end">
+                    <button type="button" class="btn btn-primary" onclick="saveInterfaceSettings()">
+                        <i class="fas fa-save me-2"></i>Сохранить настройки
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Опасная зона -->
+        <div class="card" style="border-left: 4px solid #dc3545;">
+            <div class="card-body">
+                <h5 class="card-title text-danger">
+                    <i class="fas fa-exclamation-triangle me-2"></i>Опасная зона
+                </h5>
+                <div class="alert alert-warning">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    <strong>Внимание!</strong> Данные действия необратимы. Будьте осторожны.
+                </div>
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <strong>Удалить аккаунт</strong>
+                        <p class="text-muted mb-0">Это действие удалит ваш аккаунт и все данные без возможности восстановления</p>
+                    </div>
+                    <button class="btn btn-danger" onclick="deleteAccount()">
+                        <i class="fas fa-trash me-2"></i>Удалить аккаунт
+                    </button>
+                </div>
+            </div>
         </div>
     </div>
+</main>
+{% endblock %}
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script>
-        // Загрузка данных пользователя при старте
-        document.addEventListener('DOMContentLoaded', function() {
-            loadUserSettings();
-        });
+{% block extra_js %}
+<script>
+// Загрузка данных пользователя при старте
+document.addEventListener('DOMContentLoaded', function() {
+    loadUserSettings();
+    loadInterfaceSettings();
+    setupEntityTypeListeners();
+    setupPasswordToggle();
+    setupSettingsForm();
+    setupEntityForm();
+});
 
-        async function loadUserSettings() {
-            try {
-                const response = await fetch('/api/settings/load');
-                if (!response.ok) {
-                    throw new Error('Ошибка загрузки данных');
-                }
-                const data = await response.json();
-                
-                document.getElementById('username').value = data.username || '';
-                document.getElementById('email').value = data.email || '';
-                
-                // Загрузка данных о типе лица
-                const entityType = data.entity_type || 'legal';
-                if (entityType === 'legal') {
-                    document.getElementById('entityTypeLegal').checked = true;
-                    showLegalSection();
-                } else {
-                    document.getElementById('entityTypePhysical').checked = true;
-                    showPhysicalSection();
-                }
-                
-                // Загрузка данных юридического лица
-                if (data.legal_entity) {
-                    document.getElementById('legalName').value = data.legal_entity.name || '';
-                    document.getElementById('legalInn').value = data.legal_entity.inn || '';
-                    document.getElementById('legalKpp').value = data.legal_entity.kpp || '';
-                    document.getElementById('legalOgrn').value = data.legal_entity.ogrn || '';
-                    document.getElementById('legalAddress').value = data.legal_entity.legal_address || '';
-                    document.getElementById('actualAddress').value = data.legal_entity.actual_address || '';
-                }
-                
-                // Загрузка данных физического лица
-                if (data.physical_entity) {
-                    document.getElementById('physicalFullName').value = data.physical_entity.full_name || '';
-                    document.getElementById('physicalInn').value = data.physical_entity.inn || '';
-                    document.getElementById('passportSeries').value = data.physical_entity.passport_series || '';
-                    document.getElementById('passportNumber').value = data.physical_entity.passport_number || '';
-                    document.getElementById('registrationAddress').value = data.physical_entity.registration_address || '';
-                }
-            } catch (error) {
-                console.error('Ошибка загрузки настроек:', error);
-                showAlert('Ошибка загрузки данных пользователя', 'danger');
-            }
+async function loadUserSettings() {
+    try {
+        const response = await fetch('/api/settings/load');
+        if (!response.ok) {
+            throw new Error('Ошибка загрузки данных');
+        }
+        const data = await response.json();
+        
+        document.getElementById('username').value = data.username || '';
+        document.getElementById('email').value = data.email || '';
+        
+        // Загрузка данных о типе лица
+        const entityType = data.entity_type || 'legal';
+        if (entityType === 'legal') {
+            document.getElementById('entityTypeLegal').checked = true;
+            showLegalSection();
+        } else {
+            document.getElementById('entityTypePhysical').checked = true;
+            showPhysicalSection();
+        }
+        
+        // Загрузка данных юридического лица
+        if (data.legal_entity) {
+            document.getElementById('legalName').value = data.legal_entity.name || '';
+            document.getElementById('legalInn').value = data.legal_entity.inn || '';
+            document.getElementById('legalKpp').value = data.legal_entity.kpp || '';
+            document.getElementById('legalOgrn').value = data.legal_entity.ogrn || '';
+            document.getElementById('legalAddress').value = data.legal_entity.legal_address || '';
+            document.getElementById('actualAddress').value = data.legal_entity.actual_address || '';
+        }
+        
+        // Загрузка данных физического лица
+        if (data.physical_entity) {
+            document.getElementById('physicalFullName').value = data.physical_entity.full_name || '';
+            document.getElementById('physicalInn').value = data.physical_entity.inn || '';
+            document.getElementById('passportSeries').value = data.physical_entity.passport_series || '';
+            document.getElementById('passportNumber').value = data.physical_entity.passport_number || '';
+            document.getElementById('registrationAddress').value = data.physical_entity.registration_address || '';
+        }
+    } catch (error) {
+        console.error('Ошибка загрузки настроек:', error);
+        showAlert('Ошибка загрузки данных пользователя', 'danger');
+    }
+}
+
+function loadInterfaceSettings() {
+    const autoRefresh = localStorage.getItem('autoRefresh');
+    const showNotifications = localStorage.getItem('showNotifications');
+    const itemsPerPage = localStorage.getItem('itemsPerPage');
+    
+    if (autoRefresh !== null) {
+        document.getElementById('autoRefresh').checked = autoRefresh === 'true';
+    }
+    if (showNotifications !== null) {
+        document.getElementById('showNotifications').checked = showNotifications === 'true';
+    }
+    if (itemsPerPage) {
+        document.getElementById('itemsPerPage').value = itemsPerPage;
+    }
+}
+
+function setupEntityTypeListeners() {
+    document.getElementById('entityTypeLegal').addEventListener('change', function() {
+        if (this.checked) {
+            showLegalSection();
+        }
+    });
+
+    document.getElementById('entityTypePhysical').addEventListener('change', function() {
+        if (this.checked) {
+            showPhysicalSection();
+        }
+    });
+}
+
+function setupPasswordToggle() {
+    const toggleButton = document.getElementById('togglePassword');
+    if (toggleButton) {
+        toggleButton.addEventListener('click', togglePasswordVisibility);
+    }
+}
+
+function setupSettingsForm() {
+    const form = document.getElementById('settingsForm');
+    if (form) {
+        form.addEventListener('submit', handleSettingsSubmit);
+    }
+}
+
+function setupEntityForm() {
+    const saveButton = document.getElementById('saveEntityButton');
+    if (saveButton) {
+        saveButton.addEventListener('click', handleEntitySave);
+    }
+}
+
+function showLegalSection() {
+    document.getElementById('legalEntitySection').classList.remove('d-none');
+    document.getElementById('physicalEntitySection').classList.add('d-none');
+}
+
+function showPhysicalSection() {
+    document.getElementById('legalEntitySection').classList.add('d-none');
+    document.getElementById('physicalEntitySection').classList.remove('d-none');
+}
+
+function togglePasswordVisibility() {
+    const input = document.getElementById('password');
+    const button = document.getElementById('togglePassword');
+    const icon = button.querySelector('i');
+    
+    if (input.type === 'password') {
+        input.type = 'text';
+        icon.classList.remove('fa-eye');
+        icon.classList.add('fa-eye-slash');
+        button.title = 'Скрыть пароль';
+    } else {
+        input.type = 'password';
+        icon.classList.remove('fa-eye-slash');
+        icon.classList.add('fa-eye');
+        button.title = 'Показать пароль';
+    }
+}
+
+async function handleSettingsSubmit(e) {
+    e.preventDefault();
+    
+    if (!validateForm()) {
+        return;
+    }
+
+    const saveButton = document.getElementById('saveButton');
+    const originalText = saveButton.innerHTML;
+    saveButton.disabled = true;
+    saveButton.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Сохранение...';
+
+    try {
+        const data = {
+            username: document.getElementById('username').value.trim(),
+            email: document.getElementById('email').value.trim() || null,
+            password: document.getElementById('password').value || null
+        };
+
+        if (!data.password) {
+            delete data.password;
         }
 
-        // Функции переключения между типами лиц
-        function showLegalSection() {
-            document.getElementById('legalEntitySection').classList.remove('hidden');
-            document.getElementById('physicalEntitySection').classList.add('hidden');
-        }
-
-        function showPhysicalSection() {
-            document.getElementById('legalEntitySection').classList.add('hidden');
-            document.getElementById('physicalEntitySection').classList.remove('hidden');
-        }
-
-        // Обработчики переключения типа лица
-        document.getElementById('entityTypeLegal').addEventListener('change', function() {
-            if (this.checked) {
-                showLegalSection();
-            }
+        const response = await fetch('/api/settings/update', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(data)
         });
 
-        document.getElementById('entityTypePhysical').addEventListener('change', function() {
-            if (this.checked) {
-                showPhysicalSection();
-            }
-        });
+        const result = await response.json();
 
-        function togglePasswordVisibility() {
-            const input = document.getElementById('password');
-            const button = document.getElementById('togglePassword');
-            const icon = button.querySelector('i');
+        if (result.success) {
+            showAlert('Настройки успешно сохранены', 'success');
+            document.getElementById('password').value = '';
+        } else {
+            showAlert(result.message || 'Ошибка сохранения настроек', 'danger');
+        }
+    } catch (error) {
+        console.error('Ошибка сохранения настроек:', error);
+        showAlert('Ошибка сохранения настроек', 'danger');
+    } finally {
+        saveButton.disabled = false;
+        saveButton.innerHTML = originalText;
+    }
+}
+
+async function handleEntitySave(e) {
+    e.preventDefault();
+    
+    if (!validateEntityData()) {
+        return;
+    }
+
+    const saveButton = document.getElementById('saveEntityButton');
+    const originalText = saveButton.innerHTML;
+    saveButton.disabled = true;
+    saveButton.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Сохранение...';
+
+    try {
+        const entityType = document.querySelector('input[name="entityType"]:checked').value;
+        const data = {
+            entity_type: entityType
+        };
+
+        if (entityType === 'legal') {
+            data.legal_entity = {
+                name: document.getElementById('legalName').value.trim(),
+                inn: document.getElementById('legalInn').value.trim(),
+                kpp: document.getElementById('legalKpp').value.trim(),
+                ogrn: document.getElementById('legalOgrn').value.trim(),
+                legal_address: document.getElementById('legalAddress').value.trim(),
+                actual_address: document.getElementById('actualAddress').value.trim()
+            };
             
-            if (input.type === 'password') {
-                input.type = 'text';
-                icon.classList.remove('fa-eye');
-                icon.classList.add('fa-eye-slash');
-                button.title = 'Скрыть пароль';
+            data.physical_entity = {
+                full_name: document.getElementById('physicalFullName').value.trim(),
+                inn: document.getElementById('physicalInn').value.trim(),
+                passport_series: document.getElementById('passportSeries').value.trim(),
+                passport_number: document.getElementById('passportNumber').value.trim(),
+                registration_address: document.getElementById('registrationAddress').value.trim()
+            };
+        } else {
+            data.physical_entity = {
+                full_name: document.getElementById('physicalFullName').value.trim(),
+                inn: document.getElementById('physicalInn').value.trim(),
+                passport_series: document.getElementById('passportSeries').value.trim(),
+                passport_number: document.getElementById('passportNumber').value.trim(),
+                registration_address: document.getElementById('registrationAddress').value.trim()
+            };
+            
+            data.legal_entity = {
+                name: document.getElementById('legalName').value.trim(),
+                inn: document.getElementById('legalInn').value.trim(),
+                kpp: document.getElementById('legalKpp').value.trim(),
+                ogrn: document.getElementById('legalOgrn').value.trim(),
+                legal_address: document.getElementById('legalAddress').value.trim(),
+                actual_address: document.getElementById('actualAddress').value.trim()
+            };
+        }
+
+        const response = await fetch('/api/settings/update', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(data)
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+            showAlert('Данные о лице успешно сохранены', 'success');
+        } else {
+            showAlert(result.message || 'Ошибка сохранения данных о лице', 'danger');
+        }
+    } catch (error) {
+        console.error('Ошибка сохранения данных о лице:', error);
+        showAlert('Ошибка сохранения данных о лице', 'danger');
+    } finally {
+        saveButton.disabled = false;
+        saveButton.innerHTML = originalText;
+    }
+}
+
+function validateForm() {
+    const username = document.getElementById('username').value.trim();
+    const email = document.getElementById('email').value.trim();
+    const password = document.getElementById('password').value;
+
+    if (!username) {
+        showAlert('Логин не может быть пустым', 'danger');
+        return false;
+    }
+
+    if (email && !isValidEmail(email)) {
+        showAlert('Некорректный формат email', 'danger');
+        return false;
+    }
+
+    if (password && password.length < 6) {
+        showAlert('Пароль должен содержать минимум 6 символов', 'danger');
+        return false;
+    }
+
+    return true;
+}
+
+function validateEntityData() {
+    const entityType = document.querySelector('input[name="entityType"]:checked').value;
+    
+    if (entityType === 'legal') {
+        const name = document.getElementById('legalName').value.trim();
+        const inn = document.getElementById('legalInn').value.trim();
+        
+        if (!name) {
+            showAlert('Название организации обязательно для заполнения', 'danger');
+            return false;
+        }
+        
+        if (!inn) {
+            showAlert('ИНН обязателен для заполнения', 'danger');
+            return false;
+        }
+        
+        if (inn && !/^\d{10}$|^\d{12}$/.test(inn)) {
+            showAlert('ИНН должен содержать 10 или 12 цифр', 'danger');
+            return false;
+        }
+        
+        const kpp = document.getElementById('legalKpp').value.trim();
+        if (kpp && !/^\d{9}$/.test(kpp)) {
+            showAlert('КПП должен содержать 9 цифр', 'danger');
+            return false;
+        }
+        
+        const ogrn = document.getElementById('legalOgrn').value.trim();
+        if (ogrn && !/^\d{13}$/.test(ogrn)) {
+            showAlert('ОГРН должен содержать 13 цифр', 'danger');
+            return false;
+        }
+    } else {
+        const fullName = document.getElementById('physicalFullName').value.trim();
+        
+        if (!fullName) {
+            showAlert('ФИО обязательно для заполнения', 'danger');
+            return false;
+        }
+        
+        const inn = document.getElementById('physicalInn').value.trim();
+        if (inn && !/^\d{12}$/.test(inn)) {
+            showAlert('ИНН физического лица должен содержать 12 цифр', 'danger');
+            return false;
+        }
+    }
+    
+    return true;
+}
+
+function isValidEmail(email) {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+}
+
+function saveInterfaceSettings() {
+    const autoRefresh = document.getElementById('autoRefresh').checked;
+    const showNotifications = document.getElementById('showNotifications').checked;
+    const itemsPerPage = document.getElementById('itemsPerPage').value;
+    
+    localStorage.setItem('autoRefresh', autoRefresh);
+    localStorage.setItem('showNotifications', showNotifications);
+    localStorage.setItem('itemsPerPage', itemsPerPage);
+    
+    showAlert('Настройки интерфейса сохранены', 'success');
+}
+
+function deleteAccount() {
+    showConfirm('Вы уверены, что хотите удалить свой аккаунт? Это действие нельзя отменить!', async () => {
+        try {
+            const response = await fetch('/api/user/delete-account', {
+                method: 'DELETE'
+            });
+            
+            if (response.ok) {
+                showAlert('Аккаунт удален. Вы будете перенаправлены на страницу входа...', 'success');
+                setTimeout(() => {
+                    window.location.href = '/auth/logout';
+                }, 2000);
             } else {
-                input.type = 'password';
-                icon.classList.remove('fa-eye-slash');
-                icon.classList.add('fa-eye');
-                button.title = 'Показать пароль';
+                showAlert('Ошибка удаления аккаунта', 'danger');
             }
+        } catch (error) {
+            console.error('Ошибка удаления аккаунта:', error);
+            showAlert('Ошибка удаления аккаунта', 'danger');
         }
-
-        // Валидация на клиенте
-        function validateForm() {
-            const username = document.getElementById('username').value.trim();
-            const email = document.getElementById('email').value.trim();
-            const password = document.getElementById('password').value;
-
-            // Проверка логина
-            if (!username) {
-                showAlert('Логин не может быть пустым', 'danger');
-                return false;
-            }
-
-            // Проверка email (если указан)
-            if (email && !isValidEmail(email)) {
-                showAlert('Некорректный формат email', 'danger');
-                return false;
-            }
-
-            // Проверка пароля (если указан)
-            if (password && password.length < 6) {
-                showAlert('Пароль должен содержать минимум 6 символов', 'danger');
-                return false;
-            }
-
-            return true;
-        }
-
-        // Валидация данных о лице
-        function validateEntityData() {
-            const entityType = document.querySelector('input[name="entityType"]:checked').value;
-            
-            if (entityType === 'legal') {
-                const name = document.getElementById('legalName').value.trim();
-                const inn = document.getElementById('legalInn').value.trim();
-                
-                if (!name) {
-                    showAlert('Название организации обязательно для заполнения', 'danger');
-                    return false;
-                }
-                
-                if (!inn) {
-                    showAlert('ИНН обязателен для заполнения', 'danger');
-                    return false;
-                }
-                
-                if (inn && !/^\d{10}$|^\d{12}$/.test(inn)) {
-                    showAlert('ИНН должен содержать 10 или 12 цифр', 'danger');
-                    return false;
-                }
-                
-                const kpp = document.getElementById('legalKpp').value.trim();
-                if (kpp && !/^\d{9}$/.test(kpp)) {
-                    showAlert('КПП должен содержать 9 цифр', 'danger');
-                    return false;
-                }
-                
-                const ogrn = document.getElementById('legalOgrn').value.trim();
-                if (ogrn && !/^\d{13}$/.test(ogrn)) {
-                    showAlert('ОГРН должен содержать 13 цифр', 'danger');
-                    return false;
-                }
-            } else {
-                const fullName = document.getElementById('physicalFullName').value.trim();
-                
-                if (!fullName) {
-                    showAlert('ФИО обязательно для заполнения', 'danger');
-                    return false;
-                }
-                
-                const inn = document.getElementById('physicalInn').value.trim();
-                if (inn && !/^\d{12}$/.test(inn)) {
-                    showAlert('ИНН физического лица должен содержать 12 цифр', 'danger');
-                    return false;
-                }
-            }
-            
-            return true;
-        }
-
-        function isValidEmail(email) {
-            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-            return emailRegex.test(email);
-        }
-
-        // Обработка отправки формы
-        document.getElementById('settingsForm').addEventListener('submit', async function(e) {
-            e.preventDefault();
-            
-            // Проверяем, что это не клик по кнопке сохранения данных о лице
-            const clickedButton = e.submitter || document.activeElement;
-            if (clickedButton && clickedButton.id === 'saveEntityButton') {
-                return; // Игнорируем отправку формы, если кликнули на кнопку сохранения данных о лице
-            }
-
-            if (!validateForm()) {
-                return;
-            }
-
-            const saveButton = document.getElementById('saveButton');
-            const originalText = saveButton.innerHTML;
-            saveButton.disabled = true;
-            saveButton.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Сохранение...';
-
-            try {
-                const data = {
-                    username: document.getElementById('username').value.trim(),
-                    email: document.getElementById('email').value.trim() || null,
-                    password: document.getElementById('password').value || null
-                };
-
-                // Удаляем пароль из данных, если он пустой
-                if (!data.password) {
-                    delete data.password;
-                }
-
-                const response = await fetch('/api/settings/update', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify(data)
-                });
-
-                const result = await response.json();
-
-                if (result.success) {
-                    showAlert('Настройки успешно сохранены', 'success');
-                    // Очищаем поле пароля после успешного сохранения
-                    document.getElementById('password').value = '';
-                } else {
-                    showAlert(result.message || 'Ошибка сохранения настроек', 'danger');
-                }
-            } catch (error) {
-                console.error('Ошибка сохранения настроек:', error);
-                showAlert('Ошибка сохранения настроек', 'danger');
-            } finally {
-                saveButton.disabled = false;
-                saveButton.innerHTML = originalText;
-            }
-        });
-
-        // Обработка сохранения данных о лице
-        document.getElementById('saveEntityButton').addEventListener('click', async function(e) {
-            e.preventDefault(); // Предотвращаем любую отправку формы
-            e.stopPropagation(); // Останавливаем всплытие события
-            
-            if (!validateEntityData()) {
-                return;
-            }
-
-            const saveButton = document.getElementById('saveEntityButton');
-            const originalText = saveButton.innerHTML;
-            saveButton.disabled = true;
-            saveButton.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Сохранение...';
-
-            try {
-                const entityType = document.querySelector('input[name="entityType"]:checked').value;
-                const data = {
-                    entity_type: entityType
-                };
-
-                if (entityType === 'legal') {
-                    data.legal_entity = {
-                        name: document.getElementById('legalName').value.trim(),
-                        inn: document.getElementById('legalInn').value.trim(),
-                        kpp: document.getElementById('legalKpp').value.trim(),
-                        ogrn: document.getElementById('legalOgrn').value.trim(),
-                        legal_address: document.getElementById('legalAddress').value.trim(),
-                        actual_address: document.getElementById('actualAddress').value.trim()
-                    };
-                    
-                    // Сохраняем также данные физического лица, если они были заполнены
-                    data.physical_entity = {
-                        full_name: document.getElementById('physicalFullName').value.trim(),
-                        inn: document.getElementById('physicalInn').value.trim(),
-                        passport_series: document.getElementById('passportSeries').value.trim(),
-                        passport_number: document.getElementById('passportNumber').value.trim(),
-                        registration_address: document.getElementById('registrationAddress').value.trim()
-                    };
-                } else {
-                    data.physical_entity = {
-                        full_name: document.getElementById('physicalFullName').value.trim(),
-                        inn: document.getElementById('physicalInn').value.trim(),
-                        passport_series: document.getElementById('passportSeries').value.trim(),
-                        passport_number: document.getElementById('passportNumber').value.trim(),
-                        registration_address: document.getElementById('registrationAddress').value.trim()
-                    };
-                    
-                    // Сохраняем также данные юридического лица, если они были заполнены
-                    data.legal_entity = {
-                        name: document.getElementById('legalName').value.trim(),
-                        inn: document.getElementById('legalInn').value.trim(),
-                        kpp: document.getElementById('legalKpp').value.trim(),
-                        ogrn: document.getElementById('legalOgrn').value.trim(),
-                        legal_address: document.getElementById('legalAddress').value.trim(),
-                        actual_address: document.getElementById('actualAddress').value.trim()
-                    };
-                }
-
-                const response = await fetch('/api/settings/update', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify(data)
-                });
-
-                const result = await response.json();
-
-                if (result.success) {
-                    showAlert('Данные о лице успешно сохранены', 'success');
-                } else {
-                    showAlert(result.message || 'Ошибка сохранения данных о лице', 'danger');
-                }
-            } catch (error) {
-                console.error('Ошибка сохранения данных о лице:', error);
-                showAlert('Ошибка сохранения данных о лице', 'danger');
-            } finally {
-                saveButton.disabled = false;
-                saveButton.innerHTML = originalText;
-            }
-        });
-
-        function showAlert(message, type) {
-            const alertDiv = document.createElement('div');
-            alertDiv.className = `alert alert-${type} alert-dismissible fade show position-fixed`;
-            alertDiv.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
-            alertDiv.innerHTML = `
-                ${message}
-                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-            `;
-            
-            document.body.appendChild(alertDiv);
-            
-            setTimeout(() => {
-                if (alertDiv.parentNode) {
-                    alertDiv.parentNode.removeChild(alertDiv);
-                }
-            }, 5000);
-        }
-    </script>
-</body>
-</html>
+    });
+}
+</script>
+{% endblock %}

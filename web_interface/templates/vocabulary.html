@@ -1,326 +1,228 @@
-<!DOCTYPE html>
-<html lang="ru">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Словарь - Call Analyzer</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-    <style>
-        .sidebar {
-            min-height: 100vh;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        }
-        .sidebar .nav-link {
-            color: rgba(255, 255, 255, 0.8);
-            padding: 12px 20px;
-            border-radius: 8px;
-            margin: 2px 0;
-            transition: all 0.3s;
-        }
-        .sidebar .nav-link:hover {
-            color: white;
-            background: rgba(255, 255, 255, 0.1);
-        }
-        .sidebar .nav-link.active {
-            color: white;
-            background: rgba(255, 255, 255, 0.2);
-        }
-        .main-content {
-            background-color: #f8f9fa;
-            min-height: 100vh;
-        }
-        .vocabulary-section {
-            background: white;
-            border-radius: 15px;
-            padding: 25px;
-            margin-bottom: 20px;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-        }
-        .vocabulary-title {
-            color: #667eea;
-            border-bottom: 2px solid #e9ecef;
-            padding-bottom: 10px;
-            margin-bottom: 20px;
-        }
-        .btn-save {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            border: none;
-            color: white;
-            padding: 12px 30px;
-            border-radius: 25px;
-            font-weight: 600;
-            transition: all 0.3s;
-        }
-        .btn-save:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 8px rgba(102, 126, 234, 0.3);
-            color: white;
-        }
-        .vocabulary-item {
-            background: #e3f2fd;
-            color: #1976d2;
-            padding: 8px 12px;
-            border-radius: 15px;
-            font-size: 0.9rem;
-            margin: 4px;
-            display: inline-block;
-            transition: all 0.3s;
-        }
-        .vocabulary-item:hover {
-            background: #bbdefb;
-            transform: translateY(-1px);
-        }
-        .vocabulary-item .remove-item {
-            cursor: pointer;
-            margin-left: 8px;
-            color: #d32f2f;
-            font-weight: bold;
-        }
-        .form-control:focus {
-            border-color: #667eea;
-            box-shadow: 0 0 0 0.2rem rgba(102, 126, 234, 0.25);
-        }
-    </style>
-</head>
-<body>
-    <div class="container-fluid">
-        <div class="row">
-            <!-- Боковая панель -->
-                                                {% include 'partials/sidebar.html' %}
+{% extends "base.html" %}
 
-            <!-- Основной контент -->
-            <main class="col-md-9 col-lg-10 main-content">
-                <div class="p-4">
-                    <div class="d-flex justify-content-between align-items-center mb-4">
-                        <div>
-                            <h1 class="h3 mb-1">Управление словарем</h1>
-                            <div class="form-check form-switch mt-2">
-                                <input class="form-check-input" type="checkbox" id="vocabEnabledSwitch" onchange="toggleVocabEnabled(this)">
-                                <label class="form-check-label" for="vocabEnabledSwitch">
-                                    Использовать дополнительный словарь при транскрипции
-                                </label>
-                            </div>
-                        </div>
-                        <button class="btn btn-save" onclick="saveVocabulary()">
-                            <i class="fas fa-save me-2"></i>Сохранить словарь
-                        </button>
-                    </div>
+{% block title %}Управление словарем - Call Analyzer{% endblock %}
 
-                    <!-- Дополнительный словарь -->
-                    <div class="vocabulary-section">
-                        <h3 class="vocabulary-title">
-                            <i class="fas fa-book me-2"></i>Дополнительный словарь для транскрипции
-                        </h3>
-                        <p class="text-muted mb-4">
-                            Добавьте специальные термины, названия станций и другие слова, которые должны быть правильно распознаны при транскрипции звонков.
-                        </p>
-                        
-                        <div class="mb-4">
-                            <label class="form-label">Добавить новое слово</label>
-                            <div class="input-group">
-                                <input type="text" class="form-control" id="newVocabularyItem" 
-                                       placeholder="Введите слово или фразу">
-                                <button class="btn btn-outline-primary" type="button" onclick="addVocabularyItem()">
-                                    <i class="fas fa-plus"></i> Добавить
-                                </button>
-                            </div>
-                        </div>
-                        
-                        <div id="vocabularyContainer">
-                            <div class="text-center">
-                                <div class="spinner-border" role="status">
-                                    <span class="visually-hidden">Загрузка словаря...</span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
+{% block content %}
+<!-- Боковая панель -->
+{% include 'partials/sidebar.html' %}
 
-                    <!-- Предустановленные слова -->
-                    <div class="vocabulary-section">
-                        <h3 class="vocabulary-title">
-                            <i class="fas fa-magic me-2"></i>Предустановленные слова
-                        </h3>
-                        <p class="text-muted mb-4">
-                            Быстро добавить часто используемые термины:
-                        </p>
-                        
-                        <div class="row">
-                            <div class="col-md-6">
-                                <h6>Названия станций:</h6>
-                                <div class="mb-3">
-                                    <button class="btn btn-outline-secondary btn-sm me-2 mb-2" onclick="addPresetWord('Бествей')">Бествей</button>
-                                    <button class="btn btn-outline-secondary btn-sm me-2 mb-2" onclick="addPresetWord('Бринского')">Бринского</button>
-                                    <button class="btn btn-outline-secondary btn-sm me-2 mb-2" onclick="addPresetWord('Владимир')">Владимир</button>
-                                    <button class="btn btn-outline-secondary btn-sm me-2 mb-2" onclick="addPresetWord('Мечникова')">Мечникова</button>
-                                    <button class="btn btn-outline-secondary btn-sm me-2 mb-2" onclick="addPresetWord('Таганрогская')">Таганрогская</button>
-                                    <button class="btn btn-outline-secondary btn-sm me-2 mb-2" onclick="addPresetWord('Ижевская')">Ижевская</button>
-                                    <button class="btn btn-outline-secondary btn-sm me-2 mb-2" onclick="addPresetWord('Спартаковская')">Спартаковская</button>
-                                    <button class="btn btn-outline-secondary btn-sm me-2 mb-2" onclick="addPresetWord('Дзержинск')">Дзержинск</button>
-                                    <button class="btn btn-outline-secondary btn-sm me-2 mb-2" onclick="addPresetWord('Чонгарская')">Чонгарская</button>
-                                    <button class="btn btn-outline-secondary btn-sm me-2 mb-2" onclick="addPresetWord('Сахарова')">Сахарова</button>
-                                    <button class="btn btn-outline-secondary btn-sm me-2 mb-2" onclick="addPresetWord('Коминтерна')">Коминтерна</button>
-                                    <button class="btn btn-outline-secondary btn-sm me-2 mb-2" onclick="addPresetWord('Республиканская')">Республиканская</button>
-                                    <button class="btn btn-outline-secondary btn-sm me-2 mb-2" onclick="addPresetWord('Арзамас')">Арзамас</button>
-                                    <button class="btn btn-outline-secondary btn-sm me-2 mb-2" onclick="addPresetWord('Хальзовская')">Хальзовская</button>
-                                    <button class="btn btn-outline-secondary btn-sm me-2 mb-2" onclick="addPresetWord('Родионова')">Родионова</button>
-                                </div>
-                            </div>
-                            <div class="col-md-6">
-                                <h6>Технические термины:</h6>
-                                <div class="mb-3">
-                                    <button class="btn btn-outline-secondary btn-sm me-2 mb-2" onclick="addPresetWord('мастер приёмщик')">мастер приёмщик</button>
-                                    <button class="btn btn-outline-secondary btn-sm me-2 mb-2" onclick="addPresetWord('развал-схождение')">развал-схождение</button>
-                                    <button class="btn btn-outline-secondary btn-sm me-2 mb-2" onclick="addPresetWord('замена масла')">замена масла</button>
-                                    <button class="btn btn-outline-secondary btn-sm me-2 mb-2" onclick="addPresetWord('диагностика')">диагностика</button>
-                                    <button class="btn btn-outline-secondary btn-sm me-2 mb-2" onclick="addPresetWord('автосервис')">автосервис</button>
-                                    <button class="btn btn-outline-secondary btn-sm me-2 mb-2" onclick="addPresetWord('техцентр')">техцентр</button>
-                                    <button class="btn btn-outline-secondary btn-sm me-2 mb-2" onclick="addPresetWord('сервисный центр')">сервисный центр</button>
-                                    <button class="btn btn-outline-secondary btn-sm me-2 mb-2" onclick="addPresetWord('консультант')">консультант</button>
-                                </div>
-                            </div>
-                        </div>
+<!-- Основной контент -->
+<main class="col-md-9 col-lg-10 main-content">
+    <div class="p-4">
+        <div class="d-flex justify-content-between align-items-center mb-4 gap-3 flex-wrap">
+            <div>
+                <h1 class="h3 mb-1">Управление словарем</h1>
+                <div class="form-check form-switch mt-2">
+                    <input class="form-check-input" type="checkbox" id="vocabEnabledSwitch" onchange="toggleVocabEnabled(this)">
+                    <label class="form-check-label" for="vocabEnabledSwitch">
+                        Использовать дополнительный словарь при транскрипции
+                    </label>
+                </div>
+            </div>
+            <button class="btn btn-save" onclick="saveVocabulary()">
+                <i class="fas fa-save me-2"></i>Сохранить словарь
+            </button>
+        </div>
+
+        <!-- Дополнительный словарь -->
+        <div class="config-section">
+            <h3 class="config-title">
+                <i class="fas fa-book me-2"></i>Дополнительный словарь для транскрипции
+            </h3>
+            <p class="text-muted mb-4">
+                Добавьте специальные термины, названия станций и другие слова, которые должны быть правильно распознаны при транскрипции звонков.
+            </p>
+            
+            <div class="mb-4">
+                <label class="form-label">Добавить новое слово</label>
+                <div class="input-group">
+                    <input type="text" class="form-control" id="newVocabularyItem" 
+                           placeholder="Введите слово или фразу">
+                    <button class="btn btn-outline-primary" type="button" onclick="addVocabularyItem()">
+                        <i class="fas fa-plus"></i> Добавить
+                    </button>
+                </div>
+            </div>
+            
+            <div id="vocabularyContainer">
+                <div class="text-center py-5">
+                    <div class="spinner-border text-primary" role="status" style="width: 3rem; height: 3rem;">
+                        <span class="visually-hidden">Загрузка словаря...</span>
                     </div>
                 </div>
-            </main>
+            </div>
+        </div>
+
+        <!-- Предустановленные слова -->
+        <div class="config-section">
+            <h3 class="config-title">
+                <i class="fas fa-magic me-2"></i>Предустановленные слова
+            </h3>
+            <p class="text-muted mb-4">
+                Быстро добавить часто используемые термины:
+            </p>
+            
+            <div class="row">
+                <div class="col-md-6">
+                    <h6 class="mb-3">Названия станций:</h6>
+                    <div class="mb-3">
+                        <button class="btn btn-outline-secondary btn-sm me-2 mb-2" onclick="addPresetWord('Бествей')">Бествей</button>
+                        <button class="btn btn-outline-secondary btn-sm me-2 mb-2" onclick="addPresetWord('Бринского')">Бринского</button>
+                        <button class="btn btn-outline-secondary btn-sm me-2 mb-2" onclick="addPresetWord('Владимир')">Владимир</button>
+                        <button class="btn btn-outline-secondary btn-sm me-2 mb-2" onclick="addPresetWord('Мечникова')">Мечникова</button>
+                        <button class="btn btn-outline-secondary btn-sm me-2 mb-2" onclick="addPresetWord('Таганрогская')">Таганрогская</button>
+                        <button class="btn btn-outline-secondary btn-sm me-2 mb-2" onclick="addPresetWord('Ижевская')">Ижевская</button>
+                        <button class="btn btn-outline-secondary btn-sm me-2 mb-2" onclick="addPresetWord('Спартаковская')">Спартаковская</button>
+                        <button class="btn btn-outline-secondary btn-sm me-2 mb-2" onclick="addPresetWord('Дзержинск')">Дзержинск</button>
+                        <button class="btn btn-outline-secondary btn-sm me-2 mb-2" onclick="addPresetWord('Чонгарская')">Чонгарская</button>
+                        <button class="btn btn-outline-secondary btn-sm me-2 mb-2" onclick="addPresetWord('Сахарова')">Сахарова</button>
+                        <button class="btn btn-outline-secondary btn-sm me-2 mb-2" onclick="addPresetWord('Коминтерна')">Коминтерна</button>
+                        <button class="btn btn-outline-secondary btn-sm me-2 mb-2" onclick="addPresetWord('Республиканская')">Республиканская</button>
+                        <button class="btn btn-outline-secondary btn-sm me-2 mb-2" onclick="addPresetWord('Арзамас')">Арзамас</button>
+                        <button class="btn btn-outline-secondary btn-sm me-2 mb-2" onclick="addPresetWord('Хальзовская')">Хальзовская</button>
+                        <button class="btn btn-outline-secondary btn-sm me-2 mb-2" onclick="addPresetWord('Родионова')">Родионова</button>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <h6 class="mb-3">Технические термины:</h6>
+                    <div class="mb-3">
+                        <button class="btn btn-outline-secondary btn-sm me-2 mb-2" onclick="addPresetWord('мастер приёмщик')">мастер приёмщик</button>
+                        <button class="btn btn-outline-secondary btn-sm me-2 mb-2" onclick="addPresetWord('развал-схождение')">развал-схождение</button>
+                        <button class="btn btn-outline-secondary btn-sm me-2 mb-2" onclick="addPresetWord('замена масла')">замена масла</button>
+                        <button class="btn btn-outline-secondary btn-sm me-2 mb-2" onclick="addPresetWord('диагностика')">диагностика</button>
+                        <button class="btn btn-outline-secondary btn-sm me-2 mb-2" onclick="addPresetWord('автосервис')">автосервис</button>
+                        <button class="btn btn-outline-secondary btn-sm me-2 mb-2" onclick="addPresetWord('техцентр')">техцентр</button>
+                        <button class="btn btn-outline-secondary btn-sm me-2 mb-2" onclick="addPresetWord('сервисный центр')">сервисный центр</button>
+                        <button class="btn btn-outline-secondary btn-sm me-2 mb-2" onclick="addPresetWord('консультант')">консультант</button>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
+</main>
+{% endblock %}
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script>
-        let vocabularyData = [];
-        let vocabularyEnabled = true;
+{% block extra_js %}
+<script>
+let vocabularyData = [];
+let vocabularyEnabled = true;
 
-        // Загрузка словаря при старте
-        document.addEventListener('DOMContentLoaded', function() {
-            loadVocabulary();
+// Загрузка словаря при старте
+document.addEventListener('DOMContentLoaded', function() {
+    loadVocabulary();
+});
+
+async function loadVocabulary() {
+    try {
+        const response = await fetch('/api/vocabulary');
+        const data = await response.json();
+        vocabularyData = data.additional_vocab || [];
+        vocabularyEnabled = (data.enabled !== undefined) ? !!data.enabled : true;
+        applyVocabEnabledState();
+        renderVocabulary();
+    } catch (error) {
+        console.error('Ошибка загрузки словаря:', error);
+        showAlert('Ошибка загрузки словаря', 'danger');
+    }
+}
+
+function applyVocabEnabledState() {
+    const switchEl = document.getElementById('vocabEnabledSwitch');
+    const inputNew = document.getElementById('newVocabularyItem');
+    const addButton = inputNew?.nextElementSibling;
+
+    if (switchEl) {
+        switchEl.checked = vocabularyEnabled;
+    }
+
+    if (inputNew) {
+        inputNew.disabled = !vocabularyEnabled;
+    }
+    if (addButton) {
+        addButton.disabled = !vocabularyEnabled;
+    }
+}
+
+function toggleVocabEnabled(checkbox) {
+    vocabularyEnabled = !!checkbox.checked;
+    applyVocabEnabledState();
+}
+
+function renderVocabulary() {
+    const container = document.getElementById('vocabularyContainer');
+    
+    if (vocabularyData.length === 0) {
+        container.innerHTML = '<div class="text-center text-muted py-3">Словарь пуст</div>';
+        return;
+    }
+
+    const vocabularyHtml = vocabularyData.map(item => `
+        <span class="vocabulary-item" style="background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%); color: #1976d2; padding: 8px 12px; border-radius: 15px; font-size: 0.9rem; margin: 4px; display: inline-block; transition: all 0.3s;">
+            ${item}
+            <span class="remove-item" onclick="removeVocabularyItem('${item.replace(/'/g, "\\'")}')" style="cursor: pointer; margin-left: 8px; color: #d32f2f; font-weight: bold;">×</span>
+        </span>
+    `).join('');
+
+    container.innerHTML = vocabularyHtml;
+}
+
+function addVocabularyItem() {
+    const input = document.getElementById('newVocabularyItem');
+    const item = input.value.trim();
+    
+    if (item) {
+        if (vocabularyData.includes(item)) {
+            showAlert('Это слово уже есть в словаре', 'warning');
+            return;
+        }
+        vocabularyData.push(item);
+        renderVocabulary();
+        input.value = '';
+    }
+}
+
+function addPresetWord(word) {
+    if (!vocabularyData.includes(word)) {
+        vocabularyData.push(word);
+        renderVocabulary();
+        showAlert(`Добавлено: ${word}`, 'success');
+    } else {
+        showAlert(`Слово "${word}" уже есть в словаре`, 'info');
+    }
+}
+
+function removeVocabularyItem(item) {
+    vocabularyData = vocabularyData.filter(v => v !== item);
+    renderVocabulary();
+}
+
+async function saveVocabulary() {
+    try {
+        const vocabularyDataToSave = {
+            enabled: vocabularyEnabled,
+            additional_vocab: vocabularyData
+        };
+
+        const response = await fetch('/api/vocabulary/save', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(vocabularyDataToSave)
         });
 
-        async function loadVocabulary() {
-            try {
-                const response = await fetch('/api/vocabulary');
-                const data = await response.json();
-                vocabularyData = data.additional_vocab || [];
-                vocabularyEnabled = (data.enabled !== undefined) ? !!data.enabled : true;
-                applyVocabEnabledState();
-                renderVocabulary();
-            } catch (error) {
-                console.error('Ошибка загрузки словаря:', error);
-                showAlert('Ошибка загрузки словаря', 'danger');
-            }
+        const result = await response.json();
+        
+        if (result.success) {
+            showAlert('Словарь сохранен успешно', 'success');
+        } else {
+            showAlert(result.message, 'danger');
         }
-
-        function applyVocabEnabledState() {
-            const switchEl = document.getElementById('vocabEnabledSwitch');
-            const inputNew = document.getElementById('newVocabularyItem');
-            const addButton = inputNew?.nextElementSibling;
-
-            if (switchEl) {
-                switchEl.checked = vocabularyEnabled;
-            }
-
-            if (inputNew) {
-                inputNew.disabled = !vocabularyEnabled;
-            }
-            if (addButton) {
-                addButton.disabled = !vocabularyEnabled;
-            }
-        }
-
-        function toggleVocabEnabled(checkbox) {
-            vocabularyEnabled = !!checkbox.checked;
-            applyVocabEnabledState();
-        }
-
-        function renderVocabulary() {
-            const container = document.getElementById('vocabularyContainer');
-            
-            if (vocabularyData.length === 0) {
-                container.innerHTML = '<div class="text-center text-muted">Словарь пуст</div>';
-                return;
-            }
-
-            const vocabularyHtml = vocabularyData.map(item => `
-                <span class="vocabulary-item">
-                    ${item}
-                    <span class="remove-item" onclick="removeVocabularyItem('${item}')">×</span>
-                </span>
-            `).join('');
-
-            container.innerHTML = vocabularyHtml;
-        }
-
-        function addVocabularyItem() {
-            const input = document.getElementById('newVocabularyItem');
-            const item = input.value.trim();
-            
-            if (item && !vocabularyData.includes(item)) {
-                vocabularyData.push(item);
-                renderVocabulary();
-                input.value = '';
-            }
-        }
-
-        function addPresetWord(word) {
-            if (!vocabularyData.includes(word)) {
-                vocabularyData.push(word);
-                renderVocabulary();
-            }
-        }
-
-        function removeVocabularyItem(item) {
-            vocabularyData = vocabularyData.filter(v => v !== item);
-            renderVocabulary();
-        }
-
-        async function saveVocabulary() {
-            try {
-                const vocabularyDataToSave = {
-                    enabled: vocabularyEnabled,
-                    additional_vocab: vocabularyData
-                };
-
-                const response = await fetch('/api/vocabulary/save', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify(vocabularyDataToSave)
-                });
-
-                const result = await response.json();
-                
-                if (result.success) {
-                    showAlert('Словарь сохранен успешно', 'success');
-                } else {
-                    showAlert(result.message, 'danger');
-                }
-                
-            } catch (error) {
-                console.error('Ошибка сохранения словаря:', error);
-                showAlert('Ошибка сохранения словаря', 'danger');
-            }
-        }
-
-        function showAlert(message, type) {
-            const alertDiv = document.createElement('div');
-            alertDiv.className = `alert alert-${type} alert-dismissible fade show position-fixed`;
-            alertDiv.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
-            alertDiv.innerHTML = `
-                ${message}
-                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-            `;
-            
-            document.body.appendChild(alertDiv);
-            
-            setTimeout(() => {
-                if (alertDiv.parentNode) {
-                    alertDiv.parentNode.removeChild(alertDiv);
-                }
-            }, 5000);
-        }
-    </script>
-</body>
-</html>
-
-
+        
+    } catch (error) {
+        console.error('Ошибка сохранения словаря:', error);
+        showAlert('Ошибка сохранения словаря', 'danger');
+    }
+}
+</script>
+{% endblock %}

@@ -1,321 +1,274 @@
-<!DOCTYPE html>
-<html lang="ru">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Перезвоны - Call Analyzer</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-    <style>
-        .sidebar {
-            min-height: 100vh;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        }
-        .sidebar .nav-link {
-            color: rgba(255, 255, 255, 0.8);
-            padding: 12px 20px;
-            border-radius: 8px;
-            margin: 2px 0;
-            transition: all 0.3s;
-        }
-        .sidebar .nav-link:hover {
-            color: white;
-            background: rgba(255, 255, 255, 0.1);
-        }
-        .sidebar .nav-link.active {
-            color: white;
-            background: rgba(255, 255, 255, 0.2);
-        }
-        .main-content {
-            background-color: #f8f9fa;
-            min-height: 100vh;
-        }
-        .recall-card {
-            background: white;
-            border-radius: 15px;
-            padding: 20px;
-            margin-bottom: 15px;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-            transition: transform 0.3s;
-        }
-        .recall-card:hover {
-            transform: translateY(-2px);
-        }
-        .status-waiting {
-            background: #fff3cd;
-            color: #856404;
-            padding: 4px 12px;
-            border-radius: 15px;
-            font-size: 0.8rem;
-            font-weight: 600;
-        }
-        .status-completed {
-            background: #d1ecf1;
-            color: #0c5460;
-            padding: 4px 12px;
-            border-radius: 15px;
-            font-size: 0.8rem;
-            font-weight: 600;
-        }
-        .status-failed {
-            background: #f8d7da;
-            color: #721c24;
-            padding: 4px 12px;
-            border-radius: 15px;
-            font-size: 0.8rem;
-            font-weight: 600;
-        }
-        .phone-number {
-            font-weight: bold;
-            color: #667eea;
-        }
-        .station-name {
-            color: #6c757d;
-            font-size: 0.9rem;
-        }
-        .time-info {
-            color: #6c757d;
-            font-size: 0.8rem;
-        }
-        .filter-buttons {
-            margin-bottom: 20px;
-        }
-        .filter-btn {
-            margin-right: 10px;
-            margin-bottom: 10px;
-        }
-        .urgency-high {
-            border-left: 4px solid #dc3545;
-        }
-        .urgency-medium {
-            border-left: 4px solid #ffc107;
-        }
-        .urgency-low {
-            border-left: 4px solid #28a745;
-        }
-    </style>
-</head>
-<body>
-    <div class="container-fluid">
-        <div class="row">
-            <!-- Боковая панель -->
-                                                {% include 'partials/sidebar.html' %}
+{% extends "base.html" %}
 
-            <!-- Основной контент -->
-            <main class="col-md-9 col-lg-10 main-content">
-                <div class="p-4">
-                    <div class="d-flex justify-content-between align-items-center mb-4">
-                        <h1 class="h3 mb-0">Управление перезвонами</h1>
-                        <button class="btn btn-outline-primary" onclick="refreshRecalls()">
-                            <i class="fas fa-sync-alt me-2"></i>Обновить
-                        </button>
-                    </div>
+{% block title %}Перезвоны - Call Analyzer{% endblock %}
 
-                    <!-- Фильтры -->
-                    <div class="filter-buttons">
-                        <button class="btn btn-outline-primary filter-btn active" onclick="filterRecalls('all')">
-                            Все (<span id="countAll">0</span>)
-                        </button>
-                        <button class="btn btn-outline-warning filter-btn" onclick="filterRecalls('waiting')">
-                            Ожидающие (<span id="countWaiting">0</span>)
-                        </button>
-                        <button class="btn btn-outline-success filter-btn" onclick="filterRecalls('completed')">
-                            Завершенные (<span id="countCompleted">0</span>)
-                        </button>
-                        <button class="btn btn-outline-danger filter-btn" onclick="filterRecalls('failed')">
-                            Не состоявшиеся (<span id="countFailed">0</span>)
-                        </button>
-                    </div>
+{% block content %}
+<!-- Боковая панель -->
+{% include 'partials/sidebar.html' %}
 
-                    <!-- Список перезвонов -->
-                    <div id="recallsContainer">
-                        <div class="text-center">
-                            <div class="spinner-border" role="status">
-                                <span class="visually-hidden">Загрузка перезвонов...</span>
-                            </div>
-                        </div>
-                    </div>
+<!-- Основной контент -->
+<main class="col-md-9 col-lg-10 main-content">
+    <div class="p-4">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <div>
+                <h1 class="h3 mb-0">Управление перезвонами</h1>
+                <p class="text-muted mb-0">Мониторинг и управление перезвонами клиентам</p>
+            </div>
+            <button class="btn btn-outline-primary" onclick="refreshRecalls()">
+                <i class="fas fa-sync-alt me-2"></i>Обновить
+            </button>
+        </div>
+
+        <!-- Фильтры -->
+        <div class="card mb-4">
+            <div class="card-body">
+                <div class="btn-group flex-wrap" role="group">
+                    <button class="btn btn-outline-primary filter-btn active me-2 mb-2" onclick="filterRecalls('all')">
+                        Все (<span id="countAll">0</span>)
+                    </button>
+                    <button class="btn btn-outline-warning filter-btn me-2 mb-2" onclick="filterRecalls('waiting')">
+                        Ожидающие (<span id="countWaiting">0</span>)
+                    </button>
+                    <button class="btn btn-outline-success filter-btn me-2 mb-2" onclick="filterRecalls('completed')">
+                        Завершенные (<span id="countCompleted">0</span>)
+                    </button>
+                    <button class="btn btn-outline-danger filter-btn mb-2" onclick="filterRecalls('failed')">
+                        Не состоявшиеся (<span id="countFailed">0</span>)
+                    </button>
                 </div>
-            </main>
+            </div>
+        </div>
+
+        <!-- Список перезвонов -->
+        <div id="recallsContainer">
+            <div class="text-center">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Загрузка перезвонов...</span>
+                </div>
+            </div>
         </div>
     </div>
+</main>
+{% endblock %}
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script>
-        let recallsData = [];
-        let currentFilter = 'all';
+{% block extra_js %}
+<script>
+let recallsData = [];
+let currentFilter = 'all';
 
-        // Загрузка перезвонов при старте
-        document.addEventListener('DOMContentLoaded', function() {
-            loadRecalls();
-        });
+// Загрузка перезвонов при старте
+document.addEventListener('DOMContentLoaded', function() {
+    loadRecalls();
+});
 
-        async function loadRecalls() {
-            try {
-                const response = await fetch('/api/recalls');
-                recallsData = await response.json();
-                updateCounts();
-                renderRecalls();
-            } catch (error) {
-                console.error('Ошибка загрузки перезвонов:', error);
-                showAlert('Ошибка загрузки перезвонов', 'danger');
-            }
+async function loadRecalls() {
+    const container = document.getElementById('recallsContainer');
+    
+    try {
+        const response = await fetch('/api/recalls');
+        if (!response.ok) {
+            throw new Error('Ошибка загрузки перезвонов');
         }
+        recallsData = await response.json();
+        updateCounts();
+        renderRecalls();
+    } catch (error) {
+        console.error('Ошибка загрузки перезвонов:', error);
+        showAlert('Ошибка загрузки перезвонов', 'danger');
+        container.innerHTML = `
+            <div class="alert alert-danger">
+                <i class="fas fa-exclamation-triangle me-2"></i>
+                Не удалось загрузить перезвоны. Попробуйте обновить страницу.
+            </div>
+        `;
+    }
+}
 
-        function updateCounts() {
-            const counts = {
-                all: recallsData.length,
-                waiting: recallsData.filter(r => r.status === 'waiting').length,
-                completed: recallsData.filter(r => r.status === 'completed').length,
-                failed: recallsData.filter(r => r.status === 'failed').length
-            };
+function updateCounts() {
+    const counts = {
+        all: recallsData.length,
+        waiting: recallsData.filter(r => r.status === 'waiting').length,
+        completed: recallsData.filter(r => r.status === 'completed').length,
+        failed: recallsData.filter(r => r.status === 'failed').length
+    };
 
-            document.getElementById('countAll').textContent = counts.all;
-            document.getElementById('countWaiting').textContent = counts.waiting;
-            document.getElementById('countCompleted').textContent = counts.completed;
-            document.getElementById('countFailed').textContent = counts.failed;
-        }
+    document.getElementById('countAll').textContent = counts.all;
+    document.getElementById('countWaiting').textContent = counts.waiting;
+    document.getElementById('countCompleted').textContent = counts.completed;
+    document.getElementById('countFailed').textContent = counts.failed;
+}
 
-        function renderRecalls() {
-            const container = document.getElementById('recallsContainer');
-            
-            let filteredRecalls = recallsData;
-            if (currentFilter !== 'all') {
-                filteredRecalls = recallsData.filter(r => r.status === currentFilter);
-            }
+function renderRecalls() {
+    const container = document.getElementById('recallsContainer');
+    
+    let filteredRecalls = recallsData;
+    if (currentFilter !== 'all') {
+        filteredRecalls = recallsData.filter(r => r.status === currentFilter);
+    }
 
-            if (filteredRecalls.length === 0) {
-                container.innerHTML = '<div class="text-center text-muted">Перезвоны не найдены</div>';
-                return;
-            }
+    if (filteredRecalls.length === 0) {
+        container.innerHTML = `
+            <div class="alert alert-info">
+                <i class="fas fa-info-circle me-2"></i>
+                Перезвоны не найдены
+            </div>
+        `;
+        return;
+    }
 
-            const recallsHtml = filteredRecalls.map(recall => {
-                const urgency = getUrgency(recall);
-                return `
-                    <div class="recall-card ${urgency}">
-                        <div class="d-flex justify-content-between align-items-start mb-3">
-                            <div>
-                                <div class="phone-number">${recall.phone_number}</div>
-                                <div class="station-name">Станция: ${recall.station_code}</div>
-                            </div>
-                            <span class="${getStatusClass(recall.status)}">${getStatusText(recall.status)}</span>
+    const recallsHtml = filteredRecalls.map(recall => {
+        const urgencyClass = getUrgencyClass(recall);
+        const urgencyBorder = getUrgencyBorder(recall);
+        return `
+            <div class="card mb-3 ${urgencyBorder}">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start mb-3">
+                        <div>
+                            <h5 class="card-title text-primary mb-1">${recall.phone_number}</h5>
+                            <p class="text-muted small mb-0">
+                                <i class="fas fa-map-marker-alt me-1"></i>
+                                Станция: ${recall.station_code}
+                            </p>
                         </div>
-                        
-                        <div class="row">
-                            <div class="col-md-6">
-                                <div class="time-info">
-                                    <i class="fas fa-clock me-1"></i>
-                                    Время звонка: ${formatDateTime(recall.call_time)}
-                                </div>
-                                ${recall.deadline ? `
-                                    <div class="time-info">
-                                        <i class="fas fa-hourglass-end me-1"></i>
-                                        Дедлайн: ${formatDateTime(recall.deadline)}
-                                    </div>
-                                ` : ''}
-                            </div>
-                            <div class="col-md-6">
-                                ${recall.recall_station ? `
-                                    <div class="time-info">
-                                        <i class="fas fa-phone me-1"></i>
-                                        Перезвонить с: ${recall.recall_station}
-                                    </div>
-                                ` : ''}
-                                ${recall.recall_when ? `
-                                    <div class="time-info">
-                                        <i class="fas fa-calendar me-1"></i>
-                                        Когда: ${recall.recall_when}
-                                    </div>
-                                ` : ''}
-                            </div>
+                        <div>
+                            <span class="badge ${getStatusBadgeClass(recall.status)}">${getStatusText(recall.status)}</span>
+                            ${urgencyClass ? `<span class="badge ${urgencyClass} ms-1">${getUrgencyText(recall)}</span>` : ''}
                         </div>
-                        
-                        ${recall.analysis ? `
-                            <div class="mt-3">
-                                <small class="text-muted">Анализ:</small>
-                                <div class="mt-1 p-2 bg-light rounded">
-                                    <small>${recall.analysis.substring(0, 200)}${recall.analysis.length > 200 ? '...' : ''}</small>
-                                </div>
-                            </div>
-                        ` : ''}
                     </div>
-                `;
-            }).join('');
+                    
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="small text-muted mb-2">
+                                <i class="fas fa-clock me-1"></i>
+                                Время звонка: ${formatDateTime(recall.call_time)}
+                            </div>
+                            ${recall.deadline ? `
+                                <div class="small text-muted mb-2">
+                                    <i class="fas fa-hourglass-end me-1"></i>
+                                    Дедлайн: ${formatDateTime(recall.deadline)}
+                                </div>
+                            ` : ''}
+                        </div>
+                        <div class="col-md-6">
+                            ${recall.recall_station ? `
+                                <div class="small text-muted mb-2">
+                                    <i class="fas fa-phone me-1"></i>
+                                    Перезвонить с: ${recall.recall_station}
+                                </div>
+                            ` : ''}
+                            ${recall.recall_when ? `
+                                <div class="small text-muted mb-2">
+                                    <i class="fas fa-calendar me-1"></i>
+                                    Когда: ${recall.recall_when}
+                                </div>
+                            ` : ''}
+                        </div>
+                    </div>
+                    
+                    ${recall.analysis ? `
+                        <div class="mt-3">
+                            <small class="text-muted fw-semibold">Анализ:</small>
+                            <div class="mt-1 p-2 bg-light rounded small">
+                                ${escapeHtml(recall.analysis.substring(0, 200))}${recall.analysis.length > 200 ? '...' : ''}
+                            </div>
+                        </div>
+                    ` : ''}
+                </div>
+            </div>
+        `;
+    }).join('');
 
-            container.innerHTML = recallsHtml;
-        }
+    container.innerHTML = recallsHtml;
+}
 
-        function getUrgency(recall) {
-            if (recall.status === 'waiting') {
-                const callTime = new Date(recall.call_time);
-                const now = new Date();
-                const diffMinutes = (now - callTime) / (1000 * 60);
-                
-                if (diffMinutes > 45) return 'urgency-high';
-                if (diffMinutes > 30) return 'urgency-medium';
-                return 'urgency-low';
-            }
-            return '';
-        }
+function getUrgencyClass(recall) {
+    if (recall.status !== 'waiting') return '';
+    
+    const callTime = new Date(recall.call_time);
+    const now = new Date();
+    const diffMinutes = (now - callTime) / (1000 * 60);
+    
+    if (diffMinutes > 45) return 'bg-danger';
+    if (diffMinutes > 30) return 'bg-warning text-dark';
+    return '';
+}
 
-        function filterRecalls(status) {
-            currentFilter = status;
-            
-            // Обновляем активную кнопку
-            document.querySelectorAll('.filter-btn').forEach(btn => {
-                btn.classList.remove('active');
-            });
-            event.target.classList.add('active');
-            
-            renderRecalls();
-        }
+function getUrgencyBorder(recall) {
+    if (recall.status !== 'waiting') return '';
+    
+    const callTime = new Date(recall.call_time);
+    const now = new Date();
+    const diffMinutes = (now - callTime) / (1000 * 60);
+    
+    if (diffMinutes > 45) return 'border-start border-4 border-danger';
+    if (diffMinutes > 30) return 'border-start border-4 border-warning';
+    return 'border-start border-4 border-success';
+}
 
-        function getStatusClass(status) {
-            const statusMap = {
-                'waiting': 'status-waiting',
-                'completed': 'status-completed',
-                'failed': 'status-failed'
-            };
-            return statusMap[status] || 'status-waiting';
-        }
+function getUrgencyText(recall) {
+    if (recall.status !== 'waiting') return '';
+    
+    const callTime = new Date(recall.call_time);
+    const now = new Date();
+    const diffMinutes = (now - callTime) / (1000 * 60);
+    
+    if (diffMinutes > 45) return 'Срочно!';
+    if (diffMinutes > 30) return 'Важно';
+    return '';
+}
 
-        function getStatusText(status) {
-            const statusMap = {
-                'waiting': 'Ожидает',
-                'completed': 'Завершен',
-                'failed': 'Не состоялся'
-            };
-            return statusMap[status] || 'Неизвестно';
-        }
+function filterRecalls(status) {
+    currentFilter = status;
+    
+    // Обновляем активную кнопку
+    document.querySelectorAll('.filter-btn').forEach(btn => {
+        btn.classList.remove('active');
+    });
+    event.target.classList.add('active');
+    
+    renderRecalls();
+}
 
-        function formatDateTime(dateTimeStr) {
-            const date = new Date(dateTimeStr);
-            return date.toLocaleString('ru-RU');
-        }
+function getStatusBadgeClass(status) {
+    const statusMap = {
+        'waiting': 'bg-warning text-dark',
+        'completed': 'bg-success',
+        'failed': 'bg-danger'
+    };
+    return statusMap[status] || 'bg-secondary';
+}
 
-        function refreshRecalls() {
-            loadRecalls();
-        }
+function getStatusText(status) {
+    const statusMap = {
+        'waiting': 'Ожидает',
+        'completed': 'Завершен',
+        'failed': 'Не состоялся'
+    };
+    return statusMap[status] || 'Неизвестно';
+}
 
-        function showAlert(message, type) {
-            const alertDiv = document.createElement('div');
-            alertDiv.className = `alert alert-${type} alert-dismissible fade show position-fixed`;
-            alertDiv.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
-            alertDiv.innerHTML = `
-                ${message}
-                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-            `;
-            
-            document.body.appendChild(alertDiv);
-            
-            setTimeout(() => {
-                if (alertDiv.parentNode) {
-                    alertDiv.parentNode.removeChild(alertDiv);
-                }
-            }, 5000);
-        }
-    </script>
-</body>
-</html>
+function formatDateTime(dateTimeStr) {
+    if (!dateTimeStr) return 'Не указано';
+    const date = new Date(dateTimeStr);
+    return date.toLocaleString('ru-RU');
+}
 
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
 
+function refreshRecalls() {
+    const container = document.getElementById('recallsContainer');
+    container.innerHTML = `
+        <div class="text-center">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Загрузка перезвонов...</span>
+            </div>
+        </div>
+    `;
+    loadRecalls();
+}
+</script>
+{% endblock %}

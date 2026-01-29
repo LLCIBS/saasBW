@@ -3,111 +3,309 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>&#1042;&#1093;&#1086;&#1076; &#1074; &#1089;&#1080;&#1089;&#1090;&#1077;&#1084;&#1091; - Call Analyzer</title>
+    <title>Вход в систему - Call Analyzer</title>
+    
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    
+    <!-- Font Awesome -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    
     <style>
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
         }
+        
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             min-height: 100vh;
             display: flex;
             align-items: center;
             justify-content: center;
             padding: 20px;
+            position: relative;
+            overflow: hidden;
         }
+        
+        body::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: url('data:image/svg+xml,<svg width="100" height="100" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><circle cx="50" cy="50" r="1" fill="rgba(255,255,255,0.1)"/></svg>');
+            background-size: 50px 50px;
+            animation: float 20s linear infinite;
+        }
+        
+        @keyframes float {
+            0% { transform: translateY(0); }
+            100% { transform: translateY(-100px); }
+        }
+        
         .login-container {
             background: white;
-            border-radius: 10px;
-            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
-            padding: 40px;
+            border-radius: 20px;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+            padding: 3rem;
             width: 100%;
-            max-width: 420px;
+            max-width: 450px;
+            position: relative;
+            z-index: 1;
+            animation: slideUp 0.6s ease;
         }
-        h2 {
-            color: #333;
-            margin-bottom: 30px;
+        
+        @keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        .login-header {
             text-align: center;
-            font-size: 24px;
+            margin-bottom: 2rem;
         }
+        
+        .logo-icon {
+            width: 80px;
+            height: 80px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 1.5rem;
+            box-shadow: 0 10px 30px rgba(102, 126, 234, 0.3);
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+        }
+        
+        .logo-icon i {
+            font-size: 2.5rem;
+            color: white;
+        }
+        
+        .login-container h2 {
+            color: #2d3748;
+            margin-bottom: 0.5rem;
+            text-align: center;
+            font-size: 1.75rem;
+            font-weight: 800;
+        }
+        
+        .login-container p {
+            color: #718096;
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+        
         .form-group {
-            margin-bottom: 20px;
+            margin-bottom: 1.5rem;
         }
-        label {
+        
+        .form-label {
             display: block;
-            margin-bottom: 6px;
-            color: #555;
-            font-weight: 500;
+            margin-bottom: 0.75rem;
+            color: #4a5568;
+            font-weight: 600;
+            font-size: 0.95rem;
         }
+        
+        .input-group {
+            position: relative;
+        }
+        
+        .input-group-text {
+            background: #f7fafc;
+            border: 2px solid #e2e8f0;
+            border-right: none;
+            border-radius: 12px 0 0 12px;
+            color: #718096;
+        }
+        
         input[type="text"],
         input[type="password"] {
             width: 100%;
-            padding: 12px;
-            border: 1px solid #ddd;
-            border-radius: 6px;
-            font-size: 16px;
+            padding: 0.875rem 1rem;
+            border: 2px solid #e2e8f0;
+            border-radius: 12px;
+            font-size: 1rem;
+            transition: all 0.3s ease;
+            background: #f7fafc;
         }
+        
+        input[type="text"]:focus,
+        input[type="password"]:focus {
+            border-color: #667eea;
+            background: white;
+            box-shadow: 0 0 0 4px rgba(102, 126, 234, 0.1);
+            outline: none;
+        }
+        
+        .input-group input {
+            border-radius: 0 12px 12px 0;
+        }
+        
+        .input-group input:focus {
+            border-color: #667eea;
+        }
+        
         .checkbox-group {
             display: flex;
             align-items: center;
-            margin-bottom: 20px;
-            font-size: 14px;
-            color: #555;
+            margin-bottom: 1.5rem;
+            font-size: 0.9rem;
+            color: #4a5568;
+            cursor: pointer;
         }
+        
         .checkbox-group input {
-            margin-right: 8px;
+            margin-right: 0.75rem;
+            width: 1.25rem;
+            height: 1.25rem;
+            cursor: pointer;
+            accent-color: #667eea;
         }
-        button {
+        
+        .checkbox-group label {
+            cursor: pointer;
+            user-select: none;
+        }
+        
+        .login-button {
             width: 100%;
-            padding: 12px;
+            padding: 1rem;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
             border: none;
-            border-radius: 6px;
-            font-size: 16px;
-            font-weight: 600;
+            border-radius: 12px;
+            font-size: 1rem;
+            font-weight: 700;
             cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
         }
+        
+        .login-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.5);
+        }
+        
+        .login-button:active {
+            transform: translateY(0);
+        }
+        
         .alert {
-            padding: 12px;
-            border-radius: 6px;
-            margin-bottom: 20px;
+            padding: 1rem 1.25rem;
+            border-radius: 12px;
+            margin-bottom: 1.5rem;
+            border: none;
+            font-weight: 500;
         }
+        
         .alert-error {
-            background: #fee;
-            color: #b91c1c;
-            border: 1px solid #fcc;
+            background: linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%);
+            color: #dc2626;
+            border-left: 4px solid #dc2626;
         }
+        
         .alert-info {
-            background: #eef;
-            color: #1d4ed8;
-            border: 1px solid #cbd5ff;
+            background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+            color: #2563eb;
+            border-left: 4px solid #2563eb;
         }
+        
         .register-link {
-            margin-top: 16px;
+            margin-top: 2rem;
             text-align: center;
-            font-size: 14px;
+            font-size: 0.95rem;
+            color: #718096;
         }
+        
         .register-link a {
-            color: #4c1d95;
+            color: #667eea;
             text-decoration: none;
+            font-weight: 600;
+            transition: all 0.3s ease;
         }
+        
         .register-link a:hover {
+            color: #764ba2;
             text-decoration: underline;
+        }
+        
+        .footer {
+            position: absolute;
+            bottom: 20px;
+            left: 0;
+            right: 0;
+            text-align: center;
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 0.85rem;
+            z-index: 1;
+        }
+        
+        @media (max-width: 480px) {
+            .login-container {
+                padding: 2rem;
+            }
+            
+            .logo-icon {
+                width: 60px;
+                height: 60px;
+            }
+            
+            .logo-icon i {
+                font-size: 2rem;
+            }
+            
+            .login-container h2 {
+                font-size: 1.5rem;
+            }
         }
     </style>
 </head>
 <body>
     <div class="login-container">
-        <h2>&#1042;&#1093;&#1086;&#1076; &#1074; Call Analyzer</h2>
+        <div class="login-header">
+            <div class="logo-icon">
+                <i class="fas fa-phone-alt"></i>
+            </div>
+            <h2>Вход в систему</h2>
+            <p>Call Analyzer • Анализ звонков</p>
+        </div>
 
         {% with messages = get_flashed_messages(with_categories=true) %}
             {% if messages %}
                 {% for category, message in messages %}
                     <div class="alert alert-{{ category }}">
+                        {% if category == 'error' %}
+                            <i class="fas fa-exclamation-circle me-2"></i>
+                        {% else %}
+                            <i class="fas fa-info-circle me-2"></i>
+                        {% endif %}
                         {{ message }}
                     </div>
                 {% endfor %}
@@ -116,26 +314,43 @@
 
         <form method="POST" action="{{ url_for('auth.login') }}">
             <div class="form-group">
-                <label for="username">&#1048;&#1084;&#1103; &#1087;&#1086;&#1083;&#1100;&#1079;&#1086;&#1074;&#1072;&#1090;&#1077;&#1083;&#1103;</label>
-                <input type="text" id="username" name="username" required autofocus>
+                <label class="form-label" for="username">
+                    <i class="fas fa-user me-2"></i>Имя пользователя
+                </label>
+                <div class="input-group">
+                    <span class="input-group-text"><i class="fas fa-user"></i></span>
+                    <input type="text" id="username" name="username" required autofocus placeholder="Введите имя пользователя">
+                </div>
             </div>
 
             <div class="form-group">
-                <label for="password">&#1055;&#1072;&#1088;&#1086;&#1083;&#1100;</label>
-                <input type="password" id="password" name="password" required>
+                <label class="form-label" for="password">
+                    <i class="fas fa-lock me-2"></i>Пароль
+                </label>
+                <div class="input-group">
+                    <span class="input-group-text"><i class="fas fa-lock"></i></span>
+                    <input type="password" id="password" name="password" required placeholder="Введите пароль">
+                </div>
             </div>
 
             <div class="checkbox-group">
                 <input type="checkbox" id="remember" name="remember">
-                <label for="remember">&#1047;&#1072;&#1087;&#1086;&#1084;&#1085;&#1080;&#1090;&#1100; &#1084;&#1077;&#1085;&#1103;</label>
+                <label for="remember">Запомнить меня</label>
             </div>
 
-            <button type="submit">&#1042;&#1086;&#1081;&#1090;&#1080;</button>
+            <button type="submit" class="login-button">
+                <i class="fas fa-sign-in-alt"></i>
+                Войти в систему
+            </button>
         </form>
 
         <div class="register-link">
-            <a href="{{ url_for('auth.register') }}">&#1056;&#1077;&#1075;&#1080;&#1089;&#1090;&#1088;&#1072;&#1094;&#1080;&#1103; &#1085;&#1086;&#1074;&#1086;&#1075;&#1086; &#1087;&#1086;&#1083;&#1100;&#1079;&#1086;&#1074;&#1072;&#1090;&#1077;&#1083;&#1103;</a>
+            Нет аккаунта? <a href="{{ url_for('auth.register') }}">Зарегистрироваться</a>
         </div>
+    </div>
+    
+    <div class="footer">
+        © 2026 Call Analyzer. Все права защищены.
     </div>
 </body>
 </html>
