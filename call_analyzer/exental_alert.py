@@ -538,6 +538,7 @@ def call_theb_ai(dialog_text: str, script_prompt: str) -> str:
     payload = {
         "model": "deepseek-chat",
         "messages": [{"role": "user", "content": full_prompt}],
+        "temperature": 0,  # Детерминированный разбор по чек-листу при одинаковой транскрипции
         #"stream": False
     }
     try:
