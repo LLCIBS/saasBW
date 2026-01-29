@@ -1659,12 +1659,13 @@ def api_summary_realtime():
 
         # Считаем агрегаты для быстрых метрик на карточках
         total_calls = 0
-        stations_count = 0
         if summary and summary.get('stations'):
-            stations_count = len(summary['stations'])
             for st in summary['stations']:
                 for c in st.get('consultants', []):
                     total_calls += int(c.get('calls', 0))
+
+        # Карточка «Станций»: число настроенных станций (как на /stations), а не по обработанным звонкам
+        stations_count = len(station_names)
 
         # Считаем активные переводы и перезвоны
         active_transfers = 0
@@ -1975,10 +1976,10 @@ def api_stations_save():
 
         save_user_config_data(config_data)
         sync_prompts_from_config()
-        append_user_log('????????? ??????? ?????????', module='stations')
-        return jsonify({'success': True, 'message': '??????? ?????????'})
+        append_user_log('Станции обновлены', module='stations')
+        return jsonify({'success': True, 'message': 'Станции сохранены'})
     except Exception as e:
-        app.logger.error(f"?????? ?????????? ???????: {e}")
+        app.logger.error(f"Ошибка сохранения станций: {e}")
         return jsonify({'success': False, 'message': str(e)})
 
 @app.route('/prompts')
@@ -1996,12 +1997,6 @@ def api_prompts():
         prompts_data = get_user_prompts_data()
         file_data = load_prompts_file()
         changed = False
-
-        # Приоритет отдаем данным из БД, чтобы избежать перезаписи новых данных старыми из файла
-        # if file_data.get('anchors'):
-        #     if prompts_data.get('anchors') != file_data.get('anchors'):
-        #         prompts_data['anchors'] = file_data['anchors']
-        #         changed = True
 
         if file_data.get('stations'):
             if prompts_data.get('stations') != file_data.get('stations'):
@@ -4427,7 +4422,7 @@ def api_config_save():
                 app.logger.warning(f"Не удалось запросить перезапуск воркера: {exc}")
         if config_type == 'stations':
             sync_prompts_from_config()
-        append_user_log(f'????????? ?????? ????????: {config_type}', module='config')
+        append_user_log(f'Обновлён блок конфигурации: {config_type}', module='config')
         return jsonify({'success': True, 'message': '????????? ?????????'})
     except Exception as e:
         app.logger.error(f'?????? ?????????? ????????: {e}')

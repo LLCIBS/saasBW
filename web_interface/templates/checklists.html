@@ -367,8 +367,8 @@
                                                 </h5>
                                                 <p class="anchor-subtitle">Автоматическая оценка разговора для определения ценности звонка</p>
                                             </div>
-                                            <div id="anchorTargetBadge"></div>
-                                        </div>
+                                        <div id="anchorTargetBadge"></div>
+                                    </div>
                                         
                                         <!-- Индикатор прогресса -->
                                         <ul class="progress-steps" id="anchorProgressSteps">
@@ -387,13 +387,13 @@
                                         <div class="result-box position-relative">
                                             <button class="copy-button" onclick="copyAnchorResult()" title="Скопировать результат">
                                                 <i class="fas fa-copy me-1"></i>Копировать
-                                            </button>
+                                        </button>
                                             <h6 style="color: #2c3e50; margin-bottom: 15px; font-weight: 600;">
                                                 📝 Результат анализа:
                                             </h6>
                                             <div id="anchorResult"></div>
-                                        </div>
-                                        
+                                    </div>
+
                                         <!-- Кнопка анализа -->
                                         <div class="text-center my-3">
                                             <button type="button" class="btn-analyze-improved" id="analyzeAnchorBtn" onclick="analyzeAnchor()">
@@ -408,7 +408,7 @@
                                             <div id="anchorExplanationContent"></div>
                                         </div>
 
-                                        <!-- Блок доработки якоря -->
+                                    <!-- Блок доработки якоря -->
                                         <div id="anchorRefinementBlock" class="refinement-section" style="display:none;">
                                             <div class="refinement-title">
                                                 <i class="fas fa-sliders-h me-2"></i>🎯 Хотите изменить критерии оценки?
@@ -418,19 +418,19 @@
                                                 Например: "учитывать вежливость оператора" или "обращать внимание на готовность к покупке".
                                             </p>
                                             <div class="input-group mb-3">
-                                                <input type="text"
+                                            <input type="text"
                                                        class="form-control"
-                                                       id="anchorRefineInput"
+                                                   id="anchorRefineInput"
                                                        placeholder="Например: учитывать вежливость оператора и готовность клиента к сделке..."
-                                                       onkeypress="if(event.key === 'Enter') { event.preventDefault(); regenerateAnchorPromptFromTest(); }">
-                                                <button type="button"
+                                                   onkeypress="if(event.key === 'Enter') { event.preventDefault(); regenerateAnchorPromptFromTest(); }">
+                                            <button type="button"
                                                         class="btn btn-warning"
-                                                        onclick="regenerateAnchorPromptFromTest()"
-                                                        id="anchorRegenerateBtn">
+                                                    onclick="regenerateAnchorPromptFromTest()"
+                                                    id="anchorRegenerateBtn">
                                                     <i class="fas fa-magic me-1"></i>Обновить критерии
-                                                </button>
-                                            </div>
-                                            
+                                            </button>
+                                        </div>
+                                        
                                             <div id="newAnchorPromptPreview" class="alert alert-success" style="display:none;">
                                                 <h6 class="alert-heading">✅ Новые критерии оценки готовы!</h6>
                                                 <p class="small mb-2">Просмотрите обновленные критерии перед сохранением:</p>
@@ -440,7 +440,7 @@
                                                 </button>
                                                 <button type="button" class="btn btn-secondary" onclick="document.getElementById('newAnchorPromptPreview').style.display='none'">
                                                     <i class="fas fa-times me-1"></i>Отмена
-                                                </button>
+                                            </button>
                                             </div>
                                         </div>
                                     </div>
@@ -1017,7 +1017,7 @@
                 alert('Не удалось скопировать текст');
             });
         }
-        
+
         async function analyzeAnchor() {
             if (!lastAnchorData || !lastTestData || !lastTestData.transcript_text) {
                 alert('⚠️ Сначала выполните тест звонка, чтобы получить результаты анализа.');

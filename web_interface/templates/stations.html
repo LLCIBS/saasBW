@@ -461,7 +461,7 @@
             });
             
             const stationData = {
-                station_mapping: { 
+                station_mapping: {
                     [code]: {
                         name: name,
                         chat_ids: chatIds,
@@ -469,7 +469,7 @@
                     }
                 }
             };
-            
+
             try {
                 const response = await fetch('/api/stations/save', {
                     method: 'POST',
@@ -484,14 +484,12 @@
                 if (result.success) {
                     showAlert('Станция добавлена', 'success');
                     
-                    // Закрываем модальное окно и очищаем форму
                     const modal = bootstrap.Modal.getInstance(document.getElementById('addStationModal'));
                     modal.hide();
                     document.getElementById('addStationForm').reset();
                     document.getElementById('chatIdsContainer').innerHTML = '';
                     document.getElementById('subStationsContainer').innerHTML = '';
                     
-                    // Перезагружаем список станций
                     loadStations();
                 } else {
                     showAlert('Ошибка при добавлении станции: ' + result.message, 'danger');
