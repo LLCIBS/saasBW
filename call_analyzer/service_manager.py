@@ -64,7 +64,7 @@ def load_active_profiles(engine):
                 SELECT user_id, source_type, prompts_file, base_records_path, ftp_connection_id,
                        script_prompt_file, additional_vocab_file,
                        thebai_api_key, telegram_bot_token, speechmatics_api_key,
-                       alert_chat_id, tg_channel_nizh, tg_channel_other,
+                       alert_chat_id, tg_channel_nizh, tg_channel_other, reports_chat_id,
                        tbank_stereo_enabled, use_additional_vocab, auto_detect_operator_name,
                        allowed_stations, nizh_station_codes, legal_entity_keywords,
                        use_custom_filename_patterns, filename_patterns, filename_extensions
@@ -137,6 +137,7 @@ def load_active_profiles(engine):
                 'alert_chat_id': cfg_row.alert_chat_id or '',
                 'tg_channel_nizh': cfg_row.tg_channel_nizh or '',
                 'tg_channel_other': cfg_row.tg_channel_other or '',
+                'reports_chat_id': getattr(cfg_row, 'reports_chat_id', None) or '',
             }
 
             config_data['transcription'] = {

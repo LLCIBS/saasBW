@@ -438,14 +438,18 @@ def run_rr_3():
     os.makedirs(output_folder, exist_ok=True)
     report_path = create_weekly_report(calls_data, output_folder, last_monday, last_sunday)
     print(f"Отчет сформирован: {report_path}")
-    # Создаем конфиг для отправки в Telegram
-    telegram_config = {
-        'telegram': {
-            'token': main_config.TELEGRAM_BOT_TOKEN,
-            'chats': [main_config.ALERT_CHAT_ID]
+    # Отправка только в чат для отчётов (REPORTS_CHAT_ID)
+    chat_id = (getattr(main_config, 'REPORTS_CHAT_ID', None) or '').strip()
+    if not chat_id:
+        print('Чат для отчётов (REPORTS_CHAT_ID) не задан, отправка отчёта rr_3 пропущена')
+    else:
+        telegram_config = {
+            'telegram': {
+                'token': main_config.TELEGRAM_BOT_TOKEN,
+                'chats': [chat_id]
+            }
         }
-    }
-    send_telegram_report(report_path, period_text, telegram_config)
+        send_telegram_report(report_path, period_text, telegram_config)
 
 if __name__ == "__main__":
     run_rr_3()

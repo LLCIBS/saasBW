@@ -14,7 +14,8 @@ def default_config_template():
         'telegram': {
             'alert_chat_id': '',
             'tg_channel_nizh': '',
-            'tg_channel_other': ''
+            'tg_channel_other': '',
+            'reports_chat_id': ''
         },
         'paths': {
             'base_records_path': '',
@@ -160,7 +161,8 @@ def build_runtime_config(project_config, config_data=None, user_id=None):
         'telegram': config_data.get('telegram') or {
             'alert_chat_id': _fallback('ALERT_CHAT_ID', ''),
             'tg_channel_nizh': _fallback('TG_CHANNEL_NIZH', ''),
-            'tg_channel_other': _fallback('TG_CHANNEL_OTHER', '')
+            'tg_channel_other': _fallback('TG_CHANNEL_OTHER', ''),
+            'reports_chat_id': _fallback('REPORTS_CHAT_ID', '')
         },
         'employee_by_extension': config_data.get('employee_by_extension') or deepcopy(getattr(project_config, 'EMPLOYEE_BY_EXTENSION', {})),
         'stations': config_data.get('stations') or deepcopy(getattr(project_config, 'STATION_NAMES', {})),

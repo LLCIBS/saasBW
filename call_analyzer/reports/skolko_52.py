@@ -996,7 +996,8 @@ def send_excel_report_to_telegram(excel_file):
     if not ensure_telegram_ready('отправка отчёта skolko_52'):
         return
     token = config.TELEGRAM_BOT_TOKEN
-    chat_ids = [chat_id for chat_id in [config.ALERT_CHAT_ID] if chat_id]
+    rid = (getattr(config, 'REPORTS_CHAT_ID', None) or '').strip()
+    chat_ids = [rid] if rid else []
     if not token or not chat_ids:
         print('Telegram не настроен для skolko_52, сообщение пропущено.')
         return

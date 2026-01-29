@@ -543,12 +543,12 @@ def replace_yes_no_in_excel(file_path):
     print(f"Все 'ДА' заменены на 1, а 'НЕТ' на 0 в файле {file_path}")
 
 def send_report_to_telegram(file_path, message):
-    """Отправка отчёта в Telegram."""
+    """Отправка отчёта в Telegram. Используется только REPORTS_CHAT_ID (чат для отчётов)."""
     if not ensure_telegram_ready('отправка отчёта week_full'):
         return
-    chat_id = getattr(main_config, 'ALERT_CHAT_ID', None) or getattr(main_config, 'TG_CHANNEL_NIZH', None)
+    chat_id = (getattr(main_config, 'REPORTS_CHAT_ID', None) or '').strip()
     if not chat_id:
-        print('Telegram chat_id не задан, отправка отчёта пропущена')
+        print('Чат для отчётов (REPORTS_CHAT_ID) не задан, отправка отчёта пропущена')
         return
     token = getattr(main_config, 'TELEGRAM_BOT_TOKEN', '')
     url = f"https://api.telegram.org/bot{token}/sendDocument"
@@ -563,17 +563,6 @@ def send_report_to_telegram(file_path, message):
             print(f'Ошибка при отправке отчёта в Telegram: {resp.text}')
     except Exception as e:
         print(f'Исключение при отправке отчёта: {e}')
-    return
-    url = f"https://api.telegram.org/bot{telegram_bot_token}/sendDocument"
-    try:
-        with open(file_path, "rb") as file:
-            response = requests.post(url, data={"chat_id": chat_id, "caption": message}, files={"document": file})
-        if response.status_code == 200:
-            print(f"Отчет успешно отправлен в чат {chat_id}")
-        else:
-            print(f"Ошибка при отправке в Telegram: {response.text}")
-    except Exception as e:
-        print(f"Исключение при отправке в Telegram: {e}")
 
 def get_station_groups(station_names=None, station_mapping=None, employee_map=None):
     station_names = station_names or getattr(main_config, 'STATION_NAMES', {})

@@ -288,6 +288,7 @@ class UserConfig(db.Model):
     alert_chat_id = db.Column(db.String(100), nullable=True)
     tg_channel_nizh = db.Column(db.String(100), nullable=True)
     tg_channel_other = db.Column(db.String(100), nullable=True)
+    reports_chat_id = db.Column(db.String(100), nullable=True)
     
     # Transcription
     tbank_stereo_enabled = db.Column(db.Boolean, default=False, nullable=False)

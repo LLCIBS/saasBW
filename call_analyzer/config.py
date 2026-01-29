@@ -1,4 +1,4 @@
-﻿# call_analyzer/config.py
+# call_analyzer/config.py
 import json
 import logging
 import os
@@ -85,6 +85,9 @@ TG_CHANNEL_NIZH = os.getenv("TG_CHANNEL_NIZH", '-1002413323859')  # Здесь �
 
 # Для остальных станций (те, которых нет в списке NIZH_STATION_CODES) используем другой канал:
 TG_CHANNEL_OTHER = os.getenv("TG_CHANNEL_OTHER", '-1002413323859')  # ID или username канала для остальных станций
+
+# Чат для отправки сгенерированных отчётов (Excel). Приоритет у настроек из веб-интерфейса.
+REPORTS_CHAT_ID = os.getenv("REPORTS_CHAT_ID", "")
 
 # Привязка внутренних номеров (станций и подстанций) к сотрудникам
 # Ключ: строка кода станции/подстанции (например, "202" или "403")
@@ -179,7 +182,7 @@ def _apply_profile_overrides():
 def _apply_profile_dict(profile_data):
     global BASE_RECORDS_PATH, PROMPTS_FILE, ADDITIONAL_VOCAB_FILE, SCRIPT_PROMPT_8_PATH
     global TELEGRAM_BOT_TOKEN
-    global ALERT_CHAT_ID, TG_CHANNEL_NIZH, TG_CHANNEL_OTHER
+    global ALERT_CHAT_ID, TG_CHANNEL_NIZH, TG_CHANNEL_OTHER, REPORTS_CHAT_ID
     global STATION_NAMES, STATION_CHAT_IDS, STATION_MAPPING
     global NIZH_STATION_CODES, EMPLOYEE_BY_EXTENSION
     global ALLOWED_STATIONS, PROFILE_SETTINGS, TBANK_STEREO_ENABLED, USE_ADDITIONAL_VOCAB, AUTO_DETECT_OPERATOR_NAME
@@ -208,6 +211,8 @@ def _apply_profile_dict(profile_data):
         TG_CHANNEL_NIZH = telegram_cfg['tg_channel_nizh']
     if telegram_cfg.get('tg_channel_other'):
         TG_CHANNEL_OTHER = telegram_cfg['tg_channel_other']
+    if telegram_cfg.get('reports_chat_id') is not None:
+        REPORTS_CHAT_ID = telegram_cfg.get('reports_chat_id') or ''
 
     EMPLOYEE_BY_EXTENSION = (profile_data or {}).get('employee_by_extension') or EMPLOYEE_BY_EXTENSION
     STATION_NAMES = (profile_data or {}).get('stations') or STATION_NAMES

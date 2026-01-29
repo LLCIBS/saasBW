@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS user_config (
     alert_chat_id VARCHAR(100),
     tg_channel_nizh VARCHAR(100),
     tg_channel_other VARCHAR(100),
+    reports_chat_id VARCHAR(100),
     tbank_stereo_enabled BOOLEAN NOT NULL DEFAULT FALSE,
     use_additional_vocab BOOLEAN NOT NULL DEFAULT TRUE,
     auto_detect_operator_name BOOLEAN NOT NULL DEFAULT FALSE,

@@ -172,6 +172,14 @@
                                     <div class="form-text">Основной чат для уведомлений об ошибках</div>
                                 </div>
                             </div>
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label class="form-label">Чат для отчётов</label>
+                                    <input type="text" class="form-control" id="reportsChatId" 
+                                           placeholder="ID чата для сгенерированных отчётов">
+                                    <div class="form-text">Чат, куда отправляются все сгенерированные отчёты (Excel)</div>
+                                </div>
+                            </div>
                         </div>
                         <div class="row">
                             <div class="col-md-6">
@@ -478,6 +486,7 @@
                 document.getElementById('telegramBotToken').value = configData.api_keys?.telegram_bot_token || '';
                 
                 document.getElementById('alertChatId').value = configData.telegram?.alert_chat_id || '';
+                document.getElementById('reportsChatId').value = configData.telegram?.reports_chat_id || '';
                 document.getElementById('tgChannelNizh').value = configData.telegram?.tg_channel_nizh || '';
                 document.getElementById('tgChannelOther').value = configData.telegram?.tg_channel_other || '';
                 
@@ -829,6 +838,7 @@
                     },
                     telegram: {
                         alert_chat_id: document.getElementById('alertChatId').value,
+                        reports_chat_id: document.getElementById('reportsChatId').value,
                         tg_channel_nizh: document.getElementById('tgChannelNizh').value,
                         tg_channel_other: document.getElementById('tgChannelOther').value
                     },

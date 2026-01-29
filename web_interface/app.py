@@ -147,6 +147,7 @@ def get_user_config_data(user=None):
             'alert_chat_id': cfg.alert_chat_id or '',
             'tg_channel_nizh': cfg.tg_channel_nizh or '',
             'tg_channel_other': cfg.tg_channel_other or '',
+            'reports_chat_id': getattr(cfg, 'reports_chat_id', None) or '',
         }
 
         config_data['transcription'] = {
@@ -212,6 +213,7 @@ def save_user_config_data(config_data, user=None):
     cfg.alert_chat_id = telegram_cfg.get('alert_chat_id')
     cfg.tg_channel_nizh = telegram_cfg.get('tg_channel_nizh')
     cfg.tg_channel_other = telegram_cfg.get('tg_channel_other')
+    cfg.reports_chat_id = telegram_cfg.get('reports_chat_id')
 
     cfg.tbank_stereo_enabled = bool(transcription_cfg.get('tbank_stereo_enabled', False))
     cfg.use_additional_vocab = bool(transcription_cfg.get('use_additional_vocab', True))
@@ -421,6 +423,7 @@ def get_user_config_data(user=None):
             'alert_chat_id': cfg.alert_chat_id or '',
             'tg_channel_nizh': cfg.tg_channel_nizh or '',
             'tg_channel_other': cfg.tg_channel_other or '',
+            'reports_chat_id': getattr(cfg, 'reports_chat_id', None) or '',
         }
 
         # Transcription
@@ -490,6 +493,7 @@ def save_user_config_data(config_data, user=None):
     cfg.alert_chat_id = telegram_cfg.get('alert_chat_id')
     cfg.tg_channel_nizh = telegram_cfg.get('tg_channel_nizh')
     cfg.tg_channel_other = telegram_cfg.get('tg_channel_other')
+    cfg.reports_chat_id = telegram_cfg.get('reports_chat_id')
 
     cfg.tbank_stereo_enabled = bool(transcription_cfg.get('tbank_stereo_enabled', False))
     cfg.use_additional_vocab = bool(transcription_cfg.get('use_additional_vocab', True))
@@ -1102,6 +1106,7 @@ def legacy_config_override(runtime_cfg):
         _set_attr('ALERT_CHAT_ID', telegram_cfg.get('alert_chat_id', ''))
         _set_attr('TG_CHANNEL_NIZH', telegram_cfg.get('tg_channel_nizh', ''))
         _set_attr('TG_CHANNEL_OTHER', telegram_cfg.get('tg_channel_other', ''))
+        _set_attr('REPORTS_CHAT_ID', telegram_cfg.get('reports_chat_id', ''))
 
         transcription_cfg = runtime_cfg.get('transcription') or {}
         _set_attr('TBANK_STEREO_ENABLED', bool(transcription_cfg.get('tbank_stereo_enabled', False)))
@@ -2672,6 +2677,7 @@ def api_checklists_test():
     telegram_cfg['alert_chat_id'] = ''
     telegram_cfg['tg_channel_nizh'] = ''
     telegram_cfg['tg_channel_other'] = ''
+    telegram_cfg['reports_chat_id'] = ''
     runtime_cfg['telegram'] = telegram_cfg
     if script_prompt_override:
         runtime_cfg.setdefault('paths', {})
