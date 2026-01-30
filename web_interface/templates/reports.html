@@ -705,130 +705,6 @@
                 </div>
             </div>
 
-            <!-- Skolko 52 Weeks Report -->
-            <div class="report-card" id="report-skolko_52">
-                <div class="report-card-header" onclick="toggleReportCard('skolko_52')">
-                    <div class="report-card-icon">
-                        <i class="fas fa-chart-pie"></i>
-                    </div>
-                    <div class="report-card-info">
-                        <div class="report-card-title">Отчет "Сколько" (52 недели)</div>
-                        <div class="report-card-description">
-                            Долгосрочная статистика за год для анализа трендов и сезонности в работе станций.
-                        </div>
-                    </div>
-                    <i class="fas fa-chevron-down report-card-toggle"></i>
-                </div>
-
-                <div class="report-card-body">
-                    <div class="report-status-row">
-                        <span class="report-status-badge ready" id="skolko_52_status">
-                            <i class="fas fa-check-circle"></i>
-                            <span>Готов к генерации</span>
-                        </span>
-                    </div>
-
-                    <div class="report-date-range">
-                        <input type="date" class="form-control form-control-sm" id="skolko_52_start">
-                        <input type="date" class="form-control form-control-sm" id="skolko_52_end">
-                    </div>
-
-                    <div class="report-actions">
-                        <button class="btn btn-primary flex-grow-1" onclick="generateReport('skolko_52')">
-                            <i class="fas fa-play me-2"></i>Сгенерировать
-                        </button>
-                    </div>
-
-                    <div class="report-progress" id="skolko_52_progress" style="display: none;">
-                        <div class="progress">
-                            <div class="progress-bar progress-bar-striped progress-bar-animated" 
-                                 id="skolko_52_progress_bar" style="width: 0%"></div>
-                        </div>
-                        <div class="small text-muted mt-1" id="skolko_52_progress_text"></div>
-                    </div>
-
-                    <div class="schedule-section">
-                        <div class="schedule-header">
-                            <div class="schedule-title">
-                                <i class="fas fa-clock"></i>
-                                <span>Автоматическая генерация</span>
-                            </div>
-                            <div class="form-check form-switch">
-                                <input class="form-check-input" type="checkbox" id="skolko_52_enabled" checked onchange="updateScheduleEnabled('skolko_52')">
-                                <label class="form-check-label small" for="skolko_52_enabled">Включено</label>
-                            </div>
-                        </div>
-
-                        <div class="schedule-config">
-                            <div>
-                                <label class="form-label">Тип расписания</label>
-                                <select class="form-select form-select-sm" id="skolko_52_schedule_type" onchange="updateScheduleUIBlocks('skolko_52')">
-                                    <option value="daily">Ежедневно</option>
-                                    <option value="interval">С интервалом</option>
-                                    <option value="weekly">Еженедельно</option>
-                                    <option value="custom">CRON</option>
-                                </select>
-                            </div>
-                            <div id="skolko_52_daily_block">
-                                <label class="form-label">Время</label>
-                                <input type="time" class="form-control form-control-sm" id="skolko_52_daily_time" value="12:00">
-                            </div>
-                            <div class="d-none" id="skolko_52_interval_block">
-                                <label class="form-label">Интервал</label>
-                                <div class="d-flex gap-1">
-                                    <input type="number" min="1" class="form-control form-control-sm" id="skolko_52_interval_value" value="2">
-                                    <select class="form-select form-select-sm" id="skolko_52_interval_unit">
-                                        <option value="days">дней</option>
-                                        <option value="hours">часов</option>
-                                    </select>
-                                </div>
-                            </div>
-                            <div class="d-none" id="skolko_52_weekly_block">
-                                <label class="form-label">День и время</label>
-                                <div class="d-flex gap-1">
-                                    <select class="form-select form-select-sm" id="skolko_52_weekly_day">
-                                        <option value="0">Понедельник</option>
-                                        <option value="1">Вторник</option>
-                                        <option value="2">Среда</option>
-                                        <option value="3">Четверг</option>
-                                        <option value="4">Пятница</option>
-                                        <option value="5">Суббота</option>
-                                        <option value="6">Воскресенье</option>
-                                    </select>
-                                    <input type="time" class="form-control form-control-sm" id="skolko_52_weekly_time" value="12:00">
-                                </div>
-                            </div>
-                            <div class="d-none" id="skolko_52_custom_block">
-                                <label class="form-label">Cron выражение</label>
-                                <input type="text" class="form-control form-control-sm" id="skolko_52_cron" placeholder="0 12 * * *">
-                            </div>
-                            <div>
-                                <label class="form-label">Период генерации</label>
-                                <select class="form-select form-select-sm" id="skolko_52_period_type" onchange="updatePeriodUIBlocks('skolko_52')">
-                                    <option value="last_day">Последний день</option>
-                                    <option value="last_week">Последняя неделя</option>
-                                    <option value="last_month">Последний месяц</option>
-                                    <option value="last_n_days">Последний интервал дней</option>
-                                </select>
-                            </div>
-                            <div class="d-none" id="skolko_52_period_n_days_block">
-                                <label class="form-label">Кол-во дней</label>
-                                <input type="number" min="1" class="form-control form-control-sm" id="skolko_52_period_n_days" value="7">
-                            </div>
-                        </div>
-
-                        <div class="schedule-footer">
-                            <button class="btn btn-sm btn-outline-primary" onclick="saveSchedule('skolko_52')">
-                                <i class="fas fa-save me-1"></i>Сохранить
-                            </button>
-                            <div class="next-run-info" id="skolko_52_next_run">
-                                <i class="fas fa-info-circle"></i>
-                                <span>Не настроено</span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
         </div>
 
         <!-- History Section -->
@@ -858,7 +734,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const formatDate = (date) => date.toISOString().split('T')[0];
     
     // Установка дат для всех отчетов
-    ['week_full', 'rr_3', 'rr_bad', 'skolko_52'].forEach(reportType => {
+    ['week_full', 'rr_3', 'rr_bad'].forEach(reportType => {
         const startDateInput = document.getElementById(`${reportType}_start`);
         const endDateInput = document.getElementById(`${reportType}_end`);
         if (startDateInput) startDateInput.value = formatDate(weekAgo);

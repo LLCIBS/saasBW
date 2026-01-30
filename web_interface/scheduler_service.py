@@ -92,8 +92,6 @@ def _run_report_job(user_id: int, report_type: str):
                     from reports.rr_3 import run_rr_3
                 elif report_type == 'rr_bad':
                     from reports.rr_bad import run_rr_bad
-                elif report_type == 'skolko_52':
-                    from reports.skolko_52 import run_skolko_52
                 else:
                     logger.error(f"[Scheduler] Unknown report type: {report_type}")
                     return
@@ -137,14 +135,6 @@ def _run_report_job(user_id: int, report_type: str):
                         except TypeError:
                             run_rr_bad()
                         logger.info(f"[Scheduler] rr_bad completed")
-                    elif report_type == 'skolko_52':
-                        date_from = datetime.combine(start_date, dt_time.min) if start_date else None
-                        date_to = datetime.combine(end_date, dt_time.max) if end_date else None
-                        try:
-                            run_skolko_52(date_from=date_from, date_to=date_to)
-                        except TypeError:
-                            run_skolko_52()
-                        logger.info(f"[Scheduler] skolko_52 completed")
             except Exception as e:
                 logger.error(f"[Scheduler] Error generating report {report_type} for user {user_id}: {e}", exc_info=True)
                 return

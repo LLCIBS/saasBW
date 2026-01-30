@@ -3095,8 +3095,6 @@ def api_reports_generate():
                 from reports.rr_3 import run_rr_3
             elif report_type == 'rr_bad':
                 from reports.rr_bad import run_rr_bad
-            elif report_type == 'skolko_52':
-                from reports.skolko_52 import run_skolko_52
             else:
                 return jsonify({'success': False, 'message': f'Неизвестный тип отчета: {report_type}'})
         except ImportError as e:
@@ -3191,21 +3189,6 @@ def api_reports_generate():
                     except TypeError:
                         with legacy_config_override(runtime_cfg):
                             run_rr_bad()
-                    
-                elif report_type == 'skolko_52':
-                    report_generation_progress[report_type]['current_step'] = 'Анализ данных за год...'
-                    report_generation_progress[report_type]['progress'] = 30
-                    report_generation_status[report_type]['progress'] = 30
-                    report_generation_status[report_type]['current_step'] = 'Анализ данных за год...'
-                    # Подготовим даты
-                    date_from = datetime.strptime(start_date_str, '%Y-%m-%d') if start_date_str else None
-                    date_to = datetime.strptime(end_date_str, '%Y-%m-%d') if end_date_str else None
-                    try:
-                        with legacy_config_override(runtime_cfg):
-                            run_skolko_52(date_from=date_from, date_to=date_to)
-                    except TypeError:
-                        with legacy_config_override(runtime_cfg):
-                            run_skolko_52()
                 
                 # Обновляем прогресс на завершение
                 report_generation_progress[report_type]['current_step'] = 'Создание Excel файла...'
@@ -3340,7 +3323,7 @@ def api_save_report_schedule():
         data = request.get_json() or {}
         report_type = data.get('report_type')
         
-        if report_type not in ('week_full', 'rr_3', 'rr_bad', 'skolko_52'):
+        if report_type not in ('week_full', 'rr_3', 'rr_bad'):
             return jsonify({'success': False, 'message': 'Неверный тип отчета'}), 400
 
         schedule = ReportSchedule.query.filter_by(
