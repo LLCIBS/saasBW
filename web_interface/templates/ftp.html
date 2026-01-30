@@ -441,7 +441,7 @@ function renderConnections() {
                 <div class="ftp-detail-item">
                     <div class="ftp-detail-label">Последняя синхронизация</div>
                     <div class="ftp-detail-value">
-                        ${conn.last_sync ? new Date(conn.last_sync).toLocaleString('ru-RU') : 'Никогда'}
+                        ${conn.last_sync ? formatDateUTC(conn.last_sync) : 'Никогда'}
                         ${conn.last_error ? `<br><small class="text-danger">${escapeHtml(conn.last_error.substring(0, 30))}...</small>` : ''}
                     </div>
                 </div>
@@ -458,7 +458,7 @@ function renderConnections() {
                 <div class="ftp-detail-item">
                     <div class="ftp-detail-label">Последний файл</div>
                     <div class="ftp-detail-value">
-                        ${conn.last_processed_mtime ? new Date(conn.last_processed_mtime).toLocaleString('ru-RU') : '—'}
+                        ${conn.last_processed_mtime ? formatDateUTC(conn.last_processed_mtime) : '—'}
                         ${conn.last_processed_filename ? `<br><small class="text-muted">${escapeHtml(conn.last_processed_filename.substring(0, 20))}...</small>` : ''}
                     </div>
                 </div>
@@ -689,13 +689,32 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
+// Форматирование UTC даты в локальную строку
+function formatDateUTC(isoString) {
+    if (!isoString) {
+        return '';
+    }
+    // Создаем дату из UTC строки (должна содержать 'Z')
+    const date = new Date(isoString);
+    return date.toLocaleString('ru-RU', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit'
+    });
+}
+
 function formatDatetimeLocal(isoString) {
     if (!isoString) {
         return '';
     }
+    // Создаем дату из UTC строки
     const date = new Date(isoString);
     const pad = (value) => String(value).padStart(2, '0');
-    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+    // Используем UTC методы для получения значений
+    return `${date.getUTCFullYear()}-${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())}T${pad(date.getUTCHours())}:${pad(date.getUTCMinutes())}`;
 }
 
 function renderLastProcessedInfo(conn) {
@@ -707,7 +726,7 @@ function renderLastProcessedInfo(conn) {
         infoEl.innerHTML = '—';
         return;
     }
-    const datetimeText = new Date(conn.last_processed_mtime).toLocaleString('ru-RU');
+    const datetimeText = formatDateUTC(conn.last_processed_mtime);
     let html = escapeHtml(datetimeText);
     if (conn.last_processed_filename) {
         html += `<br><small>${escapeHtml(conn.last_processed_filename)}</small>`;

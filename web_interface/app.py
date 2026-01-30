@@ -3903,14 +3903,14 @@ def api_ftp_connections():
                 'protocol': conn.protocol,
                 'is_active': conn.is_active,
                 'sync_interval': conn.sync_interval,
-                'start_from': conn.start_from.isoformat() if conn.start_from else None,
-                'last_processed_mtime': conn.last_processed_mtime.isoformat() if conn.last_processed_mtime else None,
+                'start_from': conn.start_from.isoformat() + 'Z' if conn.start_from else None,
+                'last_processed_mtime': conn.last_processed_mtime.isoformat() + 'Z' if conn.last_processed_mtime else None,
                 'last_processed_filename': conn.last_processed_filename,
-                'last_sync': conn.last_sync.isoformat() if conn.last_sync else None,
+                'last_sync': conn.last_sync.isoformat() + 'Z' if conn.last_sync else None,
                 'last_error': conn.last_error,
                 'download_count': conn.download_count,
-                'created_at': conn.created_at.isoformat(),
-                'updated_at': conn.updated_at.isoformat()
+                'created_at': conn.created_at.isoformat() + 'Z',
+                'updated_at': conn.updated_at.isoformat() + 'Z'
             })
         return jsonify(result)
     except Exception as e:
