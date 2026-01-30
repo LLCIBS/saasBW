@@ -2,6 +2,300 @@
 
 {% block title %}Генерация отчетов - Call Analyzer{% endblock %}
 
+{% block extra_css %}
+<style>
+.reports-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: start;
+    gap: 1rem;
+    margin-bottom: 2rem;
+    flex-wrap: wrap;
+}
+
+.reports-title h1 {
+    font-size: 2rem;
+    margin-bottom: 0.5rem;
+}
+
+.reports-actions {
+    display: flex;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+}
+
+.reports-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(500px, 1fr));
+    gap: 1.5rem;
+}
+
+.report-card {
+    background: var(--bg-primary);
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow-sm);
+    border: 1px solid var(--border-light);
+    overflow: hidden;
+    transition: all var(--transition-base);
+}
+
+.report-card:hover {
+    box-shadow: var(--shadow-lg);
+    transform: translateY(-2px);
+}
+
+.report-card-header {
+    display: flex;
+    align-items: start;
+    gap: 1rem;
+    padding: 1.5rem;
+    background: linear-gradient(135deg, rgba(102, 126, 234, 0.05) 0%, rgba(118, 75, 162, 0.05) 100%);
+    border-bottom: 1px solid var(--border-light);
+    cursor: pointer;
+    user-select: none;
+}
+
+.report-card-header:hover {
+    background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%);
+}
+
+.report-card-icon {
+    width: 56px;
+    height: 56px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--primary-gradient);
+    color: white;
+    border-radius: var(--radius-lg);
+    font-size: 1.5rem;
+    flex-shrink: 0;
+    box-shadow: var(--shadow-md);
+}
+
+.report-card-info {
+    flex: 1;
+}
+
+.report-card-title {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-bottom: 0.375rem;
+}
+
+.report-card-description {
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+    line-height: 1.5;
+}
+
+.report-card-toggle {
+    color: var(--text-tertiary);
+    transition: transform var(--transition-base);
+}
+
+.report-card.expanded .report-card-toggle {
+    transform: rotate(180deg);
+}
+
+.report-card-body {
+    display: none;
+    padding: 1.5rem;
+}
+
+.report-card.expanded .report-card-body {
+    display: block;
+}
+
+.report-status-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+    flex-wrap: wrap;
+    gap: 1rem;
+}
+
+.report-status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem;
+    border-radius: var(--radius-full);
+    font-size: 0.875rem;
+    font-weight: 600;
+}
+
+.report-status-badge.ready {
+    background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%);
+    color: #065f46;
+}
+
+.report-status-badge.generating {
+    background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+    color: #92400e;
+}
+
+.report-status-badge.completed {
+    background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
+    color: #1e40af;
+}
+
+.report-status-badge.error {
+    background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);
+    color: #991b1b;
+}
+
+.report-date-range {
+    display: flex;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+    flex-wrap: wrap;
+}
+
+.report-date-range input {
+    flex: 1;
+    min-width: 150px;
+}
+
+.report-actions {
+    display: flex;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+    flex-wrap: wrap;
+}
+
+.report-progress {
+    margin-bottom: 1rem;
+}
+
+.schedule-section {
+    background: var(--bg-secondary);
+    border-radius: var(--radius-lg);
+    padding: 1.25rem;
+    border: 1px solid var(--border-light);
+}
+
+.schedule-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+}
+
+.schedule-title {
+    font-size: 0.9375rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.schedule-config {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+
+.schedule-config .form-label {
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin-bottom: 0.375rem;
+}
+
+.schedule-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 1rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--border-light);
+}
+
+.next-run-info {
+    font-size: 0.8125rem;
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+}
+
+.history-section {
+    background: var(--bg-primary);
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow-sm);
+    border: 1px solid var(--border-light);
+    padding: 1.5rem;
+    margin-top: 1.5rem;
+}
+
+.history-header {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 1.25rem;
+}
+
+.history-header h2 {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin: 0;
+}
+
+.history-content {
+    min-height: 120px;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .reports-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .reports-header {
+        flex-direction: column;
+    }
+    
+    .reports-actions {
+        width: 100%;
+    }
+    
+    .reports-actions .btn {
+        flex: 1;
+    }
+    
+    .report-card-header {
+        padding: 1rem;
+    }
+    
+    .report-card-body {
+        padding: 1rem;
+    }
+    
+    .report-date-range {
+        flex-direction: column;
+    }
+    
+    .schedule-config {
+        grid-template-columns: 1fr;
+    }
+    
+    .schedule-footer {
+        flex-direction: column;
+        align-items: stretch;
+    }
+}
+</style>
+{% endblock %}
+
 {% block content %}
 <!-- Боковая панель -->
 {% include 'partials/sidebar.html' %}
@@ -9,467 +303,543 @@
 <!-- Основной контент -->
 <main class="col-md-9 col-lg-10 main-content">
     <div class="p-4">
-        <div class="mb-4">
-            <h1 class="h3 mb-0">Генерация отчетов</h1>
-            <p class="text-muted mb-0">Автоматическое создание и отправка отчетов</p>
+        <!-- Header -->
+        <div class="reports-header">
+            <div class="reports-title">
+                <h1>Отчеты</h1>
+                <p class="text-muted">Автоматическая генерация и отправка аналитических отчетов</p>
+            </div>
+            <div class="reports-actions">
+                <button class="btn btn-outline-primary" onclick="generateAllReports()">
+                    <i class="fas fa-play me-2"></i>Сгенерировать все
+                </button>
+                <button class="btn btn-primary" onclick="loadReportsHistory()">
+                    <i class="fas fa-history me-2"></i>История
+                </button>
+            </div>
         </div>
 
-        <!-- Отчет по скрипту за неделю -->
-        <div class="card mb-4">
-            <div class="card-body">
-                <h5 class="card-title">
-                    <i class="fas fa-calendar-week me-2 text-primary"></i>Отчет по скрипту за неделю
-                </h5>
-                <p class="text-muted small mb-3">
-                    Полный анализ качества работы сотрудников по 8 критериям за прошедшую неделю. 
-                    Включает статистику по станциям, консультантам и общие показатели.
-                </p>
-                <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-3">
-                    <div>
-                        <span class="badge bg-success" id="weekFullStatus">Готов к генерации</span>
+        <!-- Info Alert -->
+        <div class="alert alert-info d-flex align-items-start gap-3 mb-4">
+            <i class="fas fa-info-circle mt-1"></i>
+            <div>
+                <strong>Автоматизация</strong>
+                <p class="mb-0">Настройте автоматическую генерацию отчетов по расписанию. Система будет создавать отчеты и отправлять их на email без вашего участия.</p>
+            </div>
+        </div>
+
+        <!-- Reports Grid -->
+        <div class="reports-grid">
+            <!-- Week Full Report -->
+            <div class="report-card" id="report-week_full">
+                <div class="report-card-header" onclick="toggleReportCard('week_full')">
+                    <div class="report-card-icon">
+                        <i class="fas fa-calendar-week"></i>
                     </div>
-                    <div class="d-flex align-items-center gap-2 flex-wrap">
-                        <input type="date" id="week_full_start" class="form-control form-control-sm" style="width: 160px;">
-                        <input type="date" id="week_full_end" class="form-control form-control-sm" style="width: 160px;">
-                        <button class="btn btn-primary btn-sm" onclick="generateReport('week_full')">
-                            <i class="fas fa-play me-2"></i>Сгенерировать отчет
+                    <div class="report-card-info">
+                        <div class="report-card-title">Отчет за неделю</div>
+                        <div class="report-card-description">
+                            Полный анализ качества работы по скрипту за неделю. Включает статистику по станциям и консультантам.
+                        </div>
+                    </div>
+                    <i class="fas fa-chevron-down report-card-toggle"></i>
+                </div>
+
+                <div class="report-card-body">
+                    <div class="report-status-row">
+                        <span class="report-status-badge ready" id="week_full_status">
+                            <i class="fas fa-check-circle"></i>
+                            <span>Готов к генерации</span>
+                        </span>
+                    </div>
+
+                    <div class="report-date-range">
+                        <input type="date" class="form-control form-control-sm" id="week_full_start">
+                        <input type="date" class="form-control form-control-sm" id="week_full_end">
+                    </div>
+
+                    <div class="report-actions">
+                        <button class="btn btn-primary flex-grow-1" onclick="generateReport('week_full')">
+                            <i class="fas fa-play me-2"></i>Сгенерировать
                         </button>
                     </div>
-                </div>
-                <div class="progress-container" id="weekFullProgress" style="display:none;">
-                    <div class="progress" style="height: 8px;">
-                        <div class="progress-bar progress-bar-striped progress-bar-animated" id="weekFullProgressFill" style="width: 0%"></div>
+
+                    <div class="report-progress" id="week_full_progress" style="display: none;">
+                        <div class="progress">
+                            <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                                 id="week_full_progress_bar" style="width: 0%"></div>
+                        </div>
+                        <div class="small text-muted mt-1" id="week_full_progress_text"></div>
                     </div>
-                    <div class="small text-muted mt-1" id="weekFullProgressText"></div>
-                </div>
-                
-                <!-- Настройка расписания -->
-                <div class="mt-3 pt-3 border-top">
-                    <div class="d-flex justify-content-between align-items-center mb-2">
-                        <div class="small text-muted">
-                            <i class="fas fa-clock me-1"></i>Автоматическая генерация отчета
-                        </div>
-                        <div class="form-check form-switch">
-                            <input class="form-check-input" type="checkbox" id="week_full_enabled" checked onchange="updateScheduleEnabled('week_full')">
-                            <label class="form-check-label small" for="week_full_enabled">Включено</label>
-                        </div>
-                    </div>
-                    <div class="row g-2 align-items-end mb-2">
-                        <div class="col-auto">
-                            <label class="form-label small mb-0">Тип расписания</label>
-                            <select class="form-select form-select-sm" id="week_full_schedule_type" onchange="updateScheduleUIBlocks('week_full')">
-                                <option value="daily">Ежедневно</option>
-                                <option value="interval">С интервалом</option>
-                                <option value="weekly">Еженедельно</option>
-                                <option value="custom">CRON</option>
-                            </select>
-                        </div>
-                        <div class="col-auto" id="week_full_daily_block">
-                            <label class="form-label small mb-0">Время</label>
-                            <input type="time" class="form-control form-control-sm" id="week_full_daily_time" value="12:00">
-                        </div>
-                        <div class="col-auto d-none" id="week_full_interval_block">
-                            <label class="form-label small mb-0">Интервал</label>
-                            <div class="d-flex gap-1">
-                                <input type="number" min="1" class="form-control form-control-sm" id="week_full_interval_value" value="2" style="width: 70px;">
-                                <select class="form-select form-select-sm" id="week_full_interval_unit" style="width: 90px;">
-                                    <option value="days">дней</option>
-                                    <option value="hours">часов</option>
-                                </select>
+
+                    <div class="schedule-section">
+                        <div class="schedule-header">
+                            <div class="schedule-title">
+                                <i class="fas fa-clock"></i>
+                                <span>Автоматическая генерация</span>
+                            </div>
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" id="week_full_enabled" checked onchange="updateScheduleEnabled('week_full')">
+                                <label class="form-check-label small" for="week_full_enabled">Включено</label>
                             </div>
                         </div>
-                        <div class="col-auto d-none" id="week_full_weekly_block">
-                            <label class="form-label small mb-0">День и время</label>
-                            <div class="d-flex gap-1">
-                                <select class="form-select form-select-sm" id="week_full_weekly_day" style="width: 100px;">
-                                    <option value="0">Понедельник</option>
-                                    <option value="1">Вторник</option>
-                                    <option value="2">Среда</option>
-                                    <option value="3">Четверг</option>
-                                    <option value="4">Пятница</option>
-                                    <option value="5">Суббота</option>
-                                    <option value="6">Воскресенье</option>
+
+                        <div class="schedule-config">
+                            <div>
+                                <label class="form-label">Тип расписания</label>
+                                <select class="form-select form-select-sm" id="week_full_schedule_type" onchange="updateScheduleUIBlocks('week_full')">
+                                    <option value="daily">Ежедневно</option>
+                                    <option value="interval">С интервалом</option>
+                                    <option value="weekly">Еженедельно</option>
+                                    <option value="custom">CRON</option>
                                 </select>
-                                <input type="time" class="form-control form-control-sm" id="week_full_weekly_time" value="12:00" style="width: 100px;">
+                            </div>
+                            <div id="week_full_daily_block">
+                                <label class="form-label">Время</label>
+                                <input type="time" class="form-control form-control-sm" id="week_full_daily_time" value="12:00">
+                            </div>
+                            <div class="d-none" id="week_full_interval_block">
+                                <label class="form-label">Интервал</label>
+                                <div class="d-flex gap-1">
+                                    <input type="number" min="1" class="form-control form-control-sm" id="week_full_interval_value" value="2">
+                                    <select class="form-select form-select-sm" id="week_full_interval_unit">
+                                        <option value="days">дней</option>
+                                        <option value="hours">часов</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="d-none" id="week_full_weekly_block">
+                                <label class="form-label">День и время</label>
+                                <div class="d-flex gap-1">
+                                    <select class="form-select form-select-sm" id="week_full_weekly_day">
+                                        <option value="0">Понедельник</option>
+                                        <option value="1">Вторник</option>
+                                        <option value="2">Среда</option>
+                                        <option value="3">Четверг</option>
+                                        <option value="4">Пятница</option>
+                                        <option value="5">Суббота</option>
+                                        <option value="6">Воскресенье</option>
+                                    </select>
+                                    <input type="time" class="form-control form-control-sm" id="week_full_weekly_time" value="12:00">
+                                </div>
+                            </div>
+                            <div class="d-none" id="week_full_custom_block">
+                                <label class="form-label">Cron выражение</label>
+                                <input type="text" class="form-control form-control-sm" id="week_full_cron" placeholder="0 12 * * *">
+                            </div>
+                            <div>
+                                <label class="form-label">Период генерации</label>
+                                <select class="form-select form-select-sm" id="week_full_period_type" onchange="updatePeriodUIBlocks('week_full')">
+                                    <option value="last_day">Последний день</option>
+                                    <option value="last_week">Последняя неделя</option>
+                                    <option value="last_month">Последний месяц</option>
+                                    <option value="last_n_days">Последний интервал дней</option>
+                                </select>
+                            </div>
+                            <div class="d-none" id="week_full_period_n_days_block">
+                                <label class="form-label">Кол-во дней</label>
+                                <input type="number" min="1" class="form-control form-control-sm" id="week_full_period_n_days" value="7">
                             </div>
                         </div>
-                        <div class="col-auto d-none" id="week_full_custom_block">
-                            <label class="form-label small mb-0">Cron выражение</label>
-                            <input type="text" class="form-control form-control-sm" id="week_full_cron" placeholder="0 12 * * *" style="width: 150px;">
-                        </div>
-                    </div>
-                    <div class="row g-2 align-items-end mb-2">
-                        <div class="col-auto">
-                            <label class="form-label small mb-0">Период генерации</label>
-                            <select class="form-select form-select-sm" id="week_full_period_type" onchange="updatePeriodUIBlocks('week_full')">
-                                <option value="last_day">Последний день</option>
-                                <option value="last_week">Последняя неделя</option>
-                                <option value="last_month">Последний месяц</option>
-                                <option value="last_n_days">Последний интервал дней</option>
-                            </select>
-                        </div>
-                        <div class="col-auto d-none" id="week_full_period_n_days_block">
-                            <label class="form-label small mb-0">Количество дней</label>
-                            <input type="number" min="1" class="form-control form-control-sm" id="week_full_period_n_days" value="7" style="width: 100px;">
-                        </div>
-                        <div class="col-auto">
+
+                        <div class="schedule-footer">
                             <button class="btn btn-sm btn-outline-primary" onclick="saveSchedule('week_full')">
                                 <i class="fas fa-save me-1"></i>Сохранить
                             </button>
-                        </div>
-                        <div class="col-auto">
-                            <small class="text-muted" id="week_full_next_run"></small>
+                            <div class="next-run-info" id="week_full_next_run">
+                                <i class="fas fa-info-circle"></i>
+                                <span>Не настроено</span>
+                            </div>
                         </div>
                     </div>
                 </div>
             </div>
-        </div>
 
-        <!-- Отчет Ретрак за неделю -->
-        <div class="card mb-4">
-            <div class="card-body">
-                <h5 class="card-title">
-                    <i class="fas fa-chart-line me-2 text-success"></i>Отчет Ретрак за неделю
-                </h5>
-                <p class="text-muted small mb-3">
-                    Анализ работы станций Ретрак по 10 критериям с весовыми коэффициентами. 
-                    Включает рейтинг станций и детальную статистику.
-                </p>
-                <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-3">
-                    <div>
-                        <span class="badge bg-success" id="rr3Status">Готов к генерации</span>
+            <!-- Retrak Report -->
+            <div class="report-card" id="report-rr_3">
+                <div class="report-card-header" onclick="toggleReportCard('rr_3')">
+                    <div class="report-card-icon">
+                        <i class="fas fa-chart-line"></i>
                     </div>
-                    <div class="d-flex align-items-center gap-2 flex-wrap">
-                        <input type="date" id="rr_3_start" class="form-control form-control-sm" style="width: 160px;">
-                        <input type="date" id="rr_3_end" class="form-control form-control-sm" style="width: 160px;">
-                        <button class="btn btn-primary btn-sm" onclick="generateReport('rr_3')">
-                            <i class="fas fa-play me-2"></i>Сгенерировать отчет
+                    <div class="report-card-info">
+                        <div class="report-card-title">Отчет Ретрак</div>
+                        <div class="report-card-description">
+                            Анализ работы станций Ретрак по 10 критериям с весовыми коэффициентами и рейтингом.
+                        </div>
+                    </div>
+                    <i class="fas fa-chevron-down report-card-toggle"></i>
+                </div>
+
+                <div class="report-card-body">
+                    <div class="report-status-row">
+                        <span class="report-status-badge ready" id="rr_3_status">
+                            <i class="fas fa-check-circle"></i>
+                            <span>Готов к генерации</span>
+                        </span>
+                    </div>
+
+                    <div class="report-date-range">
+                        <input type="date" class="form-control form-control-sm" id="rr_3_start">
+                        <input type="date" class="form-control form-control-sm" id="rr_3_end">
+                    </div>
+
+                    <div class="report-actions">
+                        <button class="btn btn-primary flex-grow-1" onclick="generateReport('rr_3')">
+                            <i class="fas fa-play me-2"></i>Сгенерировать
                         </button>
                     </div>
-                </div>
-                <div class="progress-container" id="rr3Progress" style="display:none;">
-                    <div class="progress" style="height: 8px;">
-                        <div class="progress-bar progress-bar-striped progress-bar-animated" id="rr3ProgressFill" style="width: 0%"></div>
+
+                    <div class="report-progress" id="rr_3_progress" style="display: none;">
+                        <div class="progress">
+                            <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                                 id="rr_3_progress_bar" style="width: 0%"></div>
+                        </div>
+                        <div class="small text-muted mt-1" id="rr_3_progress_text"></div>
                     </div>
-                    <div class="small text-muted mt-1" id="rr3ProgressText"></div>
-                </div>
-                
-                <!-- Настройка расписания -->
-                <div class="mt-3 pt-3 border-top">
-                    <div class="d-flex justify-content-between align-items-center mb-2">
-                        <div class="small text-muted">
-                            <i class="fas fa-clock me-1"></i>Автоматическая генерация отчета
-                        </div>
-                        <div class="form-check form-switch">
-                            <input class="form-check-input" type="checkbox" id="rr_3_enabled" checked onchange="updateScheduleEnabled('rr_3')">
-                            <label class="form-check-label small" for="rr_3_enabled">Включено</label>
-                        </div>
-                    </div>
-                    <div class="row g-2 align-items-end mb-2">
-                        <div class="col-auto">
-                            <label class="form-label small mb-0">Тип расписания</label>
-                            <select class="form-select form-select-sm" id="rr_3_schedule_type" onchange="updateScheduleUIBlocks('rr_3')">
-                                <option value="daily">Ежедневно</option>
-                                <option value="interval">С интервалом</option>
-                                <option value="weekly">Еженедельно</option>
-                                <option value="custom">CRON</option>
-                            </select>
-                        </div>
-                        <div class="col-auto" id="rr_3_daily_block">
-                            <label class="form-label small mb-0">Время</label>
-                            <input type="time" class="form-control form-control-sm" id="rr_3_daily_time" value="12:00">
-                        </div>
-                        <div class="col-auto d-none" id="rr_3_interval_block">
-                            <label class="form-label small mb-0">Интервал</label>
-                            <div class="d-flex gap-1">
-                                <input type="number" min="1" class="form-control form-control-sm" id="rr_3_interval_value" value="2" style="width: 70px;">
-                                <select class="form-select form-select-sm" id="rr_3_interval_unit" style="width: 90px;">
-                                    <option value="days">дней</option>
-                                    <option value="hours">часов</option>
-                                </select>
+
+                    <div class="schedule-section">
+                        <div class="schedule-header">
+                            <div class="schedule-title">
+                                <i class="fas fa-clock"></i>
+                                <span>Автоматическая генерация</span>
+                            </div>
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" id="rr_3_enabled" checked onchange="updateScheduleEnabled('rr_3')">
+                                <label class="form-check-label small" for="rr_3_enabled">Включено</label>
                             </div>
                         </div>
-                        <div class="col-auto d-none" id="rr_3_weekly_block">
-                            <label class="form-label small mb-0">День и время</label>
-                            <div class="d-flex gap-1">
-                                <select class="form-select form-select-sm" id="rr_3_weekly_day" style="width: 100px;">
-                                    <option value="0">Понедельник</option>
-                                    <option value="1">Вторник</option>
-                                    <option value="2">Среда</option>
-                                    <option value="3">Четверг</option>
-                                    <option value="4">Пятница</option>
-                                    <option value="5">Суббота</option>
-                                    <option value="6">Воскресенье</option>
+
+                        <div class="schedule-config">
+                            <div>
+                                <label class="form-label">Тип расписания</label>
+                                <select class="form-select form-select-sm" id="rr_3_schedule_type" onchange="updateScheduleUIBlocks('rr_3')">
+                                    <option value="daily">Ежедневно</option>
+                                    <option value="interval">С интервалом</option>
+                                    <option value="weekly">Еженедельно</option>
+                                    <option value="custom">CRON</option>
                                 </select>
-                                <input type="time" class="form-control form-control-sm" id="rr_3_weekly_time" value="12:00" style="width: 100px;">
+                            </div>
+                            <div id="rr_3_daily_block">
+                                <label class="form-label">Время</label>
+                                <input type="time" class="form-control form-control-sm" id="rr_3_daily_time" value="12:00">
+                            </div>
+                            <div class="d-none" id="rr_3_interval_block">
+                                <label class="form-label">Интервал</label>
+                                <div class="d-flex gap-1">
+                                    <input type="number" min="1" class="form-control form-control-sm" id="rr_3_interval_value" value="2">
+                                    <select class="form-select form-select-sm" id="rr_3_interval_unit">
+                                        <option value="days">дней</option>
+                                        <option value="hours">часов</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="d-none" id="rr_3_weekly_block">
+                                <label class="form-label">День и время</label>
+                                <div class="d-flex gap-1">
+                                    <select class="form-select form-select-sm" id="rr_3_weekly_day">
+                                        <option value="0">Понедельник</option>
+                                        <option value="1">Вторник</option>
+                                        <option value="2">Среда</option>
+                                        <option value="3">Четверг</option>
+                                        <option value="4">Пятница</option>
+                                        <option value="5">Суббота</option>
+                                        <option value="6">Воскресенье</option>
+                                    </select>
+                                    <input type="time" class="form-control form-control-sm" id="rr_3_weekly_time" value="12:00">
+                                </div>
+                            </div>
+                            <div class="d-none" id="rr_3_custom_block">
+                                <label class="form-label">Cron выражение</label>
+                                <input type="text" class="form-control form-control-sm" id="rr_3_cron" placeholder="0 12 * * *">
+                            </div>
+                            <div>
+                                <label class="form-label">Период генерации</label>
+                                <select class="form-select form-select-sm" id="rr_3_period_type" onchange="updatePeriodUIBlocks('rr_3')">
+                                    <option value="last_day">Последний день</option>
+                                    <option value="last_week">Последняя неделя</option>
+                                    <option value="last_month">Последний месяц</option>
+                                    <option value="last_n_days">Последний интервал дней</option>
+                                </select>
+                            </div>
+                            <div class="d-none" id="rr_3_period_n_days_block">
+                                <label class="form-label">Кол-во дней</label>
+                                <input type="number" min="1" class="form-control form-control-sm" id="rr_3_period_n_days" value="7">
                             </div>
                         </div>
-                        <div class="col-auto d-none" id="rr_3_custom_block">
-                            <label class="form-label small mb-0">Cron выражение</label>
-                            <input type="text" class="form-control form-control-sm" id="rr_3_cron" placeholder="0 12 * * *" style="width: 150px;">
-                        </div>
-                    </div>
-                    <div class="row g-2 align-items-end mb-2">
-                        <div class="col-auto">
-                            <label class="form-label small mb-0">Период генерации</label>
-                            <select class="form-select form-select-sm" id="rr_3_period_type" onchange="updatePeriodUIBlocks('rr_3')">
-                                <option value="last_day">Последний день</option>
-                                <option value="last_week">Последняя неделя</option>
-                                <option value="last_month">Последний месяц</option>
-                                <option value="last_n_days">Последний интервал дней</option>
-                            </select>
-                        </div>
-                        <div class="col-auto d-none" id="rr_3_period_n_days_block">
-                            <label class="form-label small mb-0">Количество дней</label>
-                            <input type="number" min="1" class="form-control form-control-sm" id="rr_3_period_n_days" value="7" style="width: 100px;">
-                        </div>
-                        <div class="col-auto">
+
+                        <div class="schedule-footer">
                             <button class="btn btn-sm btn-outline-primary" onclick="saveSchedule('rr_3')">
                                 <i class="fas fa-save me-1"></i>Сохранить
                             </button>
-                        </div>
-                        <div class="col-auto">
-                            <small class="text-muted" id="rr_3_next_run"></small>
+                            <div class="next-run-info" id="rr_3_next_run">
+                                <i class="fas fa-info-circle"></i>
+                                <span>Не настроено</span>
+                            </div>
                         </div>
                     </div>
                 </div>
             </div>
-        </div>
 
-        <!-- Отчет по плохим звонкам -->
-        <div class="card mb-4">
-            <div class="card-body">
-                <h5 class="card-title">
-                    <i class="fas fa-exclamation-triangle me-2 text-danger"></i>Отчет по плохим звонкам
-                </h5>
-                <p class="text-muted small mb-3">
-                    Анализ звонков с низким качеством обслуживания для выявления проблемных областей 
-                    и улучшения работы сотрудников.
-                </p>
-                <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-3">
-                    <div>
-                        <span class="badge bg-success" id="rrBadStatus">Готов к генерации</span>
+            <!-- Bad Calls Report -->
+            <div class="report-card" id="report-rr_bad">
+                <div class="report-card-header" onclick="toggleReportCard('rr_bad')">
+                    <div class="report-card-icon">
+                        <i class="fas fa-exclamation-triangle"></i>
                     </div>
-                    <div class="d-flex align-items-center gap-2 flex-wrap">
-                        <input type="date" id="rr_bad_start" class="form-control form-control-sm" style="width: 160px;">
-                        <input type="date" id="rr_bad_end" class="form-control form-control-sm" style="width: 160px;">
-                        <button class="btn btn-primary btn-sm" onclick="generateReport('rr_bad')">
-                            <i class="fas fa-play me-2"></i>Сгенерировать отчет
+                    <div class="report-card-info">
+                        <div class="report-card-title">Плохие звонки</div>
+                        <div class="report-card-description">
+                            Анализ звонков с низким качеством обслуживания для выявления проблемных областей.
+                        </div>
+                    </div>
+                    <i class="fas fa-chevron-down report-card-toggle"></i>
+                </div>
+
+                <div class="report-card-body">
+                    <div class="report-status-row">
+                        <span class="report-status-badge ready" id="rr_bad_status">
+                            <i class="fas fa-check-circle"></i>
+                            <span>Готов к генерации</span>
+                        </span>
+                    </div>
+
+                    <div class="report-date-range">
+                        <input type="date" class="form-control form-control-sm" id="rr_bad_start">
+                        <input type="date" class="form-control form-control-sm" id="rr_bad_end">
+                    </div>
+
+                    <div class="report-actions">
+                        <button class="btn btn-primary flex-grow-1" onclick="generateReport('rr_bad')">
+                            <i class="fas fa-play me-2"></i>Сгенерировать
                         </button>
                     </div>
-                </div>
-                <div class="progress-container" id="rrBadProgress" style="display:none;">
-                    <div class="progress" style="height: 8px;">
-                        <div class="progress-bar progress-bar-striped progress-bar-animated" id="rrBadProgressFill" style="width: 0%"></div>
+
+                    <div class="report-progress" id="rr_bad_progress" style="display: none;">
+                        <div class="progress">
+                            <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                                 id="rr_bad_progress_bar" style="width: 0%"></div>
+                        </div>
+                        <div class="small text-muted mt-1" id="rr_bad_progress_text"></div>
                     </div>
-                    <div class="small text-muted mt-1" id="rrBadProgressText"></div>
-                </div>
-                
-                <!-- Настройка расписания -->
-                <div class="mt-3 pt-3 border-top">
-                    <div class="d-flex justify-content-between align-items-center mb-2">
-                        <div class="small text-muted">
-                            <i class="fas fa-clock me-1"></i>Автоматическая генерация отчета
-                        </div>
-                        <div class="form-check form-switch">
-                            <input class="form-check-input" type="checkbox" id="rr_bad_enabled" checked onchange="updateScheduleEnabled('rr_bad')">
-                            <label class="form-check-label small" for="rr_bad_enabled">Включено</label>
-                        </div>
-                    </div>
-                    <div class="row g-2 align-items-end mb-2">
-                        <div class="col-auto">
-                            <label class="form-label small mb-0">Тип расписания</label>
-                            <select class="form-select form-select-sm" id="rr_bad_schedule_type" onchange="updateScheduleUIBlocks('rr_bad')">
-                                <option value="daily">Ежедневно</option>
-                                <option value="interval">С интервалом</option>
-                                <option value="weekly">Еженедельно</option>
-                                <option value="custom">CRON</option>
-                            </select>
-                        </div>
-                        <div class="col-auto" id="rr_bad_daily_block">
-                            <label class="form-label small mb-0">Время</label>
-                            <input type="time" class="form-control form-control-sm" id="rr_bad_daily_time" value="12:00">
-                        </div>
-                        <div class="col-auto d-none" id="rr_bad_interval_block">
-                            <label class="form-label small mb-0">Интервал</label>
-                            <div class="d-flex gap-1">
-                                <input type="number" min="1" class="form-control form-control-sm" id="rr_bad_interval_value" value="2" style="width: 70px;">
-                                <select class="form-select form-select-sm" id="rr_bad_interval_unit" style="width: 90px;">
-                                    <option value="days">дней</option>
-                                    <option value="hours">часов</option>
-                                </select>
+
+                    <div class="schedule-section">
+                        <div class="schedule-header">
+                            <div class="schedule-title">
+                                <i class="fas fa-clock"></i>
+                                <span>Автоматическая генерация</span>
+                            </div>
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" id="rr_bad_enabled" checked onchange="updateScheduleEnabled('rr_bad')">
+                                <label class="form-check-label small" for="rr_bad_enabled">Включено</label>
                             </div>
                         </div>
-                        <div class="col-auto d-none" id="rr_bad_weekly_block">
-                            <label class="form-label small mb-0">День и время</label>
-                            <div class="d-flex gap-1">
-                                <select class="form-select form-select-sm" id="rr_bad_weekly_day" style="width: 100px;">
-                                    <option value="0">Понедельник</option>
-                                    <option value="1">Вторник</option>
-                                    <option value="2">Среда</option>
-                                    <option value="3">Четверг</option>
-                                    <option value="4">Пятница</option>
-                                    <option value="5">Суббота</option>
-                                    <option value="6">Воскресенье</option>
+
+                        <div class="schedule-config">
+                            <div>
+                                <label class="form-label">Тип расписания</label>
+                                <select class="form-select form-select-sm" id="rr_bad_schedule_type" onchange="updateScheduleUIBlocks('rr_bad')">
+                                    <option value="daily">Ежедневно</option>
+                                    <option value="interval">С интервалом</option>
+                                    <option value="weekly">Еженедельно</option>
+                                    <option value="custom">CRON</option>
                                 </select>
-                                <input type="time" class="form-control form-control-sm" id="rr_bad_weekly_time" value="12:00" style="width: 100px;">
+                            </div>
+                            <div id="rr_bad_daily_block">
+                                <label class="form-label">Время</label>
+                                <input type="time" class="form-control form-control-sm" id="rr_bad_daily_time" value="12:00">
+                            </div>
+                            <div class="d-none" id="rr_bad_interval_block">
+                                <label class="form-label">Интервал</label>
+                                <div class="d-flex gap-1">
+                                    <input type="number" min="1" class="form-control form-control-sm" id="rr_bad_interval_value" value="2">
+                                    <select class="form-select form-select-sm" id="rr_bad_interval_unit">
+                                        <option value="days">дней</option>
+                                        <option value="hours">часов</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="d-none" id="rr_bad_weekly_block">
+                                <label class="form-label">День и время</label>
+                                <div class="d-flex gap-1">
+                                    <select class="form-select form-select-sm" id="rr_bad_weekly_day">
+                                        <option value="0">Понедельник</option>
+                                        <option value="1">Вторник</option>
+                                        <option value="2">Среда</option>
+                                        <option value="3">Четверг</option>
+                                        <option value="4">Пятница</option>
+                                        <option value="5">Суббота</option>
+                                        <option value="6">Воскресенье</option>
+                                    </select>
+                                    <input type="time" class="form-control form-control-sm" id="rr_bad_weekly_time" value="12:00">
+                                </div>
+                            </div>
+                            <div class="d-none" id="rr_bad_custom_block">
+                                <label class="form-label">Cron выражение</label>
+                                <input type="text" class="form-control form-control-sm" id="rr_bad_cron" placeholder="0 12 * * *">
+                            </div>
+                            <div>
+                                <label class="form-label">Период генерации</label>
+                                <select class="form-select form-select-sm" id="rr_bad_period_type" onchange="updatePeriodUIBlocks('rr_bad')">
+                                    <option value="last_day">Последний день</option>
+                                    <option value="last_week">Последняя неделя</option>
+                                    <option value="last_month">Последний месяц</option>
+                                    <option value="last_n_days">Последний интервал дней</option>
+                                </select>
+                            </div>
+                            <div class="d-none" id="rr_bad_period_n_days_block">
+                                <label class="form-label">Кол-во дней</label>
+                                <input type="number" min="1" class="form-control form-control-sm" id="rr_bad_period_n_days" value="7">
                             </div>
                         </div>
-                        <div class="col-auto d-none" id="rr_bad_custom_block">
-                            <label class="form-label small mb-0">Cron выражение</label>
-                            <input type="text" class="form-control form-control-sm" id="rr_bad_cron" placeholder="0 12 * * *" style="width: 150px;">
-                        </div>
-                    </div>
-                    <div class="row g-2 align-items-end mb-2">
-                        <div class="col-auto">
-                            <label class="form-label small mb-0">Период генерации</label>
-                            <select class="form-select form-select-sm" id="rr_bad_period_type" onchange="updatePeriodUIBlocks('rr_bad')">
-                                <option value="last_day">Последний день</option>
-                                <option value="last_week">Последняя неделя</option>
-                                <option value="last_month">Последний месяц</option>
-                                <option value="last_n_days">Последний интервал дней</option>
-                            </select>
-                        </div>
-                        <div class="col-auto d-none" id="rr_bad_period_n_days_block">
-                            <label class="form-label small mb-0">Количество дней</label>
-                            <input type="number" min="1" class="form-control form-control-sm" id="rr_bad_period_n_days" value="7" style="width: 100px;">
-                        </div>
-                        <div class="col-auto">
+
+                        <div class="schedule-footer">
                             <button class="btn btn-sm btn-outline-primary" onclick="saveSchedule('rr_bad')">
                                 <i class="fas fa-save me-1"></i>Сохранить
                             </button>
-                        </div>
-                        <div class="col-auto">
-                            <small class="text-muted" id="rr_bad_next_run"></small>
+                            <div class="next-run-info" id="rr_bad_next_run">
+                                <i class="fas fa-info-circle"></i>
+                                <span>Не настроено</span>
+                            </div>
                         </div>
                     </div>
                 </div>
             </div>
-        </div>
 
-        <!-- Отчет "Сколько" за 52 недели -->
-        <div class="card mb-4">
-            <div class="card-body">
-                <h5 class="card-title">
-                    <i class="fas fa-chart-pie me-2 text-info"></i>Отчет "Сколько" за 52 недели
-                </h5>
-                <p class="text-muted small mb-3">
-                    Долгосрочная статистика за год для анализа трендов и сезонности в работе станций.
-                </p>
-                <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-3">
-                    <div>
-                        <span class="badge bg-success" id="skolko52Status">Готов к генерации</span>
+            <!-- Skolko 52 Weeks Report -->
+            <div class="report-card" id="report-skolko_52">
+                <div class="report-card-header" onclick="toggleReportCard('skolko_52')">
+                    <div class="report-card-icon">
+                        <i class="fas fa-chart-pie"></i>
                     </div>
-                    <div class="d-flex align-items-center gap-2 flex-wrap">
-                        <input type="date" id="skolko_52_start" class="form-control form-control-sm" style="width: 160px;">
-                        <input type="date" id="skolko_52_end" class="form-control form-control-sm" style="width: 160px;">
-                        <button class="btn btn-primary btn-sm" onclick="generateReport('skolko_52')">
-                            <i class="fas fa-play me-2"></i>Сгенерировать отчет
+                    <div class="report-card-info">
+                        <div class="report-card-title">Отчет "Сколько" (52 недели)</div>
+                        <div class="report-card-description">
+                            Долгосрочная статистика за год для анализа трендов и сезонности в работе станций.
+                        </div>
+                    </div>
+                    <i class="fas fa-chevron-down report-card-toggle"></i>
+                </div>
+
+                <div class="report-card-body">
+                    <div class="report-status-row">
+                        <span class="report-status-badge ready" id="skolko_52_status">
+                            <i class="fas fa-check-circle"></i>
+                            <span>Готов к генерации</span>
+                        </span>
+                    </div>
+
+                    <div class="report-date-range">
+                        <input type="date" class="form-control form-control-sm" id="skolko_52_start">
+                        <input type="date" class="form-control form-control-sm" id="skolko_52_end">
+                    </div>
+
+                    <div class="report-actions">
+                        <button class="btn btn-primary flex-grow-1" onclick="generateReport('skolko_52')">
+                            <i class="fas fa-play me-2"></i>Сгенерировать
                         </button>
                     </div>
-                </div>
-                <div class="progress-container" id="skolko52Progress" style="display:none;">
-                    <div class="progress" style="height: 8px;">
-                        <div class="progress-bar progress-bar-striped progress-bar-animated" id="skolko52ProgressFill" style="width: 0%"></div>
+
+                    <div class="report-progress" id="skolko_52_progress" style="display: none;">
+                        <div class="progress">
+                            <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                                 id="skolko_52_progress_bar" style="width: 0%"></div>
+                        </div>
+                        <div class="small text-muted mt-1" id="skolko_52_progress_text"></div>
                     </div>
-                    <div class="small text-muted mt-1" id="skolko52ProgressText"></div>
-                </div>
-                
-                <!-- Настройка расписания -->
-                <div class="mt-3 pt-3 border-top">
-                    <div class="d-flex justify-content-between align-items-center mb-2">
-                        <div class="small text-muted">
-                            <i class="fas fa-clock me-1"></i>Автоматическая генерация отчета
-                        </div>
-                        <div class="form-check form-switch">
-                            <input class="form-check-input" type="checkbox" id="skolko_52_enabled" checked onchange="updateScheduleEnabled('skolko_52')">
-                            <label class="form-check-label small" for="skolko_52_enabled">Включено</label>
-                        </div>
-                    </div>
-                    <div class="row g-2 align-items-end mb-2">
-                        <div class="col-auto">
-                            <label class="form-label small mb-0">Тип расписания</label>
-                            <select class="form-select form-select-sm" id="skolko_52_schedule_type" onchange="updateScheduleUIBlocks('skolko_52')">
-                                <option value="daily">Ежедневно</option>
-                                <option value="interval">С интервалом</option>
-                                <option value="weekly">Еженедельно</option>
-                                <option value="custom">CRON</option>
-                            </select>
-                        </div>
-                        <div class="col-auto" id="skolko_52_daily_block">
-                            <label class="form-label small mb-0">Время</label>
-                            <input type="time" class="form-control form-control-sm" id="skolko_52_daily_time" value="12:00">
-                        </div>
-                        <div class="col-auto d-none" id="skolko_52_interval_block">
-                            <label class="form-label small mb-0">Интервал</label>
-                            <div class="d-flex gap-1">
-                                <input type="number" min="1" class="form-control form-control-sm" id="skolko_52_interval_value" value="2" style="width: 70px;">
-                                <select class="form-select form-select-sm" id="skolko_52_interval_unit" style="width: 90px;">
-                                    <option value="days">дней</option>
-                                    <option value="hours">часов</option>
-                                </select>
+
+                    <div class="schedule-section">
+                        <div class="schedule-header">
+                            <div class="schedule-title">
+                                <i class="fas fa-clock"></i>
+                                <span>Автоматическая генерация</span>
+                            </div>
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" id="skolko_52_enabled" checked onchange="updateScheduleEnabled('skolko_52')">
+                                <label class="form-check-label small" for="skolko_52_enabled">Включено</label>
                             </div>
                         </div>
-                        <div class="col-auto d-none" id="skolko_52_weekly_block">
-                            <label class="form-label small mb-0">День и время</label>
-                            <div class="d-flex gap-1">
-                                <select class="form-select form-select-sm" id="skolko_52_weekly_day" style="width: 100px;">
-                                    <option value="0">Понедельник</option>
-                                    <option value="1">Вторник</option>
-                                    <option value="2">Среда</option>
-                                    <option value="3">Четверг</option>
-                                    <option value="4">Пятница</option>
-                                    <option value="5">Суббота</option>
-                                    <option value="6">Воскресенье</option>
+
+                        <div class="schedule-config">
+                            <div>
+                                <label class="form-label">Тип расписания</label>
+                                <select class="form-select form-select-sm" id="skolko_52_schedule_type" onchange="updateScheduleUIBlocks('skolko_52')">
+                                    <option value="daily">Ежедневно</option>
+                                    <option value="interval">С интервалом</option>
+                                    <option value="weekly">Еженедельно</option>
+                                    <option value="custom">CRON</option>
                                 </select>
-                                <input type="time" class="form-control form-control-sm" id="skolko_52_weekly_time" value="12:00" style="width: 100px;">
+                            </div>
+                            <div id="skolko_52_daily_block">
+                                <label class="form-label">Время</label>
+                                <input type="time" class="form-control form-control-sm" id="skolko_52_daily_time" value="12:00">
+                            </div>
+                            <div class="d-none" id="skolko_52_interval_block">
+                                <label class="form-label">Интервал</label>
+                                <div class="d-flex gap-1">
+                                    <input type="number" min="1" class="form-control form-control-sm" id="skolko_52_interval_value" value="2">
+                                    <select class="form-select form-select-sm" id="skolko_52_interval_unit">
+                                        <option value="days">дней</option>
+                                        <option value="hours">часов</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="d-none" id="skolko_52_weekly_block">
+                                <label class="form-label">День и время</label>
+                                <div class="d-flex gap-1">
+                                    <select class="form-select form-select-sm" id="skolko_52_weekly_day">
+                                        <option value="0">Понедельник</option>
+                                        <option value="1">Вторник</option>
+                                        <option value="2">Среда</option>
+                                        <option value="3">Четверг</option>
+                                        <option value="4">Пятница</option>
+                                        <option value="5">Суббота</option>
+                                        <option value="6">Воскресенье</option>
+                                    </select>
+                                    <input type="time" class="form-control form-control-sm" id="skolko_52_weekly_time" value="12:00">
+                                </div>
+                            </div>
+                            <div class="d-none" id="skolko_52_custom_block">
+                                <label class="form-label">Cron выражение</label>
+                                <input type="text" class="form-control form-control-sm" id="skolko_52_cron" placeholder="0 12 * * *">
+                            </div>
+                            <div>
+                                <label class="form-label">Период генерации</label>
+                                <select class="form-select form-select-sm" id="skolko_52_period_type" onchange="updatePeriodUIBlocks('skolko_52')">
+                                    <option value="last_day">Последний день</option>
+                                    <option value="last_week">Последняя неделя</option>
+                                    <option value="last_month">Последний месяц</option>
+                                    <option value="last_n_days">Последний интервал дней</option>
+                                </select>
+                            </div>
+                            <div class="d-none" id="skolko_52_period_n_days_block">
+                                <label class="form-label">Кол-во дней</label>
+                                <input type="number" min="1" class="form-control form-control-sm" id="skolko_52_period_n_days" value="7">
                             </div>
                         </div>
-                        <div class="col-auto d-none" id="skolko_52_custom_block">
-                            <label class="form-label small mb-0">Cron выражение</label>
-                            <input type="text" class="form-control form-control-sm" id="skolko_52_cron" placeholder="0 12 * * *" style="width: 150px;">
-                        </div>
-                    </div>
-                    <div class="row g-2 align-items-end mb-2">
-                        <div class="col-auto">
-                            <label class="form-label small mb-0">Период генерации</label>
-                            <select class="form-select form-select-sm" id="skolko_52_period_type" onchange="updatePeriodUIBlocks('skolko_52')">
-                                <option value="last_day">Последний день</option>
-                                <option value="last_week">Последняя неделя</option>
-                                <option value="last_month">Последний месяц</option>
-                                <option value="last_n_days">Последний интервал дней</option>
-                            </select>
-                        </div>
-                        <div class="col-auto d-none" id="skolko_52_period_n_days_block">
-                            <label class="form-label small mb-0">Количество дней</label>
-                            <input type="number" min="1" class="form-control form-control-sm" id="skolko_52_period_n_days" value="7" style="width: 100px;">
-                        </div>
-                        <div class="col-auto">
+
+                        <div class="schedule-footer">
                             <button class="btn btn-sm btn-outline-primary" onclick="saveSchedule('skolko_52')">
                                 <i class="fas fa-save me-1"></i>Сохранить
                             </button>
-                        </div>
-                        <div class="col-auto">
-                            <small class="text-muted" id="skolko_52_next_run"></small>
+                            <div class="next-run-info" id="skolko_52_next_run">
+                                <i class="fas fa-info-circle"></i>
+                                <span>Не настроено</span>
+                            </div>
                         </div>
                     </div>
                 </div>
             </div>
         </div>
 
-        <!-- История отчетов -->
-        <div class="card">
-            <div class="card-body">
-                <h5 class="card-title">
-                    <i class="fas fa-history me-2 text-secondary"></i>История отчетов
-                </h5>
-                <p class="text-muted small mb-3">
-                    Последние сгенерированные отчеты и их статус.
-                </p>
-                <div id="reportsHistory">
-                    <div class="text-center text-muted">
-                        История отчетов будет отображаться здесь
-                    </div>
+        <!-- History Section -->
+        <div class="history-section" id="historySection" style="display: none;">
+            <div class="history-header">
+                <i class="fas fa-history text-primary"></i>
+                <h2>История отчетов</h2>
+            </div>
+            <div class="history-content" id="reportsHistory">
+                <div class="text-center text-muted py-4">
+                    История отчетов будет отображаться здесь
                 </div>
             </div>
         </div>
@@ -479,7 +849,7 @@
 
 {% block extra_js %}
 <script>
-// Установка дат по умолчанию при загрузке
+// Инициализация при загрузке
 document.addEventListener('DOMContentLoaded', function() {
     const today = new Date();
     const weekAgo = new Date(today);
@@ -487,7 +857,7 @@ document.addEventListener('DOMContentLoaded', function() {
     
     const formatDate = (date) => date.toISOString().split('T')[0];
     
-    // Для всех отчетов
+    // Установка дат для всех отчетов
     ['week_full', 'rr_3', 'rr_bad', 'skolko_52'].forEach(reportType => {
         const startDateInput = document.getElementById(`${reportType}_start`);
         const endDateInput = document.getElementById(`${reportType}_end`);
@@ -510,11 +880,20 @@ document.addEventListener('DOMContentLoaded', function() {
     loadSchedules();
 });
 
+// Переключение карточки отчета
+function toggleReportCard(reportType) {
+    const card = document.getElementById(`report-${reportType}`);
+    if (card) {
+        card.classList.toggle('expanded');
+    }
+}
+
+// Генерация отчета
 async function generateReport(reportType) {
-    const statusElement = document.getElementById(getStatusElementId(reportType));
-    const progressContainer = document.getElementById(getProgressContainerId(reportType));
-    const progressFill = document.getElementById(getProgressFillId(reportType));
-    const progressText = document.getElementById(getProgressTextId(reportType));
+    const statusElement = document.getElementById(`${reportType}_status`);
+    const progressContainer = document.getElementById(`${reportType}_progress`);
+    const progressFill = document.getElementById(`${reportType}_progress_bar`);
+    const progressText = document.getElementById(`${reportType}_progress_text`);
     
     try {
         // Даты
@@ -528,13 +907,13 @@ async function generateReport(reportType) {
             return;
         }
         
-        // Обновляем статус на "Генерируется"
-        statusElement.className = 'badge bg-warning text-dark';
-        statusElement.textContent = 'Генерируется...';
+        // Обновляем статус
+        statusElement.className = 'report-status-badge generating';
+        statusElement.innerHTML = '<i class="fas fa-spinner fa-spin"></i><span>Генерируется...</span>';
         
         // Показываем прогресс-бар
         progressContainer.style.display = 'block';
-        updateProgress(0, 'Инициализация...', progressFill, progressText);
+        updateProgress(reportType, 0, 'Инициализация...');
 
         const response = await fetch('/api/reports/generate', {
             method: 'POST',
@@ -552,39 +931,53 @@ async function generateReport(reportType) {
             // Запускаем мониторинг прогресса
             monitorProgress(reportType, statusElement, progressContainer, progressFill, progressText);
         } else {
-            statusElement.className = 'badge bg-danger';
-            statusElement.textContent = 'Ошибка генерации';
+            statusElement.className = 'report-status-badge error';
+            statusElement.innerHTML = '<i class="fas fa-exclamation-circle"></i><span>Ошибка</span>';
             progressContainer.style.display = 'none';
             showAlert(result.message || 'Ошибка генерации отчета', 'danger');
             
-            // Через некоторое время возвращаем статус в исходное состояние
             setTimeout(() => {
-                statusElement.className = 'badge bg-success';
-                statusElement.textContent = 'Готов к генерации';
+                resetReportStatus(reportType);
             }, 5000);
         }
         
     } catch (error) {
         console.error('Ошибка генерации отчета:', error);
-        const statusElement = document.getElementById(getStatusElementId(reportType));
-        const progressContainer = document.getElementById(getProgressContainerId(reportType));
+        const statusElement = document.getElementById(`${reportType}_status`);
+        const progressContainer = document.getElementById(`${reportType}_progress`);
         
         if (statusElement) {
-            statusElement.className = 'badge bg-danger';
-            statusElement.textContent = 'Ошибка генерации';
+            statusElement.className = 'report-status-badge error';
+            statusElement.innerHTML = '<i class="fas fa-exclamation-circle"></i><span>Ошибка</span>';
         }
         if (progressContainer) {
             progressContainer.style.display = 'none';
         }
         showAlert('Ошибка генерации отчета', 'danger');
         
-        // Через некоторое время возвращаем статус в исходное состояние
         setTimeout(() => {
-            if (statusElement) {
-                statusElement.className = 'badge bg-success';
-                statusElement.textContent = 'Готов к генерации';
-            }
+            resetReportStatus(reportType);
         }, 5000);
+    }
+}
+
+function resetReportStatus(reportType) {
+    const statusElement = document.getElementById(`${reportType}_status`);
+    if (statusElement) {
+        statusElement.className = 'report-status-badge ready';
+        statusElement.innerHTML = '<i class="fas fa-check-circle"></i><span>Готов к генерации</span>';
+    }
+}
+
+function updateProgress(reportType, progress, text) {
+    const progressFill = document.getElementById(`${reportType}_progress_bar`);
+    const progressText = document.getElementById(`${reportType}_progress_text`);
+    
+    if (progressFill) {
+        progressFill.style.width = progress + '%';
+    }
+    if (progressText) {
+        progressText.textContent = `${progress}% - ${text}`;
     }
 }
 
@@ -598,25 +991,19 @@ function monitorProgress(reportType, statusElement, progressContainer, progressF
                 const progress = data[reportType];
                 
                 if (progress.progress < 100) {
-                    // Обновляем прогресс
-                    updateProgress(progress.progress, progress.current_step, progressFill, progressText);
-                    
-                    // Продолжаем мониторинг
+                    updateProgress(reportType, progress.progress, progress.current_step);
                     setTimeout(checkProgress, 1000);
                 } else {
-                    // Завершено
-                    statusElement.className = 'badge bg-success';
-                    statusElement.textContent = 'Отчет сгенерирован';
-                    updateProgress(100, 'Завершено', progressFill, progressText);
+                    statusElement.className = 'report-status-badge completed';
+                    statusElement.innerHTML = '<i class="fas fa-check-circle"></i><span>Завершено</span>';
+                    updateProgress(reportType, 100, 'Завершено');
                     
-                    // Скрываем прогресс-бар через 3 секунды
                     setTimeout(() => {
                         progressContainer.style.display = 'none';
-                        statusElement.textContent = 'Готов к генерации';
+                        resetReportStatus(reportType);
                     }, 3000);
                 }
             } else {
-                // Нет данных о прогрессе, продолжаем мониторинг
                 setTimeout(checkProgress, 1000);
             }
         } catch (error) {
@@ -628,53 +1015,20 @@ function monitorProgress(reportType, statusElement, progressContainer, progressF
     checkProgress();
 }
 
-function updateProgress(progress, text, progressFill, progressText) {
-    if (progressFill) {
-        progressFill.style.width = progress + '%';
+// Генерация всех отчетов
+function generateAllReports() {
+    showConfirm('Сгенерировать все отчеты? Это может занять время.', function() {
+        showAlert('Запуск генерации всех отчетов...', 'info');
+    });
+}
+
+// Загрузка истории отчетов
+function loadReportsHistory() {
+    const historySection = document.getElementById('historySection');
+    if (historySection) {
+        historySection.style.display = historySection.style.display === 'none' ? 'block' : 'none';
     }
-    if (progressText) {
-        progressText.textContent = `${progress}% - ${text}`;
-    }
-}
-
-function getStatusElementId(reportType) {
-    const statusMap = {
-        'week_full': 'weekFullStatus',
-        'rr_3': 'rr3Status',
-        'rr_bad': 'rrBadStatus',
-        'skolko_52': 'skolko52Status'
-    };
-    return statusMap[reportType] || 'weekFullStatus';
-}
-
-function getProgressContainerId(reportType) {
-    const containerMap = {
-        'week_full': 'weekFullProgress',
-        'rr_3': 'rr3Progress',
-        'rr_bad': 'rrBadProgress',
-        'skolko_52': 'skolko52Progress'
-    };
-    return containerMap[reportType] || 'weekFullProgress';
-}
-
-function getProgressFillId(reportType) {
-    const fillMap = {
-        'week_full': 'weekFullProgressFill',
-        'rr_3': 'rr3ProgressFill',
-        'rr_bad': 'rrBadProgressFill',
-        'skolko_52': 'skolko52ProgressFill'
-    };
-    return fillMap[reportType] || 'weekFullProgressFill';
-}
-
-function getProgressTextId(reportType) {
-    const textMap = {
-        'week_full': 'weekFullProgressText',
-        'rr_3': 'rr3ProgressText',
-        'rr_bad': 'rrBadProgressText',
-        'skolko_52': 'skolko52ProgressText'
-    };
-    return textMap[reportType] || 'weekFullProgressText';
+    showAlert('История отчетов в разработке', 'info');
 }
 
 // Функции для работы с расписаниями
@@ -696,7 +1050,6 @@ function applyScheduleToUI(s) {
     
     typeSelect.value = s.schedule_type || 'daily';
     
-    // Переключатель включения/выключения
     const enabledCheckbox = document.getElementById(`${prefix}_enabled`);
     if (enabledCheckbox) {
         enabledCheckbox.checked = s.enabled !== false;
@@ -727,7 +1080,6 @@ function applyScheduleToUI(s) {
         if (cron) cron.value = s.cron_expression;
     }
     
-    // Период генерации
     const periodType = document.getElementById(`${prefix}_period_type`);
     if (periodType) {
         periodType.value = s.period_type || 'last_week';
@@ -741,9 +1093,9 @@ function applyScheduleToUI(s) {
     const nextRunEl = document.getElementById(`${prefix}_next_run`);
     if (nextRunEl && s.next_run_at) {
         const nextRun = new Date(s.next_run_at);
-        nextRunEl.textContent = `Следующий запуск: ${nextRun.toLocaleString('ru-RU')}`;
+        nextRunEl.innerHTML = `<i class="fas fa-clock"></i><span>Следующий запуск: ${nextRun.toLocaleString('ru-RU')}</span>`;
     } else if (nextRunEl && !s.enabled) {
-        nextRunEl.textContent = 'Расписание отключено';
+        nextRunEl.innerHTML = '<i class="fas fa-info-circle"></i><span>Расписание отключено</span>';
     }
     
     updateScheduleUIBlocks(prefix);
@@ -774,7 +1126,6 @@ function updateScheduleEnabled(reportType) {
     const prefix = reportType;
     const enabledCheckbox = document.getElementById(`${prefix}_enabled`);
     if (enabledCheckbox) {
-        // Автоматически сохраняем при изменении переключателя
         saveSchedule(reportType);
     }
 }
@@ -809,7 +1160,6 @@ async function saveSchedule(reportType) {
         if (cron) payload.cron_expression = cron.value;
     }
 
-    // Период генерации
     const periodType = document.getElementById(`${prefix}_period_type`)?.value || 'last_week';
     payload.period_type = periodType;
     
@@ -818,7 +1168,7 @@ async function saveSchedule(reportType) {
         if (periodNDays && periodNDays.value) {
             payload.period_n_days = parseInt(periodNDays.value, 10);
         } else {
-            payload.period_n_days = 7; // По умолчанию 7 дней
+            payload.period_n_days = 7;
         }
     } else {
         payload.period_n_days = null;

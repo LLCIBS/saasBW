@@ -2,6 +2,338 @@
 
 {% block title %}Управление промптами - Call Analyzer{% endblock %}
 
+{% block extra_css %}
+<style>
+.prompts-container {
+    display: grid;
+    gap: 1.5rem;
+}
+
+.prompts-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(500px, 1fr));
+    gap: 1.5rem;
+}
+
+.anchor-card {
+    background: var(--bg-primary);
+    border-radius: var(--radius-xl);
+    border: 1px solid var(--border-light);
+    box-shadow: var(--shadow-sm);
+    overflow: hidden;
+    transition: all var(--transition-base);
+}
+
+.anchor-card:hover {
+    box-shadow: var(--shadow-md);
+    transform: translateY(-2px);
+}
+
+.anchor-header {
+    background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%);
+    padding: 1rem 1.25rem;
+    border-left: 4px solid var(--primary-color);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    cursor: pointer;
+    user-select: none;
+}
+
+.anchor-header:hover {
+    background: linear-gradient(135deg, rgba(102, 126, 234, 0.15) 0%, rgba(118, 75, 162, 0.15) 100%);
+}
+
+.anchor-title {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.anchor-title h4 {
+    margin: 0;
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.anchor-title .anchor-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: var(--radius-lg);
+    background: var(--primary-gradient);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-size: 1.2rem;
+}
+
+.anchor-stats {
+    display: flex;
+    gap: 1rem;
+    align-items: center;
+}
+
+.anchor-stat {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.375rem 0.75rem;
+    background: var(--bg-secondary);
+    border-radius: var(--radius-full);
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+}
+
+.anchor-actions {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.anchor-actions .btn {
+    padding: 0.375rem 0.75rem;
+    font-size: 0.875rem;
+}
+
+.anchor-body {
+    padding: 1.25rem;
+    border-top: 1px solid var(--border-light);
+    display: none;
+}
+
+.anchor-body.active {
+    display: block;
+}
+
+.anchor-preview {
+    background: var(--bg-secondary);
+    border-radius: var(--radius-md);
+    padding: 1rem;
+    margin-bottom: 1rem;
+    position: relative;
+}
+
+.anchor-preview-text {
+    font-family: 'Courier New', monospace;
+    font-size: 0.875rem;
+    color: var(--text-primary);
+    line-height: 1.6;
+    max-height: 200px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.anchor-preview-text.truncated {
+    mask-image: linear-gradient(180deg, black 60%, transparent 100%);
+    -webkit-mask-image: linear-gradient(180deg, black 60%, transparent 100%);
+}
+
+.anchor-edit-area {
+    display: none;
+}
+
+.anchor-edit-area.active {
+    display: block;
+}
+
+.stations-section {
+    background: var(--bg-primary);
+    border-radius: var(--radius-xl);
+    padding: 1.5rem;
+    border: 1px solid var(--border-light);
+    box-shadow: var(--shadow-sm);
+}
+
+.stations-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1.5rem;
+    flex-wrap: wrap;
+    gap: 1rem;
+}
+
+.stations-search {
+    flex: 1;
+    max-width: 400px;
+    position: relative;
+}
+
+.stations-search input {
+    padding-left: 2.5rem;
+}
+
+.stations-search i {
+    position: absolute;
+    left: 1rem;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--text-tertiary);
+}
+
+.stations-filter {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.filter-btn {
+    padding: 0.5rem 1rem;
+    border-radius: var(--radius-full);
+    border: 1px solid var(--border-light);
+    background: var(--bg-secondary);
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+    font-weight: 600;
+    transition: all var(--transition-fast);
+    cursor: pointer;
+}
+
+.filter-btn:hover {
+    background: var(--bg-tertiary);
+}
+
+.filter-btn.active {
+    background: var(--primary-gradient);
+    color: white;
+    border-color: transparent;
+}
+
+.stations-grid {
+    display: grid;
+    gap: 1rem;
+    max-height: 600px;
+    overflow-y: auto;
+    padding-right: 0.5rem;
+}
+
+.station-card {
+    background: var(--bg-secondary);
+    border-radius: var(--radius-lg);
+    padding: 1rem 1.25rem;
+    border-left: 3px solid #22c55e;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+    transition: all var(--transition-base);
+}
+
+.station-card:hover {
+    background: var(--bg-tertiary);
+    box-shadow: var(--shadow-sm);
+}
+
+.station-info {
+    flex: 1;
+}
+
+.station-code {
+    font-weight: 700;
+    color: var(--primary-color);
+    font-size: 1rem;
+    margin-bottom: 0.25rem;
+}
+
+.station-status {
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+}
+
+.station-status .anchor-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.25rem 0.625rem;
+    background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%);
+    border-radius: var(--radius-full);
+    font-size: 0.8125rem;
+    color: var(--primary-color);
+    font-weight: 600;
+}
+
+.station-select {
+    width: 250px;
+}
+
+.default-prompt-section {
+    background: var(--bg-primary);
+    border-radius: var(--radius-xl);
+    padding: 1.5rem;
+    border: 1px solid var(--border-light);
+    box-shadow: var(--shadow-sm);
+}
+
+.empty-state {
+    text-align: center;
+    padding: 3rem 2rem;
+    color: var(--text-secondary);
+}
+
+.empty-state i {
+    font-size: 3rem;
+    margin-bottom: 1rem;
+    opacity: 0.5;
+}
+
+/* Scrollbar styling */
+.stations-grid::-webkit-scrollbar,
+.anchor-preview-text::-webkit-scrollbar {
+    width: 6px;
+}
+
+.stations-grid::-webkit-scrollbar-track,
+.anchor-preview-text::-webkit-scrollbar-track {
+    background: var(--bg-secondary);
+    border-radius: 3px;
+}
+
+.stations-grid::-webkit-scrollbar-thumb,
+.anchor-preview-text::-webkit-scrollbar-thumb {
+    background: var(--border-medium);
+    border-radius: 3px;
+}
+
+.stations-grid::-webkit-scrollbar-thumb:hover,
+.anchor-preview-text::-webkit-scrollbar-thumb:hover {
+    background: var(--border-dark);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .prompts-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .anchor-header {
+        flex-wrap: wrap;
+        gap: 1rem;
+    }
+    
+    .stations-header {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    
+    .stations-search {
+        max-width: none;
+    }
+    
+    .station-card {
+        flex-wrap: wrap;
+    }
+    
+    .station-select {
+        width: 100%;
+    }
+}
+</style>
+{% endblock %}
+
 {% block content %}
 <!-- Боковая панель -->
 {% include 'partials/sidebar.html' %}
@@ -9,97 +341,171 @@
 <!-- Основной контент -->
 <main class="col-md-9 col-lg-10 main-content">
     <div class="p-4">
-        <div class="d-flex justify-content-between align-items-center mb-4 gap-3">
+        <!-- Header -->
+        <div class="d-flex justify-content-between align-items-center mb-4 gap-3 flex-wrap">
             <div>
-                <h1 class="h3 mb-0">Управление промптами</h1>
+                <h1 class="h3 mb-1">Управление промптами</h1>
                 <p class="text-muted mb-0">Настройка AI промптов для анализа звонков</p>
             </div>
-            <div>
+            <div class="d-flex gap-2 flex-wrap">
+                <button class="btn btn-outline-primary" onclick="showAnchorModal()">
+                    <i class="fas fa-plus me-2"></i>Новый якорь
+                </button>
                 <button class="btn btn-save" onclick="savePrompts()">
-                    <i class="fas fa-save me-2"></i>Сохранить промпты
+                    <i class="fas fa-save me-2"></i>Сохранить все
                 </button>
             </div>
         </div>
 
-        <!-- Якоря промптов -->
-        <div class="config-section">
-            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
-                <h3 class="config-title mb-0 flex-grow-1">
-                    <i class="fas fa-anchor me-2"></i>Шаблоны промптов (якоря)
-                </h3>
-                <button class="btn btn-outline-primary btn-sm" data-bs-toggle="modal" data-bs-target="#anchorModal" onclick="resetAnchorModal()">
-                    <i class="fas fa-plus me-1"></i>Добавить якорь
-                </button>
-            </div>
-            <div id="anchorsContainer">
-                <div class="text-center py-5">
-                    <div class="spinner-border text-primary" role="status" style="width: 3rem; height: 3rem;">
-                        <span class="visually-hidden">Загрузка промптов...</span>
-                    </div>
-                </div>
+        <!-- Info Alert -->
+        <div class="alert alert-info d-flex align-items-start gap-3 mb-4">
+            <i class="fas fa-info-circle mt-1"></i>
+            <div>
+                <strong>Совет</strong>
+                <p class="mb-0">Создавайте якоря (шаблоны) промптов и связывайте их со станциями для быстрой настройки. Изменения в якоре автоматически применяются ко всем связанным станциям.</p>
             </div>
         </div>
 
-        <!-- Промпты для станций -->
-        <div class="config-section">
-            <h3 class="config-title">
-                <i class="fas fa-comments me-2"></i>Промпты для анализа звонков по станциям
-            </h3>
-            <div id="stationPromptsContainer">
-                <div class="text-center py-5">
-                    <div class="spinner-border text-primary" role="status" style="width: 3rem; height: 3rem;">
-                        <span class="visually-hidden">Загрузка промптов...</span>
+        <div class="prompts-container">
+            <!-- Якоря промптов -->
+            <div>
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h2 class="h4 mb-0">
+                        <i class="fas fa-anchor me-2 text-primary"></i>Шаблоны промптов
+                    </h2>
+                    <span class="badge bg-primary" id="anchorsCount">0</span>
+                </div>
+                <div id="anchorsContainer" class="prompts-grid">
+                    <div class="text-center py-5 col-12">
+                        <div class="spinner-border text-primary mb-3" role="status" style="width: 3rem; height: 3rem;">
+                            <span class="visually-hidden">Загрузка...</span>
+                        </div>
+                        <p class="text-muted">Загрузка шаблонов...</p>
                     </div>
                 </div>
             </div>
-        </div>
 
-        <!-- Промпт по умолчанию -->
-        <div class="config-section">
-            <h3 class="config-title">
-                <i class="fas fa-cog me-2"></i>Промпт по умолчанию
-            </h3>
-            <div class="mb-3">
-                <label class="form-label">Промпт для станций без специального промпта</label>
-                <textarea class="form-control prompt-textarea" id="defaultPrompt" 
-                          placeholder="Введите промпт по умолчанию..." style="min-height: 150px; font-family: 'Courier New', monospace; font-size: 0.9rem;"></textarea>
+            <!-- Станции -->
+            <div class="stations-section">
+                <div class="stations-header">
+                    <h2 class="h4 mb-0">
+                        <i class="fas fa-building me-2 text-success"></i>Станции
+                    </h2>
+                    <div class="stations-search">
+                        <i class="fas fa-search"></i>
+                        <input type="text" class="form-control" id="stationsSearch" placeholder="Поиск станции..." oninput="filterStations()">
+                    </div>
+                    <div class="stations-filter">
+                        <button class="filter-btn active" data-filter="all" onclick="setFilter('all')">Все</button>
+                        <button class="filter-btn" data-filter="anchor" onclick="setFilter('anchor')">С якорями</button>
+                        <button class="filter-btn" data-filter="custom" onclick="setFilter('custom')">Кастомные</button>
+                    </div>
+                </div>
+                <div id="stationsContainer" class="stations-grid">
+                    <div class="text-center py-5">
+                        <div class="spinner-border text-primary mb-3" role="status" style="width: 3rem; height: 3rem;">
+                            <span class="visually-hidden">Загрузка...</span>
+                        </div>
+                        <p class="text-muted">Загрузка станций...</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Промпт по умолчанию -->
+            <div class="default-prompt-section">
+                <h2 class="h4 mb-3">
+                    <i class="fas fa-cog me-2 text-warning"></i>Промпт по умолчанию
+                </h2>
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Используется для станций без специального промпта</label>
+                    <textarea class="form-control prompt-textarea" id="defaultPrompt" 
+                              placeholder="Введите промпт по умолчанию..." 
+                              style="min-height: 120px; font-family: 'Courier New', monospace; font-size: 0.9rem;"></textarea>
+                </div>
+                <small class="text-muted">
+                    <i class="fas fa-lightbulb me-1"></i>
+                    Этот промпт будет использоваться автоматически для всех станций, которым не назначен специальный промпт или якорь.
+                </small>
             </div>
         </div>
     </div>
 </main>
 
-<!-- Модалка для добавления якоря -->
-<div class="modal fade" id="anchorModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-lg modal-dialog-centered">
+<!-- Модалка для добавления/редактирования якоря -->
+<div class="modal fade" id="anchorModal" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
         <div class="modal-content">
-            <form id="anchorForm" onsubmit="createAnchor(event)">
-                <div class="modal-header">
-                    <h5 class="modal-title"><i class="fas fa-anchor me-2"></i>Новый якорь промпта</h5>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-                </div>
-                <div class="modal-body">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="fas fa-anchor me-2"></i><span id="anchorModalTitle">Новый якорь</span>
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="anchorForm">
+                    <input type="hidden" id="editingAnchorName">
+                    
                     <div class="mb-3">
-                        <label for="newAnchorName" class="form-label">Название якоря</label>
-                        <input type="text" class="form-control" id="newAnchorName" placeholder="Например, Общий скрипт" required>
+                        <label for="newAnchorName" class="form-label fw-bold">Название якоря *</label>
+                        <input type="text" class="form-control" id="newAnchorName" placeholder="Например: Общий скрипт, Первичные обращения..." required>
                     </div>
+                    
                     <div class="mb-3">
-                        <label for="newAnchorPrompt" class="form-label">Текст промпта (или описание задачи для генерации)</label>
-                        <textarea class="form-control prompt-textarea" id="newAnchorPrompt" placeholder="Введите текст промпта или опишите задачу (например: Хочу искать звонки с первичными обращениями клиента...)" required style="min-height: 200px; font-family: 'Courier New', monospace; font-size: 0.9rem;"></textarea>
-                        <div class="mt-2">
-                            <button type="button" class="btn btn-outline-primary btn-sm" onclick="generateAnchorPrompt()">
-                                <i class="fas fa-magic me-2"></i>Сгенерировать промпт из описания
-                            </button>
-                        </div>
+                        <label for="newAnchorPrompt" class="form-label fw-bold">Текст промпта *</label>
+                        <textarea class="form-control prompt-textarea" id="newAnchorPrompt" 
+                                  placeholder="Введите текст промпта..." 
+                                  required 
+                                  style="min-height: 250px; font-family: 'Courier New', monospace; font-size: 0.9rem;"></textarea>
                     </div>
-                    <div class="text-muted small">
-                        Якорь можно будет выбрать для любой станции или использовать как шаблон для кастомного текста.
+                    
+                    <!-- Секция генерации для нового якоря -->
+                    <div class="mb-3" id="newAnchorAISection">
+                        <label class="form-label fw-bold">
+                            <i class="fas fa-magic me-2"></i>Сгенерировать промпт с помощью AI
+                        </label>
+                        <textarea class="form-control" id="anchorIntent" 
+                                  placeholder="Опишите, что должен делать промпт (например: Проверять вежливость оператора и выявлять первичные обращения клиентов)..." 
+                                  style="min-height: 80px; font-size: 0.9rem;"></textarea>
+                        <button type="button" class="btn btn-outline-primary mt-2 w-100" onclick="generateAnchorPrompt()">
+                            <i class="fas fa-magic me-2"></i>Сгенерировать промпт из описания
+                        </button>
+                        <small class="text-muted d-block mt-2">
+                            <i class="fas fa-lightbulb me-1"></i>
+                            Опишите задачу, и AI создаст промпт с нуля
+                        </small>
                     </div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
-                    <button type="submit" class="btn btn-primary">Создать</button>
-                </div>
-            </form>
+                    
+                    <!-- Секция доработки для редактирования -->
+                    <div class="mb-3" id="editAnchorAISection" style="display: none;">
+                        <label class="form-label fw-bold">
+                            <i class="fas fa-wand-magic-sparkles me-2"></i>Доработать промпт через AI
+                        </label>
+                        <textarea class="form-control" id="anchorAdditionalCondition" 
+                                  placeholder="Введите дополнительное условие или требование (например: добавить проверку на вежливость, уточнить про скрипт продаж...)" 
+                                  style="min-height: 80px; font-size: 0.9rem;"></textarea>
+                        <button type="button" class="btn btn-outline-warning mt-2 w-100" onclick="regenerateAnchorFromModal()">
+                            <i class="fas fa-sync-alt me-2"></i>Доработать текущий промпт
+                        </button>
+                        <small class="text-muted d-block mt-2">
+                            <i class="fas fa-lightbulb me-1"></i>
+                            Текущий промпт будет улучшен с учётом вашего условия
+                        </small>
+                    </div>
+                    
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle me-2"></i>
+                        Якорь можно будет выбрать для любой станции. Изменения в якоре автоматически применятся ко всем связанным станциям.
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                    <i class="fas fa-times me-2"></i>Отмена
+                </button>
+                <button type="button" class="btn btn-primary" onclick="saveAnchorFromModal()">
+                    <i class="fas fa-save me-2"></i>Сохранить якорь
+                </button>
+            </div>
         </div>
     </div>
 </div>
@@ -108,7 +514,7 @@
 {% block extra_js %}
 <script>
 let promptsData = { anchors: {}, stations: {}, "default": '' };
-let scriptPromptData = { checklist: [], prompt: '' };
+let currentFilter = 'all';
 
 function ensurePromptsStructure() {
     if (!promptsData || typeof promptsData !== 'object') {
@@ -144,6 +550,12 @@ function decodeKey(value) {
     }
 }
 
+function truncateText(text, maxLength = 150) {
+    if (!text) return '';
+    if (text.length <= maxLength) return text;
+    return text.substring(0, maxLength) + '...';
+}
+
 // Загрузка промптов при старте
 document.addEventListener('DOMContentLoaded', function() {
     loadPrompts();
@@ -171,6 +583,7 @@ async function loadPrompts() {
 
 function renderPrompts() {
     ensurePromptsStructure();
+    
     // Заполняем промпт по умолчанию
     document.getElementById('defaultPrompt').value = promptsData.default || '';
     
@@ -184,62 +597,101 @@ function renderPrompts() {
 function renderAnchors() {
     ensurePromptsStructure();
     const container = document.getElementById('anchorsContainer');
-    if (!container) {
-        return;
-    }
+    const countEl = document.getElementById('anchorsCount');
+    
+    if (!container) return;
+    
     const anchors = promptsData.anchors || {};
     const anchorNames = Object.keys(anchors);
+    
+    if (countEl) {
+        countEl.textContent = anchorNames.length;
+    }
 
     if (anchorNames.length === 0) {
-        container.innerHTML = '<div class="text-center text-muted py-3">Якоря пока не созданы</div>';
+        container.innerHTML = `
+            <div class="empty-state col-12">
+                <i class="fas fa-anchor"></i>
+                <h4>Нет шаблонов</h4>
+                <p class="text-muted">Создайте первый якорь (шаблон) промпта</p>
+                <button class="btn btn-primary mt-3" onclick="showAnchorModal()">
+                    <i class="fas fa-plus me-2"></i>Создать якорь
+                </button>
+            </div>
+        `;
         return;
     }
 
     const anchorsHtml = anchorNames.map(anchorName => {
         const encodedName = encodeURIComponent(anchorName);
         const anchorPrompt = anchors[anchorName] || '';
+        
+        // Подсчет связанных станций
+        const linkedStations = Object.keys(promptsData.stations || {}).filter(code => {
+            return promptsData.stations[code] === anchorPrompt;
+        }).length;
+        
         return `
-            <div class="anchor-section" data-anchor="${encodedName}" style="background: #f8f9fa; border-radius: 10px; padding: 20px; margin-bottom: 20px; border-left: 4px solid #667eea;">
-                <div class="d-flex flex-column flex-md-row gap-3 mb-3">
-                    <div class="flex-grow-1">
-                        <label class="form-label text-muted small mb-1">Название якоря</label>
-                        <input type="text"
-                               class="form-control"
-                               value="${escapeHtml(anchorName)}"
-                               onchange="renameAnchor('${encodedName}', this.value.trim())"
-                               placeholder="Название якоря">
+            <div class="anchor-card" data-anchor="${encodedName}">
+                <div class="anchor-header" onclick="toggleAnchorBody('${encodedName}')">
+                    <div class="anchor-title">
+                        <div class="anchor-icon">
+                            <i class="fas fa-anchor"></i>
+                        </div>
+                        <h4>${escapeHtml(anchorName)}</h4>
                     </div>
-                    <div class="text-end">
-                        <label class="form-label text-muted small mb-1 d-block">Действие</label>
-                        <button type="button" class="btn btn-outline-danger btn-sm"
-                                onclick="removeAnchor('${encodedName}')">
+                    <div class="anchor-stats">
+                        <div class="anchor-stat">
+                            <i class="fas fa-building"></i>
+                            <span>${linkedStations} станц.</span>
+                        </div>
+                        <div class="anchor-stat">
+                            <i class="fas fa-text-width"></i>
+                            <span>${anchorPrompt.length} сим.</span>
+                        </div>
+                    </div>
+                    <div class="anchor-actions" onclick="event.stopPropagation()">
+                        <button class="btn btn-outline-primary btn-sm" onclick="editAnchor('${encodedName}')" title="Редактировать">
+                            <i class="fas fa-edit"></i>
+                        </button>
+                        <button class="btn btn-outline-success btn-sm" onclick="copyAnchor('${encodedName}')" title="Копировать">
+                            <i class="fas fa-copy"></i>
+                        </button>
+                        <button class="btn btn-outline-danger btn-sm" onclick="deleteAnchor('${encodedName}')" title="Удалить">
                             <i class="fas fa-trash"></i>
                         </button>
                     </div>
                 </div>
-                <label class="form-label text-muted small mb-1">Текст промпта</label>
-                <textarea class="form-control prompt-textarea"
-                          id="anchor-prompt-${encodedName}"
-                          oninput="updateAnchorPrompt('${encodedName}', this.value)"
-                          placeholder="Введите промпт для якоря..." style="min-height: 200px; font-family: 'Courier New', monospace; font-size: 0.9rem;">${escapeHtml(anchorPrompt)}</textarea>
-                <div class="mt-3">
-                    <label class="form-label text-muted small mb-1">
-                        <i class="fas fa-magic me-1"></i>Доработать промпт через AI
-                    </label>
-                    <div class="input-group">
-                        <input type="text"
-                               class="form-control"
-                               id="additional-condition-${encodedName}"
-                               placeholder="Введите дополнительное условие или требование (например: добавить проверку на вежливость)..."
-                               onkeypress="if(event.key === 'Enter') { event.preventDefault(); regenerateAnchorPrompt('${encodedName}'); }">
-                        <button type="button"
-                                class="btn btn-outline-primary"
-                                onclick="regenerateAnchorPrompt('${encodedName}')"
-                                id="regenerate-btn-${encodedName}">
-                            <i class="fas fa-sync-alt me-1"></i>Перегенерировать
-                        </button>
+                <div class="anchor-body" id="anchor-body-${encodedName}">
+                    <div class="anchor-preview" id="anchor-preview-${encodedName}">
+                        <div class="anchor-preview-text ${anchorPrompt.length > 200 ? 'truncated' : ''}">${escapeHtml(anchorPrompt)}</div>
+                        ${anchorPrompt.length > 200 ? `
+                            <button class="btn btn-outline-primary btn-sm mt-2" onclick="showFullAnchor('${encodedName}')">
+                                <i class="fas fa-expand-alt me-1"></i>Показать полностью
+                            </button>
+                        ` : ''}
+                        <div class="mt-3">
+                            <button class="btn btn-outline-primary btn-sm" onclick="enableAnchorEdit('${encodedName}')">
+                                <i class="fas fa-edit me-1"></i>Быстрая правка
+                            </button>
+                        </div>
                     </div>
-                    <small class="text-muted">Введите новое условие и нажмите "Перегенерировать" для доработки промпта через AI</small>
+                    <div class="anchor-edit-area" id="anchor-edit-${encodedName}">
+                        <textarea class="form-control prompt-textarea"
+                                  id="anchor-textarea-${encodedName}"
+                                  style="min-height: 200px; font-family: 'Courier New', monospace; font-size: 0.9rem;">${escapeHtml(anchorPrompt)}</textarea>
+                        <div class="mt-2 d-flex gap-2">
+                            <button class="btn btn-primary btn-sm" onclick="quickSaveAnchor('${encodedName}')">
+                                <i class="fas fa-save me-1"></i>Сохранить
+                            </button>
+                            <button class="btn btn-secondary btn-sm" onclick="cancelAnchorEdit('${encodedName}')">
+                                <i class="fas fa-times me-1"></i>Отмена
+                            </button>
+                            <button class="btn btn-outline-warning btn-sm ms-auto" onclick="regenerateAnchorFromEdit('${encodedName}')">
+                                <i class="fas fa-magic me-1"></i>Доработать через AI
+                            </button>
+                        </div>
+                    </div>
                 </div>
             </div>
         `;
@@ -248,233 +700,102 @@ function renderAnchors() {
     container.innerHTML = anchorsHtml;
 }
 
-function resetAnchorModal() {
-    const form = document.getElementById('anchorForm');
-    if (form) {
-        form.reset();
+function toggleAnchorBody(encodedName) {
+    const body = document.getElementById(`anchor-body-${encodedName}`);
+    if (body) {
+        body.classList.toggle('active');
     }
 }
 
-async function generateAnchorPrompt() {
-    const promptInput = document.getElementById('newAnchorPrompt');
-    const intent = (promptInput?.value || '').trim();
-
-    if (!intent) {
-        showAlert('Введите описание задачи в поле промпта', 'warning');
-        return;
-    }
-
-    const button = event.target.closest('button');
-    const originalContent = button.innerHTML;
-    button.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Генерация...';
-    button.disabled = true;
-
-    try {
-        const response = await fetch('/api/generate-anchor-prompt', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                intent: intent
-            })
-        });
-
-        const result = await response.json();
-
-        if (result.success) {
-            promptInput.value = result.prompt;
-            showAlert('Промпт успешно сгенерирован!', 'success');
-        } else {
-            showAlert('Ошибка генерации: ' + (result.message || 'Неизвестная ошибка'), 'danger');
+function showFullAnchor(encodedName) {
+    const preview = document.getElementById(`anchor-preview-${encodedName}`);
+    if (preview) {
+        const textEl = preview.querySelector('.anchor-preview-text');
+        if (textEl) {
+            textEl.classList.remove('truncated');
+            const btn = preview.querySelector('button');
+            if (btn) btn.remove();
         }
-    } catch (error) {
-        console.error('Ошибка:', error);
-        showAlert('Ошибка соединения: ' + error.message, 'danger');
-    } finally {
-        button.innerHTML = originalContent;
-        button.disabled = false;
     }
 }
 
-function createAnchor(event) {
-    event.preventDefault();
-    ensurePromptsStructure();
-    const form = event.target;
-    const nameInput = document.getElementById('newAnchorName');
-    const promptInput = document.getElementById('newAnchorPrompt');
-    const name = (nameInput?.value || '').trim();
-    const prompt = promptInput?.value || '';
-
-    if (!name) {
-        showAlert('Введите название якоря', 'warning');
-        return;
+function enableAnchorEdit(encodedName) {
+    const preview = document.getElementById(`anchor-preview-${encodedName}`);
+    const edit = document.getElementById(`anchor-edit-${encodedName}`);
+    
+    if (preview && edit) {
+        preview.style.display = 'none';
+        edit.classList.add('active');
     }
-    if (promptsData.anchors[name]) {
-        showAlert('Якорь с таким названием уже существует', 'warning');
-        return;
-    }
-
-    promptsData.anchors[name] = prompt;
-
-    const modalElement = document.getElementById('anchorModal');
-    const modal = modalElement ? bootstrap.Modal.getInstance(modalElement) : null;
-    if (modal) {
-        modal.hide();
-    }
-    if (form) {
-        form.reset();
-    }
-
-    renderAnchors();
-    renderStations();
-    showAlert('Якорь добавлен', 'success');
 }
 
-function renameAnchor(encodedOldName, newName) {
-    const oldName = decodeKey(encodedOldName);
-    ensurePromptsStructure();
-    if (!oldName) {
-        return;
+function cancelAnchorEdit(encodedName) {
+    const preview = document.getElementById(`anchor-preview-${encodedName}`);
+    const edit = document.getElementById(`anchor-edit-${encodedName}`);
+    const textarea = document.getElementById(`anchor-textarea-${encodedName}`);
+    
+    if (preview && edit && textarea) {
+        edit.classList.remove('active');
+        preview.style.display = 'block';
+        // Сбросить значение
+        textarea.value = promptsData.anchors[decodeKey(encodedName)] || '';
     }
-    const cleaned = (newName || '').trim();
-    if (!cleaned) {
-        renderAnchors();
-        return;
-    }
-    if (cleaned === oldName) {
-        return;
-    }
-    if (promptsData.anchors[cleaned]) {
-        showAlert('Якорь с таким названием уже существует', 'warning');
-        renderAnchors();
-        return;
-    }
-    const value = promptsData.anchors[oldName] || '';
-    delete promptsData.anchors[oldName];
-    promptsData.anchors[cleaned] = value;
-    renderAnchors();
-    renderStations();
 }
 
-function updateAnchorPrompt(encodedName, value) {
+function quickSaveAnchor(encodedName) {
+    const textarea = document.getElementById(`anchor-textarea-${encodedName}`);
+    if (!textarea) return;
+    
     const name = decodeKey(encodedName);
-    ensurePromptsStructure();
-    if (!name) {
-        return;
-    }
-    const previousValue = promptsData.anchors[name] || '';
-    promptsData.anchors[name] = value;
-
-    if (previousValue === value) {
-        return;
-    }
-
-    Object.keys(promptsData.stations || {}).forEach(code => {
-        if (promptsData.stations[code] === previousValue) {
-            promptsData.stations[code] = value;
+    const newValue = textarea.value;
+    
+    updateAnchorPrompt(encodedName, newValue);
+    
+    const preview = document.getElementById(`anchor-preview-${encodedName}`);
+    const edit = document.getElementById(`anchor-edit-${encodedName}`);
+    
+    if (preview && edit) {
+        edit.classList.remove('active');
+        preview.style.display = 'block';
+        
+        // Обновить preview
+        const textEl = preview.querySelector('.anchor-preview-text');
+        if (textEl) {
+            textEl.textContent = newValue;
+            textEl.classList.add('truncated');
         }
-    });
-
-    renderStations();
-}
-
-async function regenerateAnchorPrompt(encodedName) {
-    const name = decodeKey(encodedName);
-    if (!name) {
-        return;
-    }
-
-    const conditionInput = document.getElementById(`additional-condition-${encodedName}`);
-    const regenerateBtn = document.getElementById(`regenerate-btn-${encodedName}`);
-    const promptTextarea = document.getElementById(`anchor-prompt-${encodedName}`);
-
-    if (!conditionInput || !regenerateBtn || !promptTextarea) {
-        showAlert('Ошибка: не найдены элементы интерфейса', 'danger');
-        return;
-    }
-
-    const additionalCondition = (conditionInput.value || '').trim();
-    if (!additionalCondition) {
-        showAlert('Введите дополнительное условие или требование', 'warning');
-        conditionInput.focus();
-        return;
-    }
-
-    const currentPrompt = (promptTextarea.value || '').trim();
-    if (!currentPrompt) {
-        showAlert('Текущий промпт не может быть пустым', 'warning');
-        return;
-    }
-
-    const originalContent = regenerateBtn.innerHTML;
-    regenerateBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Генерация...';
-    regenerateBtn.disabled = true;
-
-    try {
-        const response = await fetch('/api/regenerate-anchor-prompt', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                current_prompt: currentPrompt,
-                additional_condition: additionalCondition
-            })
-        });
-
-        if (!response.ok) {
-            const errorText = await response.text();
-            console.error('Ошибка сервера:', response.status, errorText);
-            showAlert(`Ошибка сервера (${response.status})`, 'danger');
-            return;
+        
+        // Добавить кнопку "Показать полностью" если текст длинный
+        if (newValue.length > 200) {
+            if (!preview.querySelector('button')) {
+                const btn = document.createElement('button');
+                btn.className = 'btn btn-outline-primary btn-sm mt-2';
+                btn.innerHTML = '<i class="fas fa-expand-alt me-1"></i>Показать полностью';
+                btn.onclick = () => showFullAnchor(encodedName);
+                preview.appendChild(btn);
+            }
         }
-
-        const result = await response.json();
-
-        if (result.success && result.prompt) {
-            promptTextarea.value = result.prompt;
-            updateAnchorPrompt(encodedName, result.prompt);
-            conditionInput.value = '';
-            showAlert('Промпт успешно доработан через AI', 'success');
-        } else {
-            showAlert(result.message || 'Ошибка при перегенерации промпта', 'danger');
-        }
-    } catch (error) {
-        console.error('Ошибка при перегенерации промпта:', error);
-        showAlert('Ошибка соединения при перегенерации промпта: ' + error.message, 'danger');
-    } finally {
-        regenerateBtn.innerHTML = originalContent;
-        regenerateBtn.disabled = false;
     }
-}
-
-function removeAnchor(encodedName) {
-    const name = decodeKey(encodedName);
-    ensurePromptsStructure();
-    if (!name || !promptsData.anchors[name]) {
-        return;
-    }
-    if (!confirm(`Удалить якорь "${name}"? Тексты станций останутся без изменений.`)) {
-        return;
-    }
-    delete promptsData.anchors[name];
-    renderAnchors();
-    renderStations();
+    
+    showAlert('Якорь обновлен', 'success');
 }
 
 function renderStations() {
     ensurePromptsStructure();
-    const container = document.getElementById('stationPromptsContainer');
-    if (!container) {
-        return;
-    }
+    const container = document.getElementById('stationsContainer');
+    if (!container) return;
 
     const stations = promptsData.stations || {};
     const stationCodes = Object.keys(stations);
 
     if (stationCodes.length === 0) {
-        container.innerHTML = '<div class="text-center text-muted">Станции пока не настроены</div>';
+        container.innerHTML = `
+            <div class="empty-state">
+                <i class="fas fa-building"></i>
+                <h4>Нет станций</h4>
+                <p class="text-muted">Станции появятся здесь после добавления в систему</p>
+            </div>
+        `;
         return;
     }
 
@@ -482,7 +803,34 @@ function renderStations() {
     const anchorNames = Object.keys(anchors);
     stationCodes.sort();
 
-    const promptsHtml = stationCodes.map(stationCode => {
+    const searchTerm = (document.getElementById('stationsSearch')?.value || '').toLowerCase();
+
+    const filteredStations = stationCodes.filter(code => {
+        const matchesSearch = code.toLowerCase().includes(searchTerm);
+        
+        if (currentFilter === 'all') return matchesSearch;
+        
+        const currentPrompt = stations[code] || '';
+        const hasAnchor = anchorNames.some(name => anchors[name] === currentPrompt);
+        
+        if (currentFilter === 'anchor') return matchesSearch && hasAnchor;
+        if (currentFilter === 'custom') return matchesSearch && !hasAnchor;
+        
+        return matchesSearch;
+    });
+
+    if (filteredStations.length === 0) {
+        container.innerHTML = `
+            <div class="empty-state">
+                <i class="fas fa-search"></i>
+                <h4>Ничего не найдено</h4>
+                <p class="text-muted">Попробуйте изменить параметры поиска или фильтр</p>
+            </div>
+        `;
+        return;
+    }
+
+    const stationsHtml = filteredStations.map(stationCode => {
         const currentPrompt = stations[stationCode] || '';
         let usedAnchor = null;
         for (const name of anchorNames) {
@@ -492,57 +840,60 @@ function renderStations() {
             }
         }
         const isCustomPrompt = !usedAnchor;
-        const safeStationCode = escapeHtml(stationCode);
-        const previewSource = usedAnchor ? (anchors[usedAnchor] || '') : currentPrompt;
-        const previewText = previewSource
-            ? escapeHtml(previewSource.length > 220 ? `${previewSource.slice(0, 220)}…` : previewSource)
-            : '—';
 
         const anchorOptions = anchorNames.map(name => `
             <option value="${escapeHtml(name)}" ${usedAnchor === name ? 'selected' : ''}>${escapeHtml(name)}</option>
         `).join('');
 
         return `
-            <div class="station-item" style="background: #f8f9fa; border-radius: 8px; padding: 15px; margin-bottom: 10px; border-left: 3px solid #28a745;">
-                <div class="row align-items-center">
-                    <div class="col-md-8">
-                        <h6 class="station-code mb-2" style="font-weight: bold; color: #667eea;">
-                            <i class="fas fa-building me-2"></i>Станция ${safeStationCode}
-                        </h6>
-                        <div class="station-comment" style="color: #6c757d; font-style: italic;">
-                            ${usedAnchor ? `Используется якорь: ${escapeHtml(usedAnchor)}` : 'Пользовательский текст'}
-                        </div>
+            <div class="station-card" data-station="${escapeHtml(stationCode)}">
+                <div class="station-info">
+                    <div class="station-code">
+                        <i class="fas fa-building me-2"></i>${escapeHtml(stationCode)}
                     </div>
-                    <div class="col-md-4">
-                        <label class="form-label text-muted small mb-1">Связанный якорь</label>
-                        <select class="form-select"
-                                data-station-select="true"
-                                data-station-code="${safeStationCode}"
-                                onchange="updateStationPrompt(this)">
-                            <option value="">Выберите якорь</option>
-                            ${anchorOptions}
-                            <option value="custom" ${isCustomPrompt ? 'selected' : ''}>Свой текст</option>
-                        </select>
+                    <div class="station-status">
+                        ${usedAnchor ? `
+                            <span class="anchor-badge">
+                                <i class="fas fa-anchor"></i>
+                                ${escapeHtml(usedAnchor)}
+                            </span>
+                        ` : `
+                            <span class="text-muted">
+                                <i class="fas fa-edit me-1"></i>Кастомный текст
+                            </span>
+                        `}
                     </div>
                 </div>
-                ${isCustomPrompt ? `
-                    <div class="mt-3">
-                        <textarea class="form-control prompt-textarea"
-                                  data-station-text="true"
-                                  data-station-code="${safeStationCode}"
-                                  placeholder="Введите промпт для станции ${safeStationCode}..."
-                                  oninput="handleStationPromptInput(this)" style="min-height: 150px; font-family: 'Courier New', monospace; font-size: 0.9rem;">${escapeHtml(currentPrompt)}</textarea>
-                    </div>
-                ` : `
-                    <div class="text-muted small mt-2">
-                        <strong>Фрагмент текста:</strong> ${previewText}
-                    </div>
-                `}
+                <div class="station-select">
+                    <select class="form-select form-select-sm"
+                            data-station-select="true"
+                            data-station-code="${escapeHtml(stationCode)}"
+                            onchange="updateStationPrompt(this)">
+                        <option value="">Промпт по умолчанию</option>
+                        ${anchorOptions}
+                        <option value="custom" ${isCustomPrompt ? 'selected' : ''}>Свой текст</option>
+                    </select>
+                </div>
             </div>
         `;
     }).join('');
 
-    container.innerHTML = promptsHtml;
+    container.innerHTML = stationsHtml;
+}
+
+function filterStations() {
+    renderStations();
+}
+
+function setFilter(filter) {
+    currentFilter = filter;
+    
+    // Обновить активный класс кнопок
+    document.querySelectorAll('.filter-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.filter === filter);
+    });
+    
+    renderStations();
 }
 
 function updateStationPrompt(selectEl) {
@@ -564,29 +915,287 @@ function updateStationPrompt(selectEl) {
     renderStations();
 }
 
-function handleStationPromptInput(textareaEl) {
-    if (!textareaEl) return;
-    const stationCode = textareaEl.dataset.stationCode;
-    if (!stationCode) return;
+// Модальные функции
+function showAnchorModal() {
+    document.getElementById('anchorModalTitle').textContent = 'Новый якорь';
+    document.getElementById('editingAnchorName').value = '';
+    document.getElementById('anchorForm').reset();
+    
+    // Показать секцию генерации, скрыть секцию доработки
+    document.getElementById('newAnchorAISection').style.display = 'block';
+    document.getElementById('editAnchorAISection').style.display = 'none';
+    
+    const modal = new bootstrap.Modal(document.getElementById('anchorModal'));
+    modal.show();
+}
+
+function editAnchor(encodedName) {
+    const name = decodeKey(encodedName);
+    const prompt = promptsData.anchors[name] || '';
+    
+    document.getElementById('anchorModalTitle').textContent = 'Редактировать якорь';
+    document.getElementById('editingAnchorName').value = encodedName;
+    document.getElementById('newAnchorName').value = name;
+    document.getElementById('newAnchorPrompt').value = prompt;
+    document.getElementById('anchorIntent').value = '';
+    document.getElementById('anchorAdditionalCondition').value = '';
+    
+    // Скрыть секцию генерации, показать секцию доработки
+    document.getElementById('newAnchorAISection').style.display = 'none';
+    document.getElementById('editAnchorAISection').style.display = 'block';
+    
+    const modal = new bootstrap.Modal(document.getElementById('anchorModal'));
+    modal.show();
+}
+
+function saveAnchorFromModal() {
+    const editingName = document.getElementById('editingAnchorName').value;
+    const nameInput = document.getElementById('newAnchorName');
+    const promptInput = document.getElementById('newAnchorPrompt');
+    
+    const name = (nameInput?.value || '').trim();
+    const prompt = promptInput?.value || '';
+    
+    if (!name) {
+        showAlert('Введите название якоря', 'warning');
+        return;
+    }
+    
+    if (!prompt) {
+        showAlert('Введите текст промпта', 'warning');
+        return;
+    }
+    
+    // Если редактируем и имя изменилось
+    if (editingName) {
+        const oldName = decodeKey(editingName);
+        if (name !== oldName) {
+            if (promptsData.anchors[name]) {
+                showAlert('Якорь с таким названием уже существует', 'warning');
+                return;
+            }
+            delete promptsData.anchors[oldName];
+            
+            // Обновить станции, которые использовали старое имя
+            Object.keys(promptsData.stations || {}).forEach(code => {
+                if (promptsData.stations[code] === promptsData.anchors[oldName]) {
+                    promptsData.stations[code] = prompt;
+                }
+            });
+        }
+    } else {
+        if (promptsData.anchors[name]) {
+            showAlert('Якорь с таким названием уже существует', 'warning');
+            return;
+        }
+    }
+    
+    promptsData.anchors[name] = prompt;
+    
+    // Закрыть модалку
+    const modalEl = document.getElementById('anchorModal');
+    const modal = bootstrap.Modal.getInstance(modalEl);
+    if (modal) modal.hide();
+    
+    renderAnchors();
+    renderStations();
+    showAlert('Якорь сохранен', 'success');
+}
+
+function copyAnchor(encodedName) {
+    const name = decodeKey(encodedName);
+    const prompt = promptsData.anchors[name] || '';
+    
+    const newName = `${name} (копия)`;
+    let counter = 1;
+    while (promptsData.anchors[newName]) {
+        counter++;
+        const newName2 = `${name} (копия ${counter})`;
+        if (!promptsData.anchors[newName2]) {
+            break;
+        }
+    }
+    
+    promptsData.anchors[newName] = prompt;
+    
+    renderAnchors();
+    showAlert('Якорь скопирован', 'success');
+}
+
+function deleteAnchor(encodedName) {
+    const name = decodeKey(encodedName);
+    if (!confirm(`Удалить якорь "${name}"? Тексты станций останутся без изменений.`)) {
+        return;
+    }
+    
+    delete promptsData.anchors[name];
+    
+    renderAnchors();
+    renderStations();
+    showAlert('Якорь удален', 'success');
+}
+
+function updateAnchorPrompt(encodedName, value) {
+    const name = decodeKey(encodedName);
     ensurePromptsStructure();
-    promptsData.stations[stationCode] = textareaEl.value;
+    if (!name) return;
+    
+    const previousValue = promptsData.anchors[name] || '';
+    promptsData.anchors[name] = value;
+
+    if (previousValue === value) return;
+
+    Object.keys(promptsData.stations || {}).forEach(code => {
+        if (promptsData.stations[code] === previousValue) {
+            promptsData.stations[code] = value;
+        }
+    });
+
+    renderStations();
+}
+
+async function regenerateAnchorFromEdit(encodedName) {
+    const textarea = document.getElementById(`anchor-textarea-${encodedName}`);
+    if (!textarea) return;
+    
+    const currentPrompt = textarea.value.trim();
+    if (!currentPrompt) {
+        showAlert('Промпт не может быть пустым', 'warning');
+        return;
+    }
+    
+    const condition = prompt('Введите дополнительное условие для доработки промпта (например: добавить проверку на вежливость):');
+    if (!condition) return;
+    
+    const btn = event.target.closest('button');
+    const originalContent = btn.innerHTML;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Генерация...';
+    btn.disabled = true;
+    
+    try {
+        const response = await fetch('/api/regenerate-anchor-prompt', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                current_prompt: currentPrompt,
+                additional_condition: condition
+            })
+        });
+
+        const result = await response.json();
+
+        if (result.success && result.prompt) {
+            textarea.value = result.prompt;
+            showAlert('Промпт доработан через AI', 'success');
+        } else {
+            showAlert(result.message || 'Ошибка при доработке', 'danger');
+        }
+    } catch (error) {
+        console.error('Ошибка:', error);
+        showAlert('Ошибка соединения', 'danger');
+    } finally {
+        btn.innerHTML = originalContent;
+        btn.disabled = false;
+    }
+}
+
+async function generateAnchorPrompt() {
+    const intentInput = document.getElementById('anchorIntent');
+    const promptInput = document.getElementById('newAnchorPrompt');
+    const intent = (intentInput?.value || '').trim();
+
+    if (!intent) {
+        showAlert('Введите описание задачи', 'warning');
+        return;
+    }
+
+    const button = event.target.closest('button');
+    const originalContent = button.innerHTML;
+    button.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Генерация...';
+    button.disabled = true;
+
+    try {
+        const response = await fetch('/api/generate-anchor-prompt', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ intent: intent })
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+            promptInput.value = result.prompt;
+            showAlert('Промпт сгенерирован!', 'success');
+        } else {
+            showAlert('Ошибка: ' + (result.message || 'Неизвестная ошибка'), 'danger');
+        }
+    } catch (error) {
+        console.error('Ошибка:', error);
+        showAlert('Ошибка соединения: ' + error.message, 'danger');
+    } finally {
+        button.innerHTML = originalContent;
+        button.disabled = false;
+    }
+}
+
+async function regenerateAnchorFromModal() {
+    const promptInput = document.getElementById('newAnchorPrompt');
+    const conditionInput = document.getElementById('anchorAdditionalCondition');
+    
+    const currentPrompt = (promptInput?.value || '').trim();
+    const additionalCondition = (conditionInput?.value || '').trim();
+
+    if (!currentPrompt) {
+        showAlert('Промпт не может быть пустым', 'warning');
+        return;
+    }
+
+    if (!additionalCondition) {
+        showAlert('Введите дополнительное условие для доработки', 'warning');
+        conditionInput.focus();
+        return;
+    }
+
+    const button = event.target.closest('button');
+    const originalContent = button.innerHTML;
+    button.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Доработка...';
+    button.disabled = true;
+
+    try {
+        const response = await fetch('/api/regenerate-anchor-prompt', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                current_prompt: currentPrompt,
+                additional_condition: additionalCondition
+            })
+        });
+
+        const result = await response.json();
+
+        if (result.success && result.prompt) {
+            promptInput.value = result.prompt;
+            conditionInput.value = '';
+            showAlert('Промпт доработан через AI', 'success');
+        } else {
+            showAlert(result.message || 'Ошибка при доработке промпта', 'danger');
+        }
+    } catch (error) {
+        console.error('Ошибка при доработке промпта:', error);
+        showAlert('Ошибка соединения при доработке промпта: ' + error.message, 'danger');
+    } finally {
+        button.innerHTML = originalContent;
+        button.disabled = false;
+    }
 }
 
 async function savePrompts() {
     try {
         ensurePromptsStructure();
+        
         const anchors = { ...(promptsData.anchors || {}) };
-        const stations = {};
-        const stationSelects = document.querySelectorAll('[data-station-select="true"]');
-        stationSelects.forEach(select => {
-            const stationCode = select.dataset.stationCode;
-            if (!stationCode) {
-                return;
-            }
-            stations[stationCode] = (promptsData.stations && promptsData.stations[stationCode]) || '';
-        });
-
-        const defaultPrompt = document.getElementById('defaultPrompt').value || '';
+        const stations = { ...(promptsData.stations || {}) };
+        const defaultPrompt = document.getElementById('defaultPrompt')?.value || '';
 
         const payload = {
             anchors,
@@ -596,9 +1205,7 @@ async function savePrompts() {
 
         const response = await fetch('/api/prompts/save', {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
         });
 
@@ -608,10 +1215,10 @@ async function savePrompts() {
             promptsData.default = defaultPrompt;
             showAlert('Промпты сохранены успешно', 'success');
         } else {
-            showAlert(result.message || 'Ошибка при сохранении промптов', 'danger');
+            showAlert(result.message || 'Ошибка при сохранении', 'danger');
         }
     } catch (error) {
-        console.error('Ошибка сохранения промптов:', error);
+        console.error('Ошибка сохранения:', error);
         showAlert('Ошибка сохранения промптов', 'danger');
     }
 }

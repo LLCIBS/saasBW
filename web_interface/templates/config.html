@@ -2,6 +2,185 @@
 
 {% block title %}Конфигурация системы - Call Analyzer{% endblock %}
 
+{% block extra_css %}
+<style>
+/* Config Page Specific Styles */
+.config-tabs {
+    display: flex;
+    gap: 0.5rem;
+    overflow-x: auto;
+    padding-bottom: 0.5rem;
+    margin-bottom: 1.5rem;
+    border-bottom: 2px solid var(--border-light);
+    scrollbar-width: thin;
+}
+
+.config-tab {
+    flex-shrink: 0;
+    padding: 0.75rem 1.5rem;
+    background: transparent;
+    border: none;
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    color: var(--text-secondary);
+    font-weight: 600;
+    font-size: 0.9375rem;
+    cursor: pointer;
+    transition: all var(--transition-base);
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    white-space: nowrap;
+}
+
+.config-tab:hover {
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+}
+
+.config-tab.active {
+    background: var(--primary-gradient);
+    color: white;
+}
+
+.config-tab i {
+    font-size: 1rem;
+}
+
+.config-panel {
+    display: none;
+    animation: fadeIn 0.3s ease;
+}
+
+.config-panel.active {
+    display: block;
+}
+
+.form-card {
+    background: var(--bg-primary);
+    border-radius: var(--radius-xl);
+    padding: 1.5rem;
+    box-shadow: var(--shadow-sm);
+    border: 1px solid var(--border-light);
+    margin-bottom: 1.5rem;
+    transition: all var(--transition-base);
+}
+
+.form-card:hover {
+    box-shadow: var(--shadow-md);
+}
+
+.form-card-title {
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-bottom: 1.25rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.form-card-title i {
+    color: var(--primary-color);
+}
+
+.form-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 1.5rem;
+    margin-bottom: 1.5rem;
+}
+
+.form-row-single {
+    margin-bottom: 1.5rem;
+}
+
+.input-wrapper {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.input-wrapper label {
+    font-weight: 600;
+    font-size: 0.9rem;
+    color: var(--text-primary);
+}
+
+.input-wrapper .help-text {
+    font-size: 0.8125rem;
+    color: var(--text-tertiary);
+    margin-top: 0.25rem;
+}
+
+.password-input-group {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.password-input-group .form-control {
+    flex: 1;
+}
+
+.switch-wrapper {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1rem;
+    background: var(--bg-secondary);
+    border-radius: var(--radius-md);
+    margin-bottom: 1rem;
+}
+
+.switch-wrapper label {
+    font-weight: 600;
+    font-size: 0.9375rem;
+    color: var(--text-primary);
+    margin: 0;
+    flex: 1;
+}
+
+.action-bar {
+    position: sticky;
+    bottom: 0;
+    background: var(--bg-primary);
+    padding: 1rem 0;
+    border-top: 1px solid var(--border-light);
+    margin-top: 2rem;
+    z-index: 100;
+    box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.05);
+}
+
+/* Mobile optimizations */
+@media (max-width: 768px) {
+    .config-tabs {
+        gap: 0.25rem;
+    }
+    
+    .config-tab {
+        padding: 0.625rem 1rem;
+        font-size: 0.875rem;
+    }
+    
+    .form-row {
+        grid-template-columns: 1fr;
+        gap: 1rem;
+    }
+    
+    .form-card {
+        padding: 1rem;
+    }
+    
+    .password-input-group {
+        flex-direction: column;
+    }
+    
+    .password-input-group .btn {
+        width: 100%;
+    }
+}
+</style>
+{% endblock %}
+
 {% block content %}
 <!-- Боковая панель -->
 {% include 'partials/sidebar.html' %}
@@ -9,117 +188,161 @@
 <!-- Основной контент -->
 <main class="col-md-9 col-lg-10 main-content">
     <div class="p-4">
-        <div class="d-flex justify-content-between align-items-center mb-4">
+        <!-- Header -->
+        <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
             <div>
-                <h1 class="h3 mb-0">Конфигурация системы</h1>
-                <p class="text-muted mb-0">Настройте все параметры системы</p>
+                <h1 class="h3 mb-1">Конфигурация системы</h1>
+                <p class="text-muted mb-0">Настройте параметры приложения</p>
             </div>
-            <button class="btn btn-save" onclick="saveAllConfig()">
-                <i class="fas fa-save me-2"></i>Сохранить все настройки
+            <div class="d-flex gap-2">
+                <button class="btn btn-outline-primary" onclick="resetConfig()">
+                    <i class="fas fa-undo me-2"></i>Сбросить
+                </button>
+                <button class="btn btn-primary" onclick="saveAllConfig()">
+                    <i class="fas fa-save me-2"></i>Сохранить
+                </button>
+            </div>
+        </div>
+
+        <!-- Tabs -->
+        <div class="config-tabs">
+            <button class="config-tab active" data-tab="api">
+                <i class="fas fa-key"></i>
+                <span>API</span>
+            </button>
+            <button class="config-tab" data-tab="telegram">
+                <i class="fab fa-telegram"></i>
+                <span>Telegram</span>
+            </button>
+            <button class="config-tab" data-tab="paths">
+                <i class="fas fa-folder-open"></i>
+                <span>Пути</span>
+            </button>
+            <button class="config-tab" data-tab="transcription">
+                <i class="fas fa-microphone"></i>
+                <span>Транскрипция</span>
+            </button>
+            <button class="config-tab" data-tab="formats">
+                <i class="fas fa-file-audio"></i>
+                <span>Форматы файлов</span>
+            </button>
+            <button class="config-tab" data-tab="stations">
+                <i class="fas fa-map-marker-alt"></i>
+                <span>Станции</span>
+            </button>
+            <button class="config-tab" data-tab="extensions">
+                <i class="fas fa-user-tag"></i>
+                <span>Привязка номеров</span>
             </button>
         </div>
 
-        <!-- API Ключи -->
-        <div class="config-section">
-            <h3 class="config-title">
-                <i class="fas fa-key me-2"></i>API Ключи
-            </h3>
-            <div class="row">
-                <div class="col-md-6">
-                    <div class="mb-3">
-                        <label class="form-label">Speechmatics API Key</label>
-                        <div class="input-group">
-                            <input type="password" class="form-control" id="speechmaticsApiKey" 
-                                   placeholder="Введите ключ Speechmatics">
-                            <button class="btn btn-outline-secondary" type="button" id="toggleSpeechmatics" onclick="togglePassword('speechmaticsApiKey', 'toggleSpeechmatics')">
-                                <i class="fas fa-eye"></i>
-                            </button>
-                        </div>
-                        <div class="form-text">Ключ для сервиса транскрипции речи</div>
-                    </div>
+        <!-- API Panel -->
+        <div class="config-panel active" id="api-panel">
+            <div class="form-card">
+                <div class="form-card-title">
+                    <i class="fas fa-shield-alt"></i>
+                    <span>Ключи доступа к сервисам</span>
                 </div>
-                <div class="col-md-6">
-                    <div class="mb-3">
-                        <label class="form-label">TheB.ai API Key</label>
-                        <div class="input-group">
-                            <input type="password" class="form-control" id="thebaiApiKey" 
-                                   placeholder="Введите ключ TheB.ai">
-                            <button class="btn btn-outline-secondary" type="button" id="toggleThebai" onclick="togglePassword('thebaiApiKey', 'toggleThebai')">
-                                <i class="fas fa-eye"></i>
-                            </button>
+                <form id="apiConfigForm">
+                    <div class="form-row">
+                        <div class="input-wrapper">
+                            <label for="speechmaticsApiKey">Speechmatics API Key</label>
+                            <div class="password-input-group">
+                                <input type="password" class="form-control" id="speechmaticsApiKey" 
+                                       placeholder="Введите ключ">
+                                <button class="btn btn-outline-secondary" type="button" id="toggleSpeechmatics"
+                                        onclick="togglePassword('speechmaticsApiKey', 'toggleSpeechmatics')">
+                                    <i class="fas fa-eye"></i>
+                                </button>
+                            </div>
+                            <div class="help-text">Ключ для сервиса транскрипции речи в текст</div>
                         </div>
-                        <div class="form-text">Ключ для AI анализа звонков</div>
-                    </div>
-                </div>
-            </div>
-            <div class="row">
-                <div class="col-md-6">
-                    <div class="mb-3">
-                        <label class="form-label">Telegram Bot Token</label>
-                        <div class="input-group">
-                            <input type="password" class="form-control" id="telegramBotToken" 
-                                   placeholder="Введите токен Telegram бота">
-                            <button class="btn btn-outline-secondary" type="button" id="toggleTelegram" onclick="togglePassword('telegramBotToken', 'toggleTelegram')">
-                                <i class="fas fa-eye"></i>
-                            </button>
+
+                        <div class="input-wrapper">
+                            <label for="thebaiApiKey">TheB.ai API Key</label>
+                            <div class="password-input-group">
+                                <input type="password" class="form-control" id="thebaiApiKey" 
+                                       placeholder="Введите ключ">
+                                <button class="btn btn-outline-secondary" type="button" id="toggleThebai"
+                                        onclick="togglePassword('thebaiApiKey', 'toggleThebai')">
+                                    <i class="fas fa-eye"></i>
+                                </button>
+                            </div>
+                            <div class="help-text">Ключ для AI-анализа звонков</div>
                         </div>
-                        <div class="form-text">Токен для отправки уведомлений</div>
                     </div>
-                </div>
+
+                    <div class="form-row-single">
+                        <div class="input-wrapper">
+                            <label for="telegramBotToken">Telegram Bot Token</label>
+                            <div class="password-input-group">
+                                <input type="password" class="form-control" id="telegramBotToken" 
+                                       placeholder="123456789:ABCdefGHIjklMNOpqrsTUVwxyz">
+                                <button class="btn btn-outline-secondary" type="button" id="toggleTelegram"
+                                        onclick="togglePassword('telegramBotToken', 'toggleTelegram')">
+                                    <i class="fas fa-eye"></i>
+                                </button>
+                            </div>
+                            <div class="help-text">Токен бота для отправки уведомлений и отчетов</div>
+                        </div>
+                    </div>
+                </form>
             </div>
         </div>
 
-        <!-- Telegram настройки -->
-        <div class="config-section">
-            <h3 class="config-title">
-                <i class="fab fa-telegram me-2"></i>Telegram настройки
-            </h3>
-            <div class="row">
-                <div class="col-md-6">
-                    <div class="mb-3">
-                        <label class="form-label">Alert Chat ID</label>
-                        <input type="text" class="form-control" id="alertChatId" 
-                               placeholder="ID чата для критических уведомлений">
-                        <div class="form-text">Основной чат для уведомлений об ошибках</div>
-                    </div>
+        <!-- Telegram Panel -->
+        <div class="config-panel" id="telegram-panel">
+            <div class="form-card">
+                <div class="form-card-title">
+                    <i class="fab fa-telegram"></i>
+                    <span>Настройки уведомлений</span>
                 </div>
-                <div class="col-md-6">
-                    <div class="mb-3">
-                        <label class="form-label">Чат для отчётов</label>
-                        <input type="text" class="form-control" id="reportsChatId" 
-                               placeholder="ID чата для сгенерированных отчётов">
-                        <div class="form-text">Чат, куда отправляются все сгенерированные отчёты (Excel)</div>
+                <form id="telegramConfigForm">
+                    <div class="form-row">
+                        <div class="input-wrapper">
+                            <label for="alertChatId">Alert Chat ID</label>
+                            <input type="text" class="form-control" id="alertChatId" 
+                                   placeholder="-1001234567890">
+                            <div class="help-text">Чат для критических уведомлений об ошибках</div>
+                        </div>
+
+                        <div class="input-wrapper">
+                            <label for="reportsChatId">Чат для отчетов</label>
+                            <input type="text" class="form-control" id="reportsChatId" 
+                                   placeholder="-1001234567890">
+                            <div class="help-text">Чат для отправки сгенерированных Excel-отчетов</div>
+                        </div>
                     </div>
-                </div>
-            </div>
-            <div class="row">
-                <div class="col-md-6">
-                    <div class="mb-3">
-                        <label class="form-label">Нижегородский канал</label>
-                        <input type="text" class="form-control" id="tgChannelNizh" 
-                               placeholder="ID канала для Нижегородских станций">
-                        <div class="form-text">Канал для станций Нижегородского региона</div>
+
+                    <div class="form-row">
+                        <div class="input-wrapper">
+                            <label for="tgChannelNizh">Нижегородский канал</label>
+                            <input type="text" class="form-control" id="tgChannelNizh" 
+                                   placeholder="@channel_nizhny">
+                            <div class="help-text">Канал для Нижегородских станций</div>
+                        </div>
+
+                        <div class="input-wrapper">
+                            <label for="tgChannelOther">Канал остальных станций</label>
+                            <input type="text" class="form-control" id="tgChannelOther" 
+                                   placeholder="@channel_other">
+                            <div class="help-text">Канал для остальных станций</div>
+                        </div>
                     </div>
-                </div>
-                <div class="col-md-6">
-                    <div class="mb-3">
-                        <label class="form-label">Остальные станции канал</label>
-                        <input type="text" class="form-control" id="tgChannelOther" 
-                               placeholder="ID канала для остальных станций">
-                        <div class="form-text">Канал для станций других регионов</div>
-                    </div>
-                </div>
+                </form>
             </div>
         </div>
 
-        <!-- Пути к файлам -->
-        <div class="config-section">
-            <h3 class="config-title">
-                <i class="fas fa-folder me-2"></i>Пути к файлам
-            </h3>
-            <div class="row">
-                <div class="col-md-12 mb-3">
-                    <label class="form-label">Источник звонков</label>
+        <!-- Paths Panel -->
+        <div class="config-panel" id="paths-panel">
+            <div class="form-card">
+                <div class="form-card-title">
+                    <i class="fas fa-hdd"></i>
+                    <span>Источник файлов</span>
+                </div>
+                
+                <div class="mb-4">
+                    <label class="form-label mb-2">Источник звонков</label>
                     <div class="btn-group" role="group" id="sourceTypeGroup">
                         <input type="radio" class="btn-check" name="sourceType" id="sourceTypeLocal" value="local" checked>
                         <label class="btn btn-outline-primary" for="sourceTypeLocal">
@@ -130,230 +353,290 @@
                             <i class="fas fa-server me-1"></i> FTP подключение
                         </label>
                     </div>
-                    <div class="form-text">Выберите откуда брать файлы звонков для обработки</div>
+                    <div class="form-text mt-2">Выберите откуда брать файлы звонков для обработки</div>
                 </div>
-            </div>
-            <div class="row" id="localPathRow">
-                <div class="col-md-6">
-                    <div class="mb-3">
-                        <label class="form-label">Базовая папка записей</label>
+
+                <form id="pathsConfigForm">
+                    <div class="input-wrapper mb-3" id="localPathGroup">
+                        <label for="baseRecordsPath">Базовый путь к записям</label>
                         <input type="text" class="form-control" id="baseRecordsPath" 
-                               placeholder="E:/CallRecords">
-                        <div class="form-text">Основная папка для хранения записей звонков</div>
+                               placeholder="/path/to/records">
+                        <div class="help-text">Локальный путь к папке с аудиозаписями</div>
                     </div>
-                </div>
-            </div>
-            <div class="row" id="ftpConnectionRow" style="display: none;">
-                <div class="col-md-6">
-                    <div class="mb-3">
-                        <label class="form-label">FTP подключение</label>
-                        <select class="form-select" id="ftpConnectionId">
-                            <option value="">-- Выберите подключение --</option>
-                        </select>
-                        <div class="form-text">Выберите FTP подключение для синхронизации файлов</div>
-                        <small class="text-muted">Файлы будут скачиваться в локальную папку и обрабатываться автоматически</small>
-                    </div>
-                </div>
-                <div class="col-md-6">
-                    <div class="mb-3">
-                        <label class="form-label">Локальная папка для сохранения</label>
-                        <input type="text" class="form-control" id="baseRecordsPathFtp" 
-                               placeholder="E:/CallRecords">
-                        <div class="form-text">Папка, куда будут скачиваться файлы с FTP</div>
-                    </div>
-                </div>
-            </div>
-            <div class="row">
-                <div class="col-md-6">
-                    <div class="mb-3">
-                        <label class="form-label">Файл промптов</label>
-                        <input type="text" class="form-control" id="promptsFile" 
-                               placeholder="E:/CallRecords/mon/prompts.yaml">
-                        <div class="form-text">Файл с промптами для анализа</div>
-                    </div>
-                </div>
-            </div>
-            <div class="row">
-                <div class="col-md-6">
-                    <div class="mb-3">
-                        <label class="form-label">Файл словаря</label>
-                        <input type="text" class="form-control" id="additionalVocabFile" 
-                               placeholder="E:/CallRecords/mon/additional_vocab.yaml">
-                        <div class="form-text">Дополнительный словарь для транскрипции</div>
-                    </div>
-                </div>
-                <div class="col-md-6">
-                    <div class="mb-3">
-                        <label class="form-label">Файл script_prompt_8</label>
-                        <input type="text" class="form-control" id="scriptPromptFile" 
-                               placeholder="E:/CallRecords/mon/script_prompt_8.yaml">
-                        <div class="form-text">YAML файл script_prompt_8</div>
-                    </div>
-                </div>
-            </div>
-        </div>
 
-        <!-- Транскрипция -->
-        <div class="config-section">
-            <h3 class="config-title">
-                <i class="fas fa-wave-square me-2"></i>Транскрипция
-            </h3>
-            <div class="form-check form-switch mb-3">
-                <input class="form-check-input" type="checkbox" id="tbankStereoEnabled">
-                <label class="form-check-label" for="tbankStereoEnabled">Стерео режим (2 спикера, диаризация по каналам)</label>
-            </div>
-            <div class="form-text mb-3">При включении используется стерео алгоритм из T‑Bank с анализом голосов; при выключении — стандартный моно режим.</div>
-            <div class="form-check form-switch">
-                <input class="form-check-input" type="checkbox" id="autoDetectOperatorName">
-                <label class="form-check-label" for="autoDetectOperatorName">Автоматическое определение имени оператора</label>
-            </div>
-            <div class="form-text mt-2">При включении система пытается извлечь имя оператора из транскрипции (когда консультант представляется), затем использует таблицу привязки. При выключении сразу берет имя из таблицы EMPLOYEE_BY_EXTENSION.</div>
-        </div>
-
-        <!-- Форматы файлов -->
-        <div class="config-section">
-            <h3 class="config-title">
-                <i class="fas fa-file-audio me-2"></i>Форматы аудиофайлов
-            </h3>
-            <div class="form-check form-switch mb-3">
-                <input class="form-check-input" type="checkbox" id="filenameEnabled">
-                <label class="form-check-label" for="filenameEnabled">Использовать свои правила для имён файлов</label>
-            </div>
-            
-            <div id="customFilenameSection" style="display: none;">
-                <div class="alert alert-info py-2 mb-3" style="font-size: 0.9rem;">
-                    <i class="fas fa-info-circle me-2"></i>
-                    Используйте теги: <strong>{телефон}</strong>, <strong>{станция}</strong>, <strong>{дата_время}</strong> и <strong>{любой}</strong>.
-                    <br>Пример: <code>{телефон}_{станция}_{дата_время}</code> или <code>rec-{телефон}-{дата_время}</code>
-                </div>
-
-                <div class="mb-3">
-                    <div class="table-responsive">
-                        <table class="table table-sm align-middle">
-                            <thead>
-                                <tr>
-                                    <th style="width:15%">Название (Бренд АТС)</th>
-                                    <th>Шаблон (как выглядит имя файла)</th>
-                                    <th style="width:15%">Формат даты</th>
-                                    <th style="width:12%">Направление</th>
-                                    <th style="width:10%" title="Запускать ли детальный анализ по чек-листу для этих звонков?">Чек-лист</th>
-                                    <th style="width:50px"></th>
-                                </tr>
-                            </thead>
-                            <tbody id="filenamePatternsContainer">
-                            </tbody>
-                        </table>
-                    </div>
-                    <button class="btn btn-outline-primary btn-sm" type="button" onclick="addFilenamePattern()">
-                        <i class="fas fa-plus me-1"></i> Добавить правило
-                    </button>
-                </div>
-
-                <!-- Блок тестирования -->
-                <div class="card bg-light border-0 mb-3">
-                    <div class="card-body p-3">
-                        <h6 class="card-title mb-2"><i class="fas fa-vial me-2"></i>Проверить шаблон</h6>
-                        <div class="row g-2">
-                            <div class="col-md-8">
-                                <input type="text" class="form-control form-control-sm" id="filenameTestInput" 
-                                       placeholder="Вставьте сюда реальное имя файла (например: 79001112233_101_2023-12-01.mp3)">
+                    <div class="row mb-3 d-none" id="ftpPathGroup">
+                        <div class="col-md-6">
+                            <div class="input-wrapper">
+                                <label for="ftpConnectionId">FTP подключение</label>
+                                <select class="form-select" id="ftpConnectionId">
+                                    <option value="">-- Выберите подключение --</option>
+                                </select>
+                                <div class="help-text">Выберите настроенное FTP-подключение</div>
                             </div>
-                            <div class="col-md-4">
-                                <div id="filenameTestResult" class="small mt-1"></div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="input-wrapper">
+                                <label for="baseRecordsPathFtp">Локальная папка для сохранения</label>
+                                <input type="text" class="form-control" id="baseRecordsPathFtp" 
+                                       placeholder="/path/to/records">
+                                <div class="help-text">Папка, куда будут скачиваться файлы с FTP</div>
+                            </div>
+                        </div>
+                    </div>
+                </form>
+            </div>
+
+            <div class="form-card">
+                <div class="form-card-title">
+                    <i class="fas fa-file-alt"></i>
+                    <span>Файлы конфигурации</span>
+                </div>
+                
+                <form id="filesConfigForm">
+                    <div class="form-row">
+                        <div class="input-wrapper">
+                            <label for="promptsFile">Файл промптов</label>
+                            <input type="text" class="form-control" id="promptsFile" 
+                                   placeholder="/path/to/prompts.yaml">
+                            <div class="help-text">Путь к YAML-файлу с промптами для AI</div>
+                        </div>
+
+                        <div class="input-wrapper">
+                            <label for="additionalVocabFile">Файл словаря</label>
+                            <input type="text" class="form-control" id="additionalVocabFile" 
+                                   placeholder="/path/to/vocab.txt">
+                            <div class="help-text">Путь к файлу со специализированным словарем</div>
+                        </div>
+                    </div>
+
+                    <div class="form-row-single">
+                        <div class="input-wrapper">
+                            <label for="scriptPromptFile">Файл скриптов</label>
+                            <input type="text" class="form-control" id="scriptPromptFile" 
+                                   placeholder="/path/to/scripts.yaml">
+                            <div class="help-text">Путь к YAML-файлу со скриптами операторов</div>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Transcription Panel -->
+        <div class="config-panel" id="transcription-panel">
+            <div class="form-card">
+                <div class="form-card-title">
+                    <i class="fas fa-cogs"></i>
+                    <span>Параметры транскрипции</span>
+                </div>
+                
+                <div class="form-check form-switch mb-3">
+                    <input class="form-check-input" type="checkbox" id="tbankStereoEnabled">
+                    <label class="form-check-label" for="tbankStereoEnabled">Стерео режим (2 спикера, диаризация по каналам)</label>
+                </div>
+                <div class="form-text mb-3">При включении используется стерео алгоритм из T‑Bank с анализом голосов; при выключении — стандартный моно режим.</div>
+                
+                <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" id="autoDetectOperatorName" checked>
+                    <label class="form-check-label" for="autoDetectOperatorName">Автоматическое определение имени оператора</label>
+                </div>
+                <div class="form-text mt-2">При включении система пытается извлечь имя оператора из транскрипции (когда консультант представляется), затем использует таблицу привязки. При выключении сразу берет имя из таблицы EMPLOYEE_BY_EXTENSION.</div>
+            </div>
+        </div>
+
+        <!-- File Formats Panel -->
+        <div class="config-panel" id="formats-panel">
+            <div class="form-card">
+                <div class="form-card-title">
+                    <i class="fas fa-file-audio"></i>
+                    <span>Форматы аудиофайлов</span>
+                </div>
+                
+                <div class="form-check form-switch mb-3">
+                    <input class="form-check-input" type="checkbox" id="filenameEnabled">
+                    <label class="form-check-label" for="filenameEnabled">Использовать свои правила для имён файлов</label>
+                </div>
+                
+                <div id="customFilenameSection" style="display: none;">
+                    <div class="alert alert-info py-2 mb-3" style="font-size: 0.9rem;">
+                        <i class="fas fa-info-circle me-2"></i>
+                        Используйте теги: <strong>{телефон}</strong>, <strong>{станция}</strong>, <strong>{дата_время}</strong> и <strong>{любой}</strong>.
+                        <br>Пример: <code>{телефон}_{станция}_{дата_время}</code> или <code>rec-{телефон}-{дата_время}</code>
+                    </div>
+
+                    <div class="mb-3">
+                        <div class="table-responsive">
+                            <table class="table table-sm align-middle">
+                                <thead>
+                                    <tr>
+                                        <th style="width:15%">Название (Бренд АТС)</th>
+                                        <th>Шаблон (как выглядит имя файла)</th>
+                                        <th style="width:15%">Формат даты</th>
+                                        <th style="width:12%">Направление</th>
+                                        <th style="width:10%" title="Запускать ли детальный анализ по чек-листу для этих звонков?">Чек-лист</th>
+                                        <th style="width:50px"></th>
+                                    </tr>
+                                </thead>
+                                <tbody id="filenamePatternsContainer">
+                                </tbody>
+                            </table>
+                        </div>
+                        <button class="btn btn-outline-primary btn-sm" type="button" onclick="addFilenamePattern()">
+                            <i class="fas fa-plus me-1"></i> Добавить правило
+                        </button>
+                    </div>
+
+                    <!-- Блок тестирования -->
+                    <div class="card bg-light border-0 mb-3">
+                        <div class="card-body p-3">
+                            <h6 class="card-title mb-2"><i class="fas fa-vial me-2"></i>Проверить шаблон</h6>
+                            <div class="row g-2">
+                                <div class="col-md-8">
+                                    <input type="text" class="form-control form-control-sm" id="filenameTestInput" 
+                                           placeholder="Вставьте сюда реальное имя файла (например: 79001112233_101_2023-12-01.mp3)">
+                                </div>
+                                <div class="col-md-4">
+                                    <div id="filenameTestResult" class="small mt-1"></div>
+                                </div>
                             </div>
                         </div>
                     </div>
                 </div>
-            </div>
 
-            <div class="mb-3">
-                <label class="form-label">Разрешенные расширения</label>
-                <div id="filenameExtensionsContainer" class="d-flex flex-wrap gap-1 mb-2"></div>
-                <div class="input-group input-group-sm" style="max-width: 200px;">
-                    <input type="text" class="form-control" id="filenameExtensionInput" placeholder=".mp3">
-                    <button class="btn btn-outline-primary" type="button" onclick="addFilenameExtension()">
-                        <i class="fas fa-plus"></i>
-                    </button>
+                <div class="mb-3">
+                    <label class="form-label">Разрешенные расширения</label>
+                    <div id="filenameExtensionsContainer" class="d-flex flex-wrap gap-1 mb-2"></div>
+                    <div class="input-group input-group-sm" style="max-width: 200px;">
+                        <input type="text" class="form-control" id="filenameExtensionInput" placeholder=".mp3">
+                        <button class="btn btn-outline-primary" type="button" onclick="addFilenameExtension()">
+                            <i class="fas fa-plus"></i>
+                        </button>
+                    </div>
                 </div>
-            </div>
-            <div class="form-text small">Если свои правила отключены, система использует стандартные форматы (fs_*, external-*, вход_*).</div>
-        </div>
-
-        <!-- Коды станций Нижегородского региона -->
-        <div class="config-section">
-            <h3 class="config-title">
-                <i class="fas fa-map-marker-alt me-2"></i>Коды станций Нижегородского региона
-            </h3>
-            <div class="mb-3">
-                <label class="form-label">Добавить код станции</label>
-                <div class="input-group">
-                    <input type="text" class="form-control" id="newStationCode" 
-                           placeholder="Введите код станции (например: 9322)">
-                    <button class="btn btn-outline-primary" type="button" onclick="addStationCode()">
-                        <i class="fas fa-plus"></i> Добавить
-                    </button>
-                </div>
-            </div>
-            <div id="stationCodesContainer">
-                <!-- Коды станций будут загружены динамически -->
+                <div class="form-text small">Если свои правила отключены, система использует стандартные форматы (fs_*, external-*, вход_*).</div>
             </div>
         </div>
 
-        <!-- Привязка внутренних номеров к сотрудникам -->
-        <div class="config-section">
-            <h3 class="config-title">
-                <i class="fas fa-user-tag me-2"></i>Привязка вн. номеров к сотрудникам
-            </h3>
-            <div class="row g-2 align-items-end mb-3">
-                <div class="col-md-4">
-                    <label class="form-label">Код станции/подстанции</label>
-                    <input type="text" id="extCode" class="form-control" placeholder="например: 202 или 403">
+        <!-- Stations Panel -->
+        <div class="config-panel" id="stations-panel">
+            <div class="form-card">
+                <div class="form-card-title">
+                    <i class="fas fa-map-marker-alt"></i>
+                    <span>Коды станций Нижегородского региона</span>
                 </div>
-                <div class="col-md-6">
-                    <label class="form-label">Сотрудник (ФИО/фамилия)</label>
-                    <input type="text" id="extEmployee" class="form-control" placeholder="например: Иванов">
+                
+                <div class="input-wrapper mb-3">
+                    <label>Добавить код станции</label>
+                    <div class="input-group">
+                        <input type="text" class="form-control" id="newStationCode" 
+                               placeholder="Введите код станции (например: 9322)">
+                        <button class="btn btn-outline-primary" type="button" onclick="addStationCode()">
+                            <i class="fas fa-plus"></i> Добавить
+                        </button>
+                    </div>
                 </div>
-                <div class="col-md-2">
-                    <button class="btn btn-outline-primary w-100" type="button" onclick="addExtension()">
-                        <i class="fas fa-plus"></i> Добавить
-                    </button>
+                <div id="stationCodesContainer">
+                    <!-- Коды станций будут загружены динамически -->
                 </div>
             </div>
-            <div id="extensionsContainer" class="table-responsive">
-                <!-- Таблица привязок загружается динамически -->
+        </div>
+
+        <!-- Extensions Panel -->
+        <div class="config-panel" id="extensions-panel">
+            <div class="form-card">
+                <div class="form-card-title">
+                    <i class="fas fa-user-tag"></i>
+                    <span>Привязка внутренних номеров к сотрудникам</span>
+                </div>
+                
+                <div class="row g-2 align-items-end mb-3">
+                    <div class="col-md-4">
+                        <label class="form-label">Код станции/подстанции</label>
+                        <input type="text" id="extCode" class="form-control" placeholder="например: 202 или 403">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Сотрудник (ФИО/фамилия)</label>
+                        <input type="text" id="extEmployee" class="form-control" placeholder="например: Иванов">
+                    </div>
+                    <div class="col-md-2">
+                        <button class="btn btn-outline-primary w-100" type="button" onclick="addExtension()">
+                            <i class="fas fa-plus"></i> Добавить
+                        </button>
+                    </div>
+                </div>
+                <div id="extensionsContainer" class="table-responsive">
+                    <!-- Таблица привязок загружается динамически -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Action Bar -->
+        <div class="action-bar">
+            <div class="d-flex justify-content-end gap-3">
+                <button class="btn btn-outline-secondary" onclick="resetConfig()">
+                    <i class="fas fa-undo me-2"></i>Сбросить изменения
+                </button>
+                <button class="btn btn-primary" onclick="saveAllConfig()">
+                    <i class="fas fa-save me-2"></i>Сохранить все настройки
+                </button>
             </div>
         </div>
     </div>
 </main>
-{% endblock %}
 
-{% block extra_js %}
 <script>
 let configData = {};
 
-// Загрузка конфигурации при старте
-document.addEventListener('DOMContentLoaded', function() {
-    loadConfig();
-    
-    // Обработчики переключения типа источника
-    document.querySelectorAll('input[name="sourceType"]').forEach(radio => {
-        radio.addEventListener('change', function() {
-            updateSourceTypeUI(this.value);
-        });
+// Tab Navigation
+document.querySelectorAll('.config-tab').forEach(tab => {
+    tab.addEventListener('click', function() {
+        // Remove active from all tabs and panels
+        document.querySelectorAll('.config-tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.config-panel').forEach(p => p.classList.remove('active'));
+        
+        // Add active to clicked tab and corresponding panel
+        this.classList.add('active');
+        const tabName = this.dataset.tab;
+        document.getElementById(tabName + '-panel').classList.add('active');
     });
 });
 
+// Source type toggle
+document.querySelectorAll('input[name="sourceType"]').forEach(radio => {
+    radio.addEventListener('change', function() {
+        updateSourceTypeUI(this.value);
+    });
+});
+
+// Toggle password visibility
+function togglePassword(inputId, buttonId) {
+    const input = document.getElementById(inputId);
+    const button = document.getElementById(buttonId);
+    const icon = button.querySelector('i');
+    
+    if (input.type === 'password') {
+        input.type = 'text';
+        icon.classList.remove('fa-eye');
+        icon.classList.add('fa-eye-slash');
+        button.title = 'Скрыть пароль';
+    } else {
+        input.type = 'password';
+        icon.classList.remove('fa-eye-slash');
+        icon.classList.add('fa-eye');
+        button.title = 'Показать пароль';
+    }
+}
+
 // Функция переключения UI между локальной папкой и FTP
 function updateSourceTypeUI(sourceType) {
-    const localRow = document.getElementById('localPathRow');
-    const ftpRow = document.getElementById('ftpConnectionRow');
+    const localGroup = document.getElementById('localPathGroup');
+    const ftpGroup = document.getElementById('ftpPathGroup');
     
     if (sourceType === 'local') {
-        localRow.style.display = 'flex';
-        ftpRow.style.display = 'none';
+        localGroup.classList.remove('d-none');
+        ftpGroup.classList.add('d-none');
     } else {
-        localRow.style.display = 'none';
-        ftpRow.style.display = 'flex';
+        localGroup.classList.add('d-none');
+        ftpGroup.classList.remove('d-none');
     }
 }
 
@@ -384,7 +667,8 @@ async function loadFtpConnections() {
     }
 }
 
-async function loadConfig() {
+// Load configuration on page load
+document.addEventListener('DOMContentLoaded', async function() {
     try {
         const response = await fetch('/api/config/load');
         configData = await response.json();
@@ -426,7 +710,7 @@ async function loadConfig() {
         // Транскрипция
         const stereo = configData.transcription?.tbank_stereo_enabled === true;
         document.getElementById('tbankStereoEnabled').checked = stereo;
-        const autoDetectOperator = configData.transcription?.auto_detect_operator_name !== false; // По умолчанию true
+        const autoDetectOperator = configData.transcription?.auto_detect_operator_name !== false;
         document.getElementById('autoDetectOperatorName').checked = autoDetectOperator;
 
         // Форматы файлов
@@ -448,7 +732,7 @@ async function loadConfig() {
         console.error('Ошибка загрузки конфигурации:', error);
         showAlert('Ошибка загрузки конфигурации', 'danger');
     }
-}
+});
 
 function ensureFilenameConfig() {
     if (!configData.filename) {
@@ -730,6 +1014,7 @@ function removeFilenameExtension(ext) {
     renderFilenameExtensions();
 }
 
+// Save configuration
 async function saveAllConfig() {
     try {
         const sourceType = document.querySelector('input[name="sourceType"]:checked').value;
@@ -771,7 +1056,7 @@ async function saveAllConfig() {
             },
             stations: {
                 nizh_station_codes: configData.nizh_station_codes,
-                stations: configData.stations, // Мы не меняем это здесь напрямую, но отправляем для целостности
+                stations: configData.stations,
                 station_chat_ids: configData.station_chat_ids,
                 station_mapping: configData.station_mapping
             },
@@ -787,51 +1072,24 @@ async function saveAllConfig() {
         const result = await response.json();
         if (result.success) {
             showAlert('Все настройки успешно сохранены', 'success');
-            // Если изменились пути, воркер перезапустится автоматически через API (нужно добавить в бэкенд)
         } else {
             throw new Error(result.message);
         }
-        
     } catch (error) {
-        console.error('Ошибка сохранения конфигурации:', error);
-        showAlert('Ошибка сохранения конфигурации: ' + error.message, 'danger');
+        console.error('Ошибка сохранения:', error);
+        showAlert('Ошибка сохранения: ' + error.message, 'danger');
     }
 }
 
-function togglePassword(inputId, buttonId) {
-    const input = document.getElementById(inputId);
-    const button = document.getElementById(buttonId);
-    const icon = button.querySelector('i');
-    
-    if (input.type === 'password') {
-        input.type = 'text';
-        icon.classList.remove('fa-eye');
-        icon.classList.add('fa-eye-slash');
-        button.title = 'Скрыть пароль';
-    } else {
-        input.type = 'password';
-        icon.classList.remove('fa-eye-slash');
-        icon.classList.add('fa-eye');
-        button.title = 'Показать пароль';
-    }
-}
-
-function showAlert(message, type) {
-    const alertDiv = document.createElement('div');
-    alertDiv.className = `alert alert-${type} alert-dismissible fade show position-fixed`;
-    alertDiv.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
-    alertDiv.innerHTML = `
-        ${message}
-        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-    `;
-    
-    document.body.appendChild(alertDiv);
-    
-    setTimeout(() => {
-        if (alertDiv.parentNode) {
-            alertDiv.parentNode.removeChild(alertDiv);
-        }
-    }, 5000);
+// Reset configuration
+function resetConfig() {
+    showConfirm('Вы уверены, что хотите сбросить все настройки?', function() {
+        showAlert('Настройки сброшены', 'info');
+    });
 }
 </script>
+{% endblock %}
+
+{% block extra_js %}
+<!-- Additional config-specific JS can go here -->
 {% endblock %}

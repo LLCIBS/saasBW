@@ -38,19 +38,17 @@
         <div class="row mb-4">
             <div class="col-12">
                 <div class="card status-card" id="statusCard">
-                    <div class="card-body text-center">
-                        <div class="row align-items-center">
-                            <div class="col-md-8">
-                                <h4 class="card-title mb-2">
-                                    <i class="fas fa-server me-2"></i>
-                                    Статус сервиса
-                                </h4>
+                    <div class="card-body">
+                        <div class="d-flex flex-column flex-md-row align-items-center justify-content-center text-center text-md-start gap-3">
+                            <div class="status-icon">
+                                <i class="fas fa-server fa-2x"></i>
+                            </div>
+                            <div class="flex-grow-1">
+                                <h4 class="card-title mb-1">Статус сервиса</h4>
                                 <p class="card-text mb-0" id="statusText">Проверка...</p>
                             </div>
-                            <div class="col-md-4">
-                                <div class="spinner-border text-light" id="statusSpinner" role="status">
-                                    <span class="visually-hidden">Загрузка...</span>
-                                </div>
+                            <div class="spinner-border text-light" id="statusSpinner" role="status" style="display: none;">
+                                <span class="visually-hidden">Загрузка...</span>
                             </div>
                         </div>
                     </div>
@@ -137,31 +135,6 @@
             </div>
         </div>
 
-        <!-- Последние логи -->
-        <div class="row">
-            <div class="col-12">
-                <div class="card">
-                    <div class="card-header d-flex justify-content-between align-items-center">
-                        <h5 class="mb-0">
-                            <i class="fas fa-file-alt me-2"></i>
-                            Последние логи
-                        </h5>
-                        <button class="btn btn-sm btn-outline-primary" onclick="refreshLogs()" data-bs-toggle="tooltip" title="Обновить логи">
-                            <i class="fas fa-sync-alt"></i>
-                        </button>
-                    </div>
-                    <div class="card-body">
-                        <div id="logsContainer">
-                            <div class="text-center py-5">
-                                <div class="spinner-border text-primary" role="status" style="width: 3rem; height: 3rem;">
-                                    <span class="visually-hidden">Загрузка логов...</span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
     </div>
 </main>
 {% endblock %}
@@ -174,7 +147,6 @@ setInterval(updateStatus, 5000);
 // Загрузка данных при старте
 document.addEventListener('DOMContentLoaded', function() {
     updateStatus();
-    loadLogs();
 });
 
 async function updateStatus() {
@@ -184,7 +156,6 @@ async function updateStatus() {
         
         updateServiceStatus(data.service);
         updateMetrics(data);
-        updateLogs(data.recent_logs);
         
     } catch (error) {
         console.error('Ошибка обновления статуса:', error);
@@ -195,15 +166,22 @@ function updateServiceStatus(service) {
     const statusCard = document.getElementById('statusCard');
     const statusText = document.getElementById('statusText');
     const statusSpinner = document.getElementById('statusSpinner');
+    const statusIcon = document.querySelector('.status-icon i');
     
     statusSpinner.style.display = 'none';
     
     if (service.running) {
         statusCard.className = 'card status-card status-running';
-        statusText.innerHTML = '<i class="fas fa-check-circle me-2"></i>Сервис работает';
+        statusText.textContent = 'Сервис работает';
+        if (statusIcon) {
+            statusIcon.className = 'fas fa-check fa-2x';
+        }
     } else {
         statusCard.className = 'card status-card status-stopped';
-        statusText.innerHTML = '<i class="fas fa-times-circle me-2"></i>Сервис остановлен';
+        statusText.textContent = 'Сервис остановлен';
+        if (statusIcon) {
+            statusIcon.className = 'fas fa-times fa-2x';
+        }
     }
 }
 
@@ -302,56 +280,6 @@ function updateMetrics(data) {
             document.getElementById('activeRecalls').textContent = '-';
             document.getElementById('realtimeBlocks').style.display = 'none';
         });
-}
-
-function updateLogs(logs) {
-    const container = document.getElementById('logsContainer');
-    
-    if (!logs || logs.length === 0) {
-        container.innerHTML = `
-            <div class="text-center py-4">
-                <i class="fas fa-inbox fa-2x text-muted mb-2"></i>
-                <p class="text-muted mb-0">Логи не найдены</p>
-            </div>`;
-        return;
-    }
-    
-    const logsHtml = logs.map(log => {
-        let iconClass = 'fa-info-circle';
-        if (log.level === 'WARNING') iconClass = 'fa-exclamation-triangle';
-        if (log.level === 'ERROR') iconClass = 'fa-times-circle';
-        if (log.level === 'SUCCESS') iconClass = 'fa-check-circle';
-        
-        return `
-        <div class="log-entry ${log.level.toLowerCase()}">
-            <div class="d-flex justify-content-between align-items-center">
-                <div>
-                    <span class="fw-bold me-2"><i class="fas ${iconClass} me-1"></i>${log.module || 'System'}</span>
-                </div>
-                <small class="text-muted">${new Date(log.timestamp).toLocaleString()}</small>
-            </div>
-            <div class="mt-1">${log.message}</div>
-        </div>`;
-    }).join('');
-    
-    container.innerHTML = logsHtml;
-}
-
-async function loadLogs() {
-    try {
-        const response = await fetch('/api/logs');
-        const data = await response.json();
-        
-        if (data.logs) {
-            updateLogs(data.logs);
-        }
-    } catch (error) {
-        console.error('Ошибка загрузки логов:', error);
-    }
-}
-
-function refreshLogs() {
-    loadLogs();
 }
 
 async function startService() {

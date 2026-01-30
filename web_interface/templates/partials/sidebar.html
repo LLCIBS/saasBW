@@ -1,85 +1,85 @@
 <nav class="col-md-3 col-lg-2 sidebar p-0">
     <div class="p-3">
         <h4>
-            <i class="fas fa-phone-alt"></i>
+            <i class="fas fa-headset"></i>
             <span>Call Analyzer</span>
         </h4>
         <ul class="nav">
             <li class="nav-item">
-                <a class="nav-link {{ 'active' if active_page == 'dashboard' else '' }}" href="/">
+                <a class="nav-link {{ 'active' if active_page == 'dashboard' else '' }}" href="/" title="Панель управления">
                     <i class="fas fa-tachometer-alt"></i>
                     <span>Панель управления</span>
                 </a>
             </li>
             <li class="nav-item">
-                <a class="nav-link {{ 'active' if active_page == 'config' else '' }}" href="/config">
-                    <i class="fas fa-cog"></i>
+                <a class="nav-link {{ 'active' if active_page == 'config' else '' }}" href="/config" title="Конфигурация системы">
+                    <i class="fas fa-sliders-h"></i>
                     <span>Конфигурация</span>
                 </a>
             </li>
             <li class="nav-item">
-                <a class="nav-link {{ 'active' if active_page == 'stations' else '' }}" href="/stations">
+                <a class="nav-link {{ 'active' if active_page == 'stations' else '' }}" href="/stations" title="Управление станциями">
                     <i class="fas fa-building"></i>
                     <span>Станции</span>
                 </a>
             </li>
             <li class="nav-item">
-                <a class="nav-link {{ 'active' if active_page == 'ftp' else '' }}" href="/ftp">
+                <a class="nav-link {{ 'active' if active_page == 'ftp' else '' }}" href="/ftp" title="FTP подключения">
                     <i class="fas fa-server"></i>
                     <span>FTP подключения</span>
                 </a>
             </li>
             <li class="nav-item">
-                <a class="nav-link {{ 'active' if active_page == 'prompts' else '' }}" href="/prompts">
-                    <i class="fas fa-comments"></i>
+                <a class="nav-link {{ 'active' if active_page == 'prompts' else '' }}" href="/prompts" title="AI промпты">
+                    <i class="fas fa-wand-magic-sparkles"></i>
                     <span>Промпты</span>
                 </a>
             </li>
             <li class="nav-item">
-                <a class="nav-link {{ 'active' if active_page == 'vocabulary' else '' }}" href="/vocabulary">
-                    <i class="fas fa-book"></i>
+                <a class="nav-link {{ 'active' if active_page == 'vocabulary' else '' }}" href="/vocabulary" title="Словарь транскрипции">
+                    <i class="fas fa-spell-check"></i>
                     <span>Словарь</span>
                 </a>
             </li>
             <li class="nav-item">
-                <a class="nav-link {{ 'active' if active_page == 'checklists' else '' }}" href="/checklists">
-                    <i class="fas fa-list-check"></i>
+                <a class="nav-link {{ 'active' if active_page == 'checklists' else '' }}" href="/checklists" title="Настройка чек-листов">
+                    <i class="fas fa-clipboard-check"></i>
                     <span>Настройка чек-листов</span>
                 </a>
             </li>
             <li class="nav-item">
-                <a class="nav-link {{ 'active' if active_page == 'reports' else '' }}" href="/reports">
-                    <i class="fas fa-chart-bar"></i>
+                <a class="nav-link {{ 'active' if active_page == 'reports' else '' }}" href="/reports" title="Отчеты">
+                    <i class="fas fa-chart-line"></i>
                     <span>Отчеты</span>
                 </a>
             </li>
             <li class="nav-item">
-                <a class="nav-link {{ 'active' if active_page == 'transfers' else '' }}" href="/transfers">
-                    <i class="fas fa-exchange-alt"></i>
+                <a class="nav-link {{ 'active' if active_page == 'transfers' else '' }}" href="/transfers" title="Переводы вызовов">
+                    <i class="fas fa-phone-volume"></i>
                     <span>Переводы</span>
                 </a>
             </li>
             <li class="nav-item">
-                <a class="nav-link {{ 'active' if active_page == 'recalls' else '' }}" href="/recalls">
-                    <i class="fas fa-redo"></i>
+                <a class="nav-link {{ 'active' if active_page == 'recalls' else '' }}" href="/recalls" title="Перезвоны">
+                    <i class="fas fa-phone-flip"></i>
                     <span>Перезвоны</span>
                 </a>
             </li>
             <li class="nav-item">
-                <a class="nav-link {{ 'active' if active_page == 'logs' else '' }}" href="/logs">
-                    <i class="fas fa-file-alt"></i>
+                <a class="nav-link {{ 'active' if active_page == 'logs' else '' }}" href="/logs" title="Системные логи">
+                    <i class="fas fa-file-lines"></i>
                     <span>Логи</span>
                 </a>
             </li>
             <li class="nav-item">
-                <a class="nav-link {{ 'active' if active_page == 'settings' else '' }}" href="/settings">
-                    <i class="fas fa-user-cog"></i>
+                <a class="nav-link {{ 'active' if active_page == 'settings' else '' }}" href="/settings" title="Настройки пользователя">
+                    <i class="fas fa-gear"></i>
                     <span>Настройки</span>
                 </a>
             </li>
             <li class="nav-item">
-                <a class="nav-link text-danger" href="/auth/logout">
-                    <i class="fas fa-sign-out-alt"></i>
+                <a class="nav-link text-danger" href="/auth/logout" title="Выход из системы">
+                    <i class="fas fa-right-from-bracket"></i>
                     <span>Выход</span>
                 </a>
             </li>
