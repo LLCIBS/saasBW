@@ -533,6 +533,13 @@ function renderRecalls() {
             r.phone_number && r.phone_number.toLowerCase().includes(query)
         );
     }
+    
+    // Сортируем по времени звонка (новые сверху)
+    filteredRecalls.sort((a, b) => {
+        const dateA = new Date(a.call_time || 0);
+        const dateB = new Date(b.call_time || 0);
+        return dateB - dateA;
+    });
 
     if (filteredRecalls.length === 0) {
         container.innerHTML = `
