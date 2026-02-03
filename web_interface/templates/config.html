@@ -337,6 +337,22 @@
         <div class="config-panel" id="paths-panel">
             <div class="form-card">
                 <div class="form-card-title">
+                    <i class="fas fa-briefcase"></i>
+                    <span>Отраслевой профиль</span>
+                </div>
+                <div class="input-wrapper">
+                    <label for="businessProfile">Вид деятельности</label>
+                    <select class="form-select" id="businessProfile">
+                        {% for code, info in (business_profiles or {}).items() %}
+                        <option value="{{ code }}">{{ info.label }}</option>
+                        {% endfor %}
+                    </select>
+                    <div class="help-text">Выбор отрасли влияет на шаблоны чек-листов и словаря при создании профиля. Существующие файлы не перезаписываются.</div>
+                </div>
+            </div>
+
+            <div class="form-card">
+                <div class="form-card-title">
                     <i class="fas fa-hdd"></i>
                     <span>Источник файлов</span>
                 </div>
@@ -703,6 +719,10 @@ document.addEventListener('DOMContentLoaded', async function() {
         
         document.getElementById('baseRecordsPath').value = configData.paths?.base_records_path || '';
         document.getElementById('baseRecordsPathFtp').value = configData.paths?.base_records_path || '';
+        const profileSelect = document.getElementById('businessProfile');
+        if (profileSelect) {
+            profileSelect.value = configData.business_profile || 'autoservice';
+        }
         document.getElementById('promptsFile').value = configData.paths?.prompts_file || '';
         document.getElementById('additionalVocabFile').value = configData.paths?.additional_vocab_file || '';
         document.getElementById('scriptPromptFile').value = configData.paths?.script_prompt_file || '';
@@ -1037,6 +1057,7 @@ async function saveAllConfig() {
                 tg_channel_nizh: document.getElementById('tgChannelNizh').value,
                 tg_channel_other: document.getElementById('tgChannelOther').value
             },
+            business_profile: document.getElementById('businessProfile')?.value || 'autoservice',
             paths: {
                 base_records_path: basePath,
                 prompts_file: document.getElementById('promptsFile').value,

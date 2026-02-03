@@ -5,7 +5,7 @@
 
 from flask import Blueprint, render_template, request, redirect, url_for, flash, current_app
 from flask_login import login_user, logout_user, login_required, current_user
-from database.models import db, User, UserSettings
+from database.models import db, User, UserSettings, UserConfig, BUSINESS_PROFILES
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -39,21 +39,36 @@ def _copy_template_file(source_path: Optional[Path], destination_path: Path):
         )
 
 
-def initialize_user_profile_assets(user: User):
+def initialize_user_profile_assets(user: User, business_profile: str = 'autoservice'):
     """
-    Создает рабочую директорию пользователя, копирует базовые шаблоны
+    Создает рабочую директорию пользователя, копирует шаблоны для выбранной отрасли
     и фиксирует пути в user_settings.config.paths.
+    business_profile: autoservice, restaurant, dental, retail, medical, universal
     """
+    try:
+        from industry_profiles.get_templates import get_all_template_paths
+        template_paths = get_all_template_paths(business_profile)
+    except ImportError:
+        template_paths = {}
+
     user_root = _get_user_workspace_root(user.id)
     user_root.mkdir(parents=True, exist_ok=True)
     config_dir = user_root / "config"
     config_dir.mkdir(parents=True, exist_ok=True)
 
     template_specs = [
-        ('prompts_file', getattr(legacy_config, 'PROMPTS_FILE', None), 'prompts.yaml'),
-        ('additional_vocab_file', getattr(legacy_config, 'ADDITIONAL_VOCAB_FILE', None), 'additional_vocab.yaml'),
-        ('script_prompt_file', getattr(legacy_config, 'SCRIPT_PROMPT_8_PATH', None), 'script_prompt_8.yaml')
+        ('prompts_file', template_paths.get('prompts_file'), 'prompts.yaml'),
+        ('additional_vocab_file', template_paths.get('additional_vocab_file'), 'additional_vocab.yaml'),
+        ('script_prompt_file', template_paths.get('script_prompt_file'), 'script_prompt_8.yaml')
     ]
+
+    # Fallback на legacy config если отраслевые шаблоны недоступны
+    if not any(template_paths.values()):
+        template_specs = [
+            ('prompts_file', getattr(legacy_config, 'PROMPTS_FILE', None), 'prompts.yaml'),
+            ('additional_vocab_file', getattr(legacy_config, 'ADDITIONAL_VOCAB_FILE', None), 'additional_vocab.yaml'),
+            ('script_prompt_file', getattr(legacy_config, 'SCRIPT_PROMPT_8_PATH', None), 'script_prompt_8.yaml')
+        ]
 
     resolved_paths = {}
     for key, source, filename in template_specs:
@@ -62,7 +77,7 @@ def initialize_user_profile_assets(user: User):
         source_path = None
         if source:
             try:
-                source_path = Path(str(source))
+                source_path = Path(str(source)) if not isinstance(source, Path) else source
             except Exception:
                 source_path = None
         _copy_template_file(source_path, destination)
@@ -76,11 +91,24 @@ def initialize_user_profile_assets(user: User):
     config_section = data.get('config') or default_config_template()
     paths_section = config_section.get('paths') or {}
     paths_section['base_records_path'] = str(user_root)
-    for key, value in resolved_paths.items():
-        paths_section[key] = value
+    for k, v in resolved_paths.items():
+        paths_section[k] = v
     config_section['paths'] = paths_section
     data['config'] = config_section
     settings.data = data
+
+    # Создаём/обновляем UserConfig с business_profile
+    cfg = UserConfig.query.filter_by(user_id=user.id).first()
+    if not cfg:
+        cfg = UserConfig(user_id=user.id, business_profile=business_profile)
+        cfg.prompts_file = resolved_paths.get('prompts_file')
+        cfg.additional_vocab_file = resolved_paths.get('additional_vocab_file')
+        cfg.script_prompt_file = resolved_paths.get('script_prompt_file')
+        cfg.base_records_path = str(user_root)
+        db.session.add(cfg)
+    else:
+        cfg.business_profile = business_profile
+
     db.session.commit()
 
 
@@ -170,14 +198,15 @@ def register():
         email = request.form.get('email')
         password = request.form.get('password')
         role = request.form.get('role', 'user') if is_admin else 'user'
+        business_profile = request.form.get('business_profile', 'autoservice')
 
         if not username or not password:
             flash('Имя пользователя и пароль обязательны.', 'error')
-            return render_template('auth/register.html')
+            return render_template('auth/register.html', business_profiles=BUSINESS_PROFILES)
 
         if User.query.filter_by(username=username).first():
             flash('Такой пользователь уже существует.', 'error')
-            return render_template('auth/register.html')
+            return render_template('auth/register.html', business_profiles=BUSINESS_PROFILES)
 
         user = User(username=username, email=email or None, role=role)
         user.set_password(password)
@@ -204,7 +233,7 @@ def register():
                 )
 
             try:
-                initialize_user_profile_assets(user)
+                initialize_user_profile_assets(user, business_profile=business_profile)
             except Exception as setup_error:
                 current_app.logger.error(
                     "Не удалось инициализировать шаблоны пользователя %s: %s",
@@ -223,7 +252,7 @@ def register():
             db.session.rollback()
             flash(f'Ошибка при создании пользователя: {str(e)}', 'error')
 
-    return render_template('auth/register.html')
+    return render_template('auth/register.html', business_profiles=BUSINESS_PROFILES)
 
 @auth_bp.route('/users')
 @login_required

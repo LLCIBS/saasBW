@@ -323,6 +323,20 @@
             </div>
 
             <div class="form-group">
+                <label class="form-label" for="business_profile">
+                    <i class="fas fa-briefcase me-2"></i>Отрасль / вид деятельности
+                </label>
+                <select class="form-select" id="business_profile" name="business_profile">
+                    {% for code, info in (business_profiles or {}).items() %}
+                    <option value="{{ code }}" {% if code == 'autoservice' %}selected{% endif %}>
+                        {{ info.label }}
+                    </option>
+                    {% endfor %}
+                </select>
+                <div class="form-text">Выберите сферу для подходящих шаблонов чек-листов и словаря</div>
+            </div>
+
+            <div class="form-group">
                 <label class="form-label" for="password">
                     <i class="fas fa-lock me-2"></i>Пароль
                 </label>

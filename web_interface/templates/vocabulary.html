@@ -53,49 +53,16 @@
             </div>
         </div>
 
-        <!-- Предустановленные слова -->
+        <!-- Предустановленные слова (по отраслевому профилю) -->
         <div class="config-section">
             <h3 class="config-title">
                 <i class="fas fa-magic me-2"></i>Предустановленные слова
             </h3>
             <p class="text-muted mb-4">
-                Быстро добавить часто используемые термины:
+                Быстро добавить термины для вашей отрасли:
             </p>
-            
-            <div class="row">
-                <div class="col-md-6">
-                    <h6 class="mb-3">Названия станций:</h6>
-                    <div class="mb-3">
-                        <button class="btn btn-outline-secondary btn-sm me-2 mb-2" onclick="addPresetWord('Бествей')">Бествей</button>
-                        <button class="btn btn-outline-secondary btn-sm me-2 mb-2" onclick="addPresetWord('Бринского')">Бринского</button>
-                        <button class="btn btn-outline-secondary btn-sm me-2 mb-2" onclick="addPresetWord('Владимир')">Владимир</button>
-                        <button class="btn btn-outline-secondary btn-sm me-2 mb-2" onclick="addPresetWord('Мечникова')">Мечникова</button>
-                        <button class="btn btn-outline-secondary btn-sm me-2 mb-2" onclick="addPresetWord('Таганрогская')">Таганрогская</button>
-                        <button class="btn btn-outline-secondary btn-sm me-2 mb-2" onclick="addPresetWord('Ижевская')">Ижевская</button>
-                        <button class="btn btn-outline-secondary btn-sm me-2 mb-2" onclick="addPresetWord('Спартаковская')">Спартаковская</button>
-                        <button class="btn btn-outline-secondary btn-sm me-2 mb-2" onclick="addPresetWord('Дзержинск')">Дзержинск</button>
-                        <button class="btn btn-outline-secondary btn-sm me-2 mb-2" onclick="addPresetWord('Чонгарская')">Чонгарская</button>
-                        <button class="btn btn-outline-secondary btn-sm me-2 mb-2" onclick="addPresetWord('Сахарова')">Сахарова</button>
-                        <button class="btn btn-outline-secondary btn-sm me-2 mb-2" onclick="addPresetWord('Коминтерна')">Коминтерна</button>
-                        <button class="btn btn-outline-secondary btn-sm me-2 mb-2" onclick="addPresetWord('Республиканская')">Республиканская</button>
-                        <button class="btn btn-outline-secondary btn-sm me-2 mb-2" onclick="addPresetWord('Арзамас')">Арзамас</button>
-                        <button class="btn btn-outline-secondary btn-sm me-2 mb-2" onclick="addPresetWord('Хальзовская')">Хальзовская</button>
-                        <button class="btn btn-outline-secondary btn-sm me-2 mb-2" onclick="addPresetWord('Родионова')">Родионова</button>
-                    </div>
-                </div>
-                <div class="col-md-6">
-                    <h6 class="mb-3">Технические термины:</h6>
-                    <div class="mb-3">
-                        <button class="btn btn-outline-secondary btn-sm me-2 mb-2" onclick="addPresetWord('мастер приёмщик')">мастер приёмщик</button>
-                        <button class="btn btn-outline-secondary btn-sm me-2 mb-2" onclick="addPresetWord('развал-схождение')">развал-схождение</button>
-                        <button class="btn btn-outline-secondary btn-sm me-2 mb-2" onclick="addPresetWord('замена масла')">замена масла</button>
-                        <button class="btn btn-outline-secondary btn-sm me-2 mb-2" onclick="addPresetWord('диагностика')">диагностика</button>
-                        <button class="btn btn-outline-secondary btn-sm me-2 mb-2" onclick="addPresetWord('автосервис')">автосервис</button>
-                        <button class="btn btn-outline-secondary btn-sm me-2 mb-2" onclick="addPresetWord('техцентр')">техцентр</button>
-                        <button class="btn btn-outline-secondary btn-sm me-2 mb-2" onclick="addPresetWord('сервисный центр')">сервисный центр</button>
-                        <button class="btn btn-outline-secondary btn-sm me-2 mb-2" onclick="addPresetWord('консультант')">консультант</button>
-                    </div>
-                </div>
+            <div id="vocabPresetsContainer">
+                <div class="text-muted">Загрузка пресетов...</div>
             </div>
         </div>
     </div>
@@ -120,10 +87,41 @@ async function loadVocabulary() {
         vocabularyEnabled = (data.enabled !== undefined) ? !!data.enabled : true;
         applyVocabEnabledState();
         renderVocabulary();
+        renderVocabPresets(data.vocab_presets || {});
     } catch (error) {
         console.error('Ошибка загрузки словаря:', error);
         showAlert('Ошибка загрузки словаря', 'danger');
     }
+}
+
+function renderVocabPresets(presets) {
+    const container = document.getElementById('vocabPresetsContainer');
+    if (!container) return;
+    const stations = presets.stations || [];
+    const terms = presets.terms || [];
+    if (stations.length === 0 && terms.length === 0) {
+        container.innerHTML = '<div class="text-muted">Нет пресетов для текущего профиля</div>';
+        return;
+    }
+    let html = '<div class="row">';
+    if (stations.length > 0) {
+        html += '<div class="col-md-6"><h6 class="mb-3">Названия филиалов/локаций:</h6><div class="mb-3">';
+        stations.forEach(w => {
+            const esc = w.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+            html += `<button class="btn btn-outline-secondary btn-sm me-2 mb-2" onclick="addPresetWord('${esc}')">${w}</button>`;
+        });
+        html += '</div></div>';
+    }
+    if (terms.length > 0) {
+        html += '<div class="col-md-6"><h6 class="mb-3">Термины отрасли:</h6><div class="mb-3">';
+        terms.forEach(w => {
+            const esc = w.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+            html += `<button class="btn btn-outline-secondary btn-sm me-2 mb-2" onclick="addPresetWord('${esc}')">${w}</button>`;
+        });
+        html += '</div></div>';
+    }
+    html += '</div>';
+    container.innerHTML = html;
 }
 
 function applyVocabEnabledState() {

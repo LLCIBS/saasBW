@@ -59,6 +59,8 @@ from database.models import (
     UserStationChatId,
     UserEmployeeExtension,
     ReportSchedule,
+    BUSINESS_PROFILES,
+    VOCAB_PRESETS,
 )
 from auth import login_manager
 from auth.routes import auth_bp
@@ -235,6 +237,10 @@ def save_user_config_data(config_data, user=None):
     cfg.allowed_stations = config_data.get('allowed_stations') or []
     cfg.nizh_station_codes = config_data.get('nizh_station_codes') or []
     cfg.legal_entity_keywords = config_data.get('legal_entity_keywords') or []
+
+    profile = config_data.get('business_profile')
+    if profile and profile in ('autoservice', 'restaurant', 'dental', 'retail', 'medical', 'universal'):
+        cfg.business_profile = profile
 
     db.session.add(cfg)
 
@@ -444,6 +450,12 @@ def get_user_config_data(user=None):
         config_data['allowed_stations'] = cfg.allowed_stations or []
         config_data['nizh_station_codes'] = cfg.nizh_station_codes or []
         config_data['legal_entity_keywords'] = cfg.legal_entity_keywords or []
+
+        # Отраслевой профиль (многоотраслевая платформа)
+        config_data['business_profile'] = getattr(cfg, 'business_profile', None) or 'autoservice'
+
+    if 'business_profile' not in config_data:
+        config_data['business_profile'] = 'autoservice'
 
     # Stations
     stations = {s.code: s.name for s in UserStation.query.filter_by(user_id=actual_user.id).all()}
@@ -1731,7 +1743,7 @@ def api_summary_realtime():
 @login_required
 def config_page():
     """Страница конфигурации"""
-    return render_template('config.html', active_page='config')
+    return render_template('config.html', active_page='config', business_profiles=BUSINESS_PROFILES)
 
 @app.route('/api/config/load')
 @login_required
@@ -2150,12 +2162,23 @@ def api_generate_prompt():
         if not thebai_api_key:
             return jsonify({'success': False, 'message': 'Укажите TheB.ai API key в настройках профиля'}), 400
 
+        config_data = get_user_config_data()
+        profile = config_data.get('business_profile', 'autoservice')
+        profile_expert = {
+            'autoservice': 'в автосервисе',
+            'restaurant': 'в ресторанах и общепите',
+            'dental': 'в стоматологических клиниках',
+            'retail': 'в розничной торговле',
+            'medical': 'в медицинских центрах',
+            'universal': 'в любой сфере услуг',
+        }.get(profile, 'в любой сфере услуг')
+
         prompt_request = {
             "model": thebai_model,
             "messages": [
                 {
                     "role": "system",
-                    "content": "Ты эксперт по созданию инструкций для оценки качества телефонных звонков в автосервисе. Твоя задача - создавать четкие, реалистичные и подробные критерии оценки.",
+                    "content": f"Ты эксперт по созданию инструкций для оценки качества телефонных звонков {profile_expert}. Твоя задача - создавать четкие, реалистичные и подробные критерии оценки.",
                 },
                 {
                     "role": "user",
@@ -3020,8 +3043,13 @@ def api_anchors_analyze():
 @app.route('/api/vocabulary')
 @login_required
 def api_vocabulary():
-    """API ??? ????????? ??????????????? ??????? ????????????."""
+    """API для получения словаря и пресетов по отраслевому профилю."""
     vocab_data = get_user_vocabulary_data()
+    config_data = get_user_config_data()
+    profile = config_data.get('business_profile', 'autoservice')
+    presets = VOCAB_PRESETS.get(profile, VOCAB_PRESETS.get('universal', {}))
+    vocab_data['business_profile'] = profile
+    vocab_data['vocab_presets'] = presets
     return jsonify(vocab_data)
 
 @app.route('/api/vocabulary/save', methods=['POST'])
@@ -4263,6 +4291,8 @@ def api_config_save_all():
         config_data = get_user_config_data()
 
         # Обновляем все секции
+        if 'business_profile' in data and data['business_profile']:
+            config_data['business_profile'] = data['business_profile']
         if 'api_keys' in data:
             config_data['api_keys'] = data['api_keys']
         

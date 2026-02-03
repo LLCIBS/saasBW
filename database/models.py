@@ -264,12 +264,58 @@ class UserProfileData(db.Model):
         return f'<UserProfileData user_id={self.user_id} entity_type={self.entity_type}>'
 
 
+# Доступные отраслевые профили для многоотраслевой платформы
+BUSINESS_PROFILES = {
+    'autoservice': {'label': 'Автосервис', 'icon': 'fa-car'},
+    'restaurant': {'label': 'Ресторан / общепит', 'icon': 'fa-utensils'},
+    'dental': {'label': 'Стоматологическая клиника', 'icon': 'fa-tooth'},
+    'retail': {'label': 'Розничная торговля', 'icon': 'fa-store'},
+    'medical': {'label': 'Медицинский центр', 'icon': 'fa-hospital'},
+    'universal': {'label': 'Универсальный (другое)', 'icon': 'fa-briefcase'},
+}
+
+# Пресеты словаря по отраслям (для быстрого добавления типичных терминов)
+VOCAB_PRESETS = {
+    'autoservice': {
+        'stations': ['Бествей', 'Бринского', 'Мечникова', 'Таганрогская', 'Ижевская', 'Спартаковская',
+                     'Дзержинск', 'Чонгарская', 'Сахарова', 'Коминтерна', 'Республиканская', 'Арзамас',
+                     'Хальзовская', 'Родионова'],
+        'terms': ['мастер приёмщик', 'развал-схождение', 'замена масла', 'диагностика', 'автосервис',
+                  'техцентр', 'сервисный центр', 'консультант'],
+    },
+    'restaurant': {
+        'stations': ['зал', 'терраса', 'банкетный зал'],
+        'terms': ['ресторан', 'кафе', 'столик', 'бронирование', 'банкет', 'меню', 'администратор', 'официант'],
+    },
+    'dental': {
+        'stations': ['клиника', 'филиал'],
+        'terms': ['стоматология', 'стоматолог', 'приём', 'консультация', 'имплантация', 'протезирование',
+                  'ортодонт', 'гигиена', 'анестезия'],
+    },
+    'retail': {
+        'stations': ['магазин', 'филиал'],
+        'terms': ['менеджер', 'консультант', 'доставка', 'наличие', 'заказ'],
+    },
+    'medical': {
+        'stations': ['клиника', 'филиал'],
+        'terms': ['врач', 'приём', 'консультация', 'анализы', 'диагностика'],
+    },
+    'universal': {
+        'stations': ['филиал', 'офис'],
+        'terms': ['Здравствуйте', 'Добрый день', 'администратор', 'менеджер', 'консультант', 'запись'],
+    },
+}
+
+
 class UserConfig(db.Model):
     """Модель для конфигурации пользователя"""
     __tablename__ = 'user_config'
     
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), unique=True, nullable=False, index=True)
+    
+    # Отраслевой профиль: autoservice, restaurant, dental, retail, medical, universal
+    business_profile = db.Column(db.String(50), default='autoservice', nullable=False)
     
     # Paths
     source_type = db.Column(db.String(50), nullable=True)  # 'ftp' или 'local'
