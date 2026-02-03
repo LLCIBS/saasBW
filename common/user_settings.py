@@ -164,17 +164,21 @@ def build_runtime_config(project_config, config_data=None, user_id=None):
             'tg_channel_other': _fallback('TG_CHANNEL_OTHER', ''),
             'reports_chat_id': _fallback('REPORTS_CHAT_ID', '')
         },
-        'employee_by_extension': config_data.get('employee_by_extension') or deepcopy(getattr(project_config, 'EMPLOYEE_BY_EXTENSION', {})),
-        'stations': config_data.get('stations') or deepcopy(getattr(project_config, 'STATION_NAMES', {})),
-        'station_chat_ids': config_data.get('station_chat_ids') or deepcopy(getattr(project_config, 'STATION_CHAT_IDS', {})),
-        'station_mapping': config_data.get('station_mapping') or deepcopy(getattr(project_config, 'STATION_MAPPING', {})),
-        'nizh_station_codes': config_data.get('nizh_station_codes') or list(getattr(project_config, 'NIZH_STATION_CODES', [])),
+        # Для SaaS-режима станции, маппинги и сотрудники должны
+        # браться только из пользовательских настроек/таблиц,
+        # а не подмешиваться из глобального legacy-конфига.
+        # Поэтому больше не используем project_config.* как fallback.
+        'employee_by_extension': config_data.get('employee_by_extension') or {},
+        'stations': config_data.get('stations') or {},
+        'station_chat_ids': config_data.get('station_chat_ids') or {},
+        'station_mapping': config_data.get('station_mapping') or {},
+        'nizh_station_codes': config_data.get('nizh_station_codes') or [],
         'transcription': transcription_cfg if transcription_cfg else {
             'tbank_stereo_enabled': bool(getattr(project_config, 'TBANK_STEREO_ENABLED', False)),
             'use_additional_vocab': vocab_enabled
         },
         'filename': config_data.get('filename') or default_config_template()['filename'],
-        'allowed_stations': config_data.get('allowed_stations')
+        'allowed_stations': config_data.get('allowed_stations') or []
     }
     
     # Обновляем config_data для сохранения синхронизации

@@ -513,6 +513,8 @@
 
 {% block extra_js %}
 <script>
+    // === Данные чек-листа (script_prompt) ===
+    let scriptPromptData = { checklist: [], prompt: '' };
 let promptsData = { anchors: {}, stations: {}, "default": '' };
 let currentFilter = 'all';
 
@@ -556,9 +558,10 @@ function truncateText(text, maxLength = 150) {
     return text.substring(0, maxLength) + '...';
 }
 
-// Загрузка промптов при старте
+// Загрузка промптов и чек-листа при старте
 document.addEventListener('DOMContentLoaded', function() {
     loadPrompts();
+    loadScriptPrompt();
 });
 
 async function loadPrompts() {
@@ -1096,6 +1099,377 @@ async function regenerateAnchorFromEdit(encodedName) {
     } finally {
         btn.innerHTML = originalContent;
         btn.disabled = false;
+    }
+}
+
+// === Чек-лист (редактор script_prompt_8) ===
+
+async function loadScriptPrompt() {
+    try {
+        const response = await fetch('/api/script-prompt');
+        const result = await response.json();
+        if (result.success) {
+            scriptPromptData = result.data || { checklist: [], prompt: '' };
+            renderChecklist();
+        } else {
+            showAlert(result.message || 'Ошибка загрузки чек-листа', 'danger');
+        }
+    } catch (e) {
+        showAlert('Ошибка загрузки чек-листа: ' + e.message, 'danger');
+    }
+}
+
+function renderChecklist() {
+    const container = document.createElement('div');
+    container.className = 'prompt-section';
+    container.innerHTML = `
+        <h3 class="prompt-title mb-3">
+            <i class="fas fa-list-check me-2 text-primary"></i>Чек-лист
+        </h3>
+        <div id="checklistItems" class="checklist-items-container mb-3"></div>
+        <button class="btn btn-outline-success mb-4" onclick="addChecklistItem()">
+            <i class="fas fa-plus me-2"></i>Добавить пункт
+        </button>
+        <div class="mt-2">
+            <label class="form-label fw-semibold">Собранный промпт (опционально)</label>
+            <textarea class="form-control prompt-textarea" id="assembledPrompt"
+                      placeholder="Итоговый промпт..."
+                      style="min-height: 140px; font-family: 'Courier New', monospace; font-size: 0.9rem;">${(scriptPromptData.prompt || '')}</textarea>
+            <small class="text-muted d-block mt-1">
+                Этот промпт будет использоваться при анализе звонков по чек-листу.
+            </small>
+        </div>
+        <div class="mt-3">
+            <button class="btn btn-save" onclick="saveScriptPrompt()">
+                <i class="fas fa-save me-2"></i>Сохранить чек-лист
+            </button>
+        </div>
+    `;
+
+    // Вставляем перед секцией "Промпт по умолчанию"
+    const defaultSection = document.getElementById('defaultPrompt')?.closest('.default-prompt-section');
+    if (defaultSection && defaultSection.parentNode) {
+        // Надёжно вставляем относительно фактического родителя,
+        // чтобы избежать ошибки insertBefore, если контейнеры отличаются
+        defaultSection.parentNode.insertBefore(container, defaultSection);
+    } else {
+        const main = document.querySelector('main .p-4');
+        if (main) {
+            main.appendChild(container);
+        }
+    }
+
+    renderChecklistItems();
+    generateAssembledPrompt();
+}
+
+function renderChecklistItems() {
+    const holder = document.getElementById('checklistItems');
+    if (!holder) return;
+    const items = Array.isArray(scriptPromptData.checklist) ? scriptPromptData.checklist : [];
+    holder.innerHTML = items.map((item, idx) => `
+        <div class="anchor-section checklist-item mb-3" data-index="${idx}" draggable="true">
+            <div class="checklist-number">${idx + 1}</div>
+            <div class="row g-3 mb-2">
+                <div class="col-auto d-flex align-items-center">
+                    <span class="drag-handle" title="Перетащите для изменения порядка">
+                        <i class="fas fa-grip-vertical"></i>
+                    </span>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Название пункта</label>
+                    <input type="text" class="form-control"
+                           value="${(item.title || '')}"
+                           onchange="updateChecklistTitle(${idx}, this.value)">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Промпт для пункта</label>
+                    <textarea class="form-control" id="prompt_${idx}" rows="2"
+                              onchange="updateChecklistPrompt(${idx}, this.value)"
+                              placeholder="Введите промпт...">${(item.prompt || '')}</textarea>
+                </div>
+                <div class="col-md-2 d-flex align-items-end">
+                    <button class="btn btn-outline-primary w-100"
+                            onclick="generatePrompt(${idx})"
+                            title="Автогенерация промпта">
+                        <i class="fas fa-magic"></i> Создать
+                    </button>
+                </div>
+                <div class="col-md-2 d-flex align-items-end">
+                    <button class="btn btn-outline-danger w-100"
+                            onclick="removeChecklistItem(${idx})"
+                            title="Удалить пункт">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="row g-3">
+                <div class="col-md-12">
+                    <label class="form-label text-muted small">
+                        <i class="fas fa-magic me-1"></i>Доработать промпт через AI
+                    </label>
+                    <div class="input-group">
+                        <input type="text"
+                               class="form-control"
+                               id="checklist-condition-${idx}"
+                               placeholder="Введите дополнительное условие (например: добавить проверку на конкретные слова)..."
+                               onkeypress="if(event.key === 'Enter') { event.preventDefault(); regenerateChecklistItemPrompt(${idx}); }">
+                        <button type="button"
+                                class="btn btn-outline-primary"
+                                onclick="regenerateChecklistItemPrompt(${idx})"
+                                id="regenerate-checklist-btn-${idx}">
+                            <i class="fas fa-sync-alt me-1"></i>Перегенерировать
+                        </button>
+                    </div>
+                    <small class="text-muted">
+                        Введите новое условие и нажмите "Перегенерировать" для доработки промпта через AI.
+                    </small>
+                </div>
+            </div>
+        </div>
+    `).join('');
+
+    setupChecklistDragAndDrop();
+}
+
+function setupChecklistDragAndDrop() {
+    const items = document.querySelectorAll('.checklist-item');
+    items.forEach(item => {
+        item.addEventListener('dragstart', handleChecklistDragStart);
+        item.addEventListener('dragend', handleChecklistDragEnd);
+        item.addEventListener('dragover', handleChecklistDragOver);
+        item.addEventListener('drop', handleChecklistDrop);
+        item.addEventListener('dragleave', handleChecklistDragLeave);
+    });
+}
+
+let draggedChecklistElement = null;
+
+function handleChecklistDragStart(e) {
+    draggedChecklistElement = this;
+    this.classList.add('dragging');
+    e.dataTransfer.effectAllowed = 'move';
+}
+
+function handleChecklistDragEnd() {
+    this.classList.remove('dragging');
+    document.querySelectorAll('.checklist-item').forEach(item => {
+        item.classList.remove('drag-over');
+    });
+}
+
+function handleChecklistDragOver(e) {
+    if (e.preventDefault) e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (this !== draggedChecklistElement) {
+        this.classList.add('drag-over');
+    }
+    return false;
+}
+
+function handleChecklistDragLeave() {
+    this.classList.remove('drag-over');
+}
+
+function handleChecklistDrop(e) {
+    if (e.stopPropagation) e.stopPropagation();
+    if (draggedChecklistElement !== this) {
+        const draggedIndex = parseInt(draggedChecklistElement.getAttribute('data-index'));
+        const targetIndex = parseInt(this.getAttribute('data-index'));
+        const items = scriptPromptData.checklist || [];
+        const draggedItem = items[draggedIndex];
+        items.splice(draggedIndex, 1);
+        items.splice(targetIndex, 0, draggedItem);
+        renderChecklistItems();
+        generateAssembledPrompt();
+    }
+    this.classList.remove('drag-over');
+    return false;
+}
+
+function addChecklistItem() {
+    if (!Array.isArray(scriptPromptData.checklist)) scriptPromptData.checklist = [];
+    scriptPromptData.checklist.push({ title: '', prompt: '' });
+    renderChecklistItems();
+}
+
+function removeChecklistItem(index) {
+    if (!Array.isArray(scriptPromptData.checklist)) return;
+    scriptPromptData.checklist.splice(index, 1);
+    renderChecklistItems();
+    generateAssembledPrompt();
+}
+
+function updateChecklistTitle(index, value) {
+    if (!Array.isArray(scriptPromptData.checklist)) return;
+    scriptPromptData.checklist[index].title = value;
+    generateAssembledPrompt();
+}
+
+function updateChecklistPrompt(index, value) {
+    if (!Array.isArray(scriptPromptData.checklist)) return;
+    scriptPromptData.checklist[index].prompt = value;
+    generateAssembledPrompt();
+}
+
+function generateAssembledPrompt() {
+    if (!Array.isArray(scriptPromptData.checklist)) return;
+    const items = scriptPromptData.checklist.filter(item => item.title && item.title.trim());
+    if (items.length === 0) return;
+
+    let assembledPrompt = `Оцени звонок по пунктам чек-листа ниже. Для КАЖДОГО пункта ответь строго формой '[ОТВЕТ: ДА]' или '[ОТВЕТ: НЕТ]' без дополнительных слов после него.
+
+После всех ответов добавь блок <общая оценка>... </общая оценка> с кратким выводом.
+
+Если пункт неприменим, ставь '[ОТВЕТ: НЕТ]'.
+
+
+Чек-лист:
+
+`;
+
+    items.forEach((item, index) => {
+        assembledPrompt += `${index + 1}. ${item.title}\n\n`;
+    });
+
+    const assembledPromptField = document.getElementById('assembledPrompt');
+    if (assembledPromptField) {
+        assembledPromptField.value = assembledPrompt.trim();
+        scriptPromptData.prompt = assembledPrompt.trim();
+    }
+}
+
+async function generatePrompt(index) {
+    if (!Array.isArray(scriptPromptData.checklist)) return;
+
+    const item = scriptPromptData.checklist[index];
+    const title = item.title || '';
+    const existingPrompt = item.prompt || '';
+
+    if (!title.trim()) {
+        showAlert('Сначала заполните название пункта', 'warning');
+        return;
+    }
+
+    const button = event.target.closest('button');
+    const originalContent = button.innerHTML;
+    button.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+    button.disabled = true;
+
+    try {
+        const response = await fetch('/api/generate-prompt', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ title, existingPrompt })
+        });
+        const result = await response.json();
+        if (result.success) {
+            scriptPromptData.checklist[index].prompt = result.prompt;
+            const promptInput = document.getElementById(`prompt_${index}`);
+            if (promptInput) {
+                promptInput.value = result.prompt;
+            }
+            showAlert('Промпт успешно сгенерирован!', 'success');
+        } else {
+            showAlert('Ошибка генерации промпта: ' + (result.message || 'Неизвестная ошибка'), 'danger');
+        }
+    } catch (error) {
+        console.error('Ошибка генерации промпта:', error);
+        showAlert('Ошибка генерации промпта: ' + error.message, 'danger');
+    } finally {
+        button.innerHTML = originalContent;
+        button.disabled = false;
+    }
+}
+
+async function regenerateChecklistItemPrompt(itemIndex) {
+    const conditionInput = document.getElementById(`checklist-condition-${itemIndex}`);
+    const regenerateBtn = document.getElementById(`regenerate-checklist-btn-${itemIndex}`);
+    const promptInput = document.getElementById(`prompt_${itemIndex}`);
+
+    if (!conditionInput || !regenerateBtn || !promptInput) {
+        showAlert('Ошибка: не найдены элементы интерфейса', 'danger');
+        return;
+    }
+
+    const additionalCondition = (conditionInput.value || '').trim();
+    if (!additionalCondition) {
+        showAlert('Введите дополнительное условие или требование', 'warning');
+        conditionInput.focus();
+        return;
+    }
+
+    const currentPrompt = (promptInput.value || '').trim();
+    if (!currentPrompt) {
+        showAlert('Текущий промпт пункта не может быть пустым. Сначала создайте базовый промпт.', 'warning');
+        return;
+    }
+
+    const originalContent = regenerateBtn.innerHTML;
+    regenerateBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>AI...';
+    regenerateBtn.disabled = true;
+
+    try {
+        const response = await fetch('/api/regenerate-checklist-item-prompt', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                current_prompt: currentPrompt,
+                additional_condition: additionalCondition,
+                item_title: scriptPromptData.checklist[itemIndex]?.title || ''
+            })
+        });
+
+        if (!response.ok) {
+            const text = await response.text();
+            console.error('Ошибка ответа сервера:', response.status, text);
+            throw new Error(`HTTP ${response.status}: ${text}`);
+        }
+
+        const result = await response.json();
+        if (result.success && result.prompt) {
+            promptInput.value = result.prompt;
+            scriptPromptData.checklist[itemIndex].prompt = result.prompt;
+            conditionInput.value = '';
+            showAlert('Промпт успешно доработан через AI', 'success');
+        } else {
+            showAlert(result.message || 'Ошибка при перегенерации промпта', 'danger');
+        }
+    } catch (error) {
+        console.error('Ошибка при перегенерации промпта:', error);
+        if (error instanceof SyntaxError && error.message.includes('JSON')) {
+            showAlert('Ошибка: сервер вернул не JSON ответ. Возможно, веб-сервер не перезагрузился. Перезапустите веб-сервер и попробуйте снова.', 'danger');
+        } else {
+            showAlert('Ошибка соединения при перегенерации промпта: ' + error.message, 'danger');
+        }
+    } finally {
+        regenerateBtn.innerHTML = originalContent;
+        regenerateBtn.disabled = false;
+    }
+}
+
+async function saveScriptPrompt() {
+    try {
+        generateAssembledPrompt();
+        const payload = {
+            data: {
+                checklist: scriptPromptData.checklist || [],
+                prompt: document.getElementById('assembledPrompt')?.value || scriptPromptData.prompt || ''
+            }
+        };
+        const resp = await fetch('/api/script-prompt/save', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const result = await resp.json();
+        if (result.success) {
+            showAlert('Чек-лист сохранен', 'success');
+        } else {
+            showAlert(result.message || 'Ошибка сохранения', 'danger');
+        }
+    } catch (e) {
+        showAlert('Ошибка сохранения: ' + e.message, 'danger');
     }
 }
 
