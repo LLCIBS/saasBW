@@ -2750,8 +2750,8 @@ def api_checklists_test():
             analysis_text = thebai_analyze(transcript_text, prompt_text)
             
             # Определяем целевой ли звонок (по аналогии с call_handler.py)
-            analysis_upper = analysis_text.upper()
-            is_target = "[ТИПЗВОНКА:ЦЕЛЕВОЙ]" in analysis_upper or "ПЕРВИЧНЫЙ" in analysis_upper
+            analysis_clean = analysis_text.upper().replace(" ", "")
+            is_target = "[ТИПЗВОНКА:ЦЕЛЕВОЙ]" in analysis_clean or "ПЕРВИЧНЫЙ" in analysis_clean
 
             # Сохраняем транскрипцию и анализ в отдельную тестовую папку,
             # не используя стандартный путь transcriptions, чтобы не мешать рабочим данным

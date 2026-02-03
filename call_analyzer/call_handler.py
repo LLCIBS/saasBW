@@ -204,7 +204,7 @@ def transcribe_and_analyze(file_path: Path, station_code: str, original_station_
         logger.info(f"Для формата файла {filename} чек-лист отключен пользователем.")
         checklist_allowed = False
 
-    if checklist_allowed and ("[ТИПЗВОНКА:ЦЕЛЕВОЙ]" in analysis_upper or "ПЕРВИЧНЫЙ" in analysis_upper):
+    if checklist_allowed and is_target_call(analysis_text):
         logger.info("Звонок определен как ЦЕЛЕВОЙ/ПЕРВИЧНЫЙ. Запускаем расширенный разбор (чек-лист).")
         if phone_number and call_time:
             # Используем оригинальный код станции для определения оператора в Telegram сообщении
@@ -222,7 +222,7 @@ def transcribe_and_analyze(file_path: Path, station_code: str, original_station_
         logger.info(f"Звонок НЕ является целевым (анализ: {analysis_upper[:50]}...). Чек-лист пропущен.")
 
     # 6. Если видим результат ПЕРЕВОД
-    if "[ТИПЗВОНКА:ЦЕЛЕВОЙ]" in analysis_upper and "[РЕЗУЛЬТАТ:ПЕРЕВОД]" in analysis_upper:
+    if is_target_call(analysis_text) and "[РЕЗУЛЬТАТ:ПЕРЕВОД]" in analysis_text.upper().replace(" ", ""):
         logger.info("Обнаружен звонок с результатом: ПЕРЕВОД. Запускаем расширенный анализ кейса.")
         transfer_prompt_path = Path(__file__).parent / "transfer_recall" / "transfer_prompt.yaml"
         with open(transfer_prompt_path, "r", encoding="utf-8") as f:
@@ -286,7 +286,7 @@ def transcribe_and_analyze(file_path: Path, station_code: str, original_station_
             send_alert(msg)
 
     # 7. Если видим результат ПЕРЕЗВОНИТЬ
-    if "[ТИПЗВОНКА:ЦЕЛЕВОЙ]" in analysis_upper and "[РЕЗУЛЬТАТ:ПЕРЕЗВОНИТЬ]" in analysis_upper:
+    if is_target_call(analysis_text) and "[РЕЗУЛЬТАТ:ПЕРЕЗВОНИТЬ]" in analysis_text.upper().replace(" ", ""):
         logger.info("Обнаружен звонок с результатом: ПЕРЕЗВОНИТЬ. Запускаем расширенный анализ кейса.")
         recall_prompt_path = Path(__file__).parent / "transfer_recall" / "recall_prompt.yaml"
         with open(recall_prompt_path, "r", encoding="utf-8") as f:
@@ -807,6 +807,12 @@ def save_transcript_analysis(file_path: Path, transcript_text: str, analysis_tex
 
 
 def is_target_call(analysis_text: str) -> bool:
-    """Целевой звонок: достаточно наличия тега [ТИПЗВОНКА: ЦЕЛЕВОЙ]."""
+    """
+    Определяет, является ли звонок целевым/первичным.
+    Учитывает возможные пробелы и разный регистр.
+    """
+    if not analysis_text:
+        return False
+    # Убираем пробелы и переводим в верхний регистр для надежности сравнения
     upper_text = analysis_text.upper().replace(" ", "")
-    return "[ТИПЗВОНКА:ЦЕЛЕВОЙ]" in upper_text
+    return "[ТИПЗВОНКА:ЦЕЛЕВОЙ]" in upper_text or "ПЕРВИЧНЫЙ" in upper_text
