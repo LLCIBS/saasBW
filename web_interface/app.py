@@ -3316,6 +3316,52 @@ def api_get_report_schedules():
         app.logger.error(f"Ошибка получения расписаний: {e}", exc_info=True)
         return jsonify({'success': False, 'message': str(e)}), 500
 
+@app.route('/api/reports/schedules/debug', methods=['GET'])
+@login_required
+def api_debug_report_schedules():
+    """Диагностика: показать задачи в планировщике и данные в БД"""
+    try:
+        from web_interface.scheduler_service import scheduler
+        
+        # Данные из БД
+        db_schedules = ReportSchedule.query.filter_by(user_id=current_user.id).all()
+        db_info = []
+        for s in db_schedules:
+            db_info.append({
+                'report_type': s.report_type,
+                'schedule_type': s.schedule_type,
+                'enabled': s.enabled,
+                'daily_time': s.daily_time,
+                'weekly_day': s.weekly_day,
+                'weekly_time': s.weekly_time,
+                'interval_value': s.interval_value,
+                'interval_unit': s.interval_unit,
+                'cron_expression': s.cron_expression,
+                'next_run_at': s.next_run_at.isoformat() if s.next_run_at else None,
+            })
+        
+        # Задачи в планировщике
+        scheduler_jobs = []
+        if scheduler:
+            for job in scheduler.get_jobs():
+                job_info = {
+                    'id': job.id,
+                    'name': job.name,
+                    'next_run_time': job.next_run_time.isoformat() if job.next_run_time else None,
+                    'trigger': str(job.trigger),
+                }
+                scheduler_jobs.append(job_info)
+        
+        return jsonify({
+            'success': True,
+            'db_schedules': db_info,
+            'scheduler_jobs': scheduler_jobs,
+            'scheduler_running': scheduler is not None and scheduler.running if scheduler else False,
+        })
+    except Exception as e:
+        app.logger.error(f"Ошибка диагностики расписаний: {e}", exc_info=True)
+        return jsonify({'success': False, 'message': str(e)}), 500
+
 @app.route('/api/reports/schedules', methods=['POST'])
 @login_required
 def api_save_report_schedule():
@@ -3335,14 +3381,50 @@ def api_save_report_schedule():
         if not schedule:
             schedule = ReportSchedule(user_id=current_user.id, report_type=report_type)
 
-        schedule.schedule_type = data.get('schedule_type') or 'daily'
+        new_schedule_type = data.get('schedule_type') or 'daily'
+        schedule.schedule_type = new_schedule_type
         schedule.enabled = bool(data.get('enabled', True))
-        schedule.daily_time = data.get('daily_time')
-        schedule.interval_value = data.get('interval_value')
-        schedule.interval_unit = data.get('interval_unit')
-        schedule.weekly_day = data.get('weekly_day')
-        schedule.weekly_time = data.get('weekly_time')
-        schedule.cron_expression = data.get('cron_expression')
+        
+        # Очищаем поля других типов расписания, чтобы избежать конфликтов
+        # и устанавливаем только поля текущего типа
+        if new_schedule_type == 'daily':
+            schedule.daily_time = data.get('daily_time') or '12:00'
+            schedule.interval_value = None
+            schedule.interval_unit = None
+            schedule.weekly_day = None
+            schedule.weekly_time = None
+            schedule.cron_expression = None
+        elif new_schedule_type == 'interval':
+            schedule.daily_time = None
+            schedule.interval_value = data.get('interval_value') or 1
+            schedule.interval_unit = data.get('interval_unit') or 'days'
+            schedule.weekly_day = None
+            schedule.weekly_time = None
+            schedule.cron_expression = None
+        elif new_schedule_type == 'weekly':
+            schedule.daily_time = None
+            schedule.interval_value = None
+            schedule.interval_unit = None
+            schedule.weekly_day = data.get('weekly_day') if data.get('weekly_day') is not None else 0
+            schedule.weekly_time = data.get('weekly_time') or '08:00'
+            schedule.cron_expression = None
+        elif new_schedule_type == 'custom':
+            schedule.daily_time = None
+            schedule.interval_value = None
+            schedule.interval_unit = None
+            schedule.weekly_day = None
+            schedule.weekly_time = None
+            schedule.cron_expression = data.get('cron_expression')
+        else:
+            # Fallback на daily
+            schedule.daily_time = data.get('daily_time') or '12:00'
+            schedule.interval_value = None
+            schedule.interval_unit = None
+            schedule.weekly_day = None
+            schedule.weekly_time = None
+            schedule.cron_expression = None
+        
+        app.logger.info(f"Сохранение расписания: type={new_schedule_type}, weekly_day={schedule.weekly_day}, weekly_time={schedule.weekly_time}, daily_time={schedule.daily_time}")
         
         # Период генерации
         schedule.period_type = data.get('period_type') or 'last_week'

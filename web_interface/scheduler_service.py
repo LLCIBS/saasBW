@@ -58,6 +58,8 @@ def _run_report_job(user_id: int, report_type: str):
     """Фоновый запуск генерации отчета для одного пользователя."""
     from web_interface.app import app, build_user_runtime_config, legacy_config_override
     
+    logger.info(f"[Scheduler] ====== TRIGGERED: report={report_type}, user={user_id} at {datetime.now()} ======")
+    
     with app.app_context():
         try:
             user = User.query.get(user_id)
@@ -74,6 +76,13 @@ def _run_report_job(user_id: int, report_type: str):
             if not schedule:
                 logger.info(f"[Scheduler] No enabled schedule for user={user_id}, report={report_type}")
                 return
+            
+            # Логируем информацию о расписании для отладки
+            logger.info(
+                f"[Scheduler] Schedule info: type={schedule.schedule_type}, "
+                f"weekly_day={schedule.weekly_day}, weekly_time={schedule.weekly_time}, "
+                f"daily_time={schedule.daily_time}"
+            )
 
             start_date, end_date = _calc_dates(schedule)
             start_str = start_date.isoformat()
@@ -160,9 +169,19 @@ def _add_schedule_job(sched: BackgroundScheduler, schedule: ReportSchedule):
     """Добавить задачу в планировщик на основе расписания."""
     job_id = f"user_{schedule.user_id}_{schedule.report_type}"
 
+    # Логируем полную информацию о расписании для отладки
+    logger.info(
+        f"[Scheduler] Processing schedule {job_id}: "
+        f"type={schedule.schedule_type}, enabled={schedule.enabled}, "
+        f"daily_time={schedule.daily_time}, "
+        f"weekly_day={schedule.weekly_day}, weekly_time={schedule.weekly_time}, "
+        f"interval_value={schedule.interval_value}, interval_unit={schedule.interval_unit}"
+    )
+
     # Удаляем старую задачу, если была
     try:
         sched.remove_job(job_id)
+        logger.info(f"[Scheduler] Removed existing job {job_id}")
     except Exception:
         pass
 
@@ -171,39 +190,58 @@ def _add_schedule_job(sched: BackgroundScheduler, schedule: ReportSchedule):
         return
 
     trigger = None
+    schedule_type = schedule.schedule_type
     
     try:
-        if schedule.schedule_type == 'daily' and schedule.daily_time:
-            hour, minute = map(int, schedule.daily_time.split(':'))
+        # ВАЖНО: проверяем только поля для текущего типа расписания
+        if schedule_type == 'daily':
+            daily_time = schedule.daily_time
+            if not daily_time or not isinstance(daily_time, str) or ':' not in daily_time:
+                logger.warning(f"[Scheduler] Invalid daily_time '{daily_time}' for {job_id}, using default 12:00")
+                daily_time = '12:00'
+            hour, minute = map(int, daily_time.split(':'))
             trigger = CronTrigger(hour=hour, minute=minute)
-            logger.info(f"[Scheduler] Added daily schedule {job_id} at {schedule.daily_time}")
+            logger.info(f"[Scheduler] Created DAILY trigger for {job_id} at {daily_time}")
             
-        elif schedule.schedule_type == 'interval' and schedule.interval_value and schedule.interval_unit:
-            if schedule.interval_unit == 'days':
-                trigger = IntervalTrigger(days=schedule.interval_value)
-            elif schedule.interval_unit == 'hours':
-                trigger = IntervalTrigger(hours=schedule.interval_value)
-            else:
-                logger.warning(f"[Scheduler] Unknown interval unit: {schedule.interval_unit}")
+        elif schedule_type == 'interval':
+            interval_value = schedule.interval_value
+            interval_unit = schedule.interval_unit
+            if not interval_value or not interval_unit:
+                logger.warning(f"[Scheduler] Missing interval params for {job_id}")
                 return
-            logger.info(f"[Scheduler] Added interval schedule {job_id}: every {schedule.interval_value} {schedule.interval_unit}")
+            if interval_unit == 'days':
+                trigger = IntervalTrigger(days=int(interval_value))
+            elif interval_unit == 'hours':
+                trigger = IntervalTrigger(hours=int(interval_value))
+            else:
+                logger.warning(f"[Scheduler] Unknown interval unit: {interval_unit}")
+                return
+            logger.info(f"[Scheduler] Created INTERVAL trigger for {job_id}: every {interval_value} {interval_unit}")
             
-        elif schedule.schedule_type == 'weekly' and schedule.weekly_time is not None:
-            hour, minute = map(int, schedule.weekly_time.split(':'))
+        elif schedule_type == 'weekly':
+            weekly_time = schedule.weekly_time
+            if not weekly_time or not isinstance(weekly_time, str) or ':' not in weekly_time:
+                logger.warning(f"[Scheduler] Invalid weekly_time '{weekly_time}' for {job_id}, using default 08:00")
+                weekly_time = '08:00'
+            hour, minute = map(int, weekly_time.split(':'))
             # 0=понедельник ... 6=воскресенье
             day_of_week = schedule.weekly_day if schedule.weekly_day is not None else 0
             trigger = CronTrigger(day_of_week=day_of_week, hour=hour, minute=minute)
-            logger.info(f"[Scheduler] Added weekly schedule {job_id}: day={day_of_week}, time={schedule.weekly_time}")
+            logger.info(f"[Scheduler] Created WEEKLY trigger for {job_id}: day={day_of_week}, time={weekly_time}")
             
-        elif schedule.schedule_type == 'custom' and schedule.cron_expression:
+        elif schedule_type == 'custom':
+            cron_expr = schedule.cron_expression
+            if not cron_expr:
+                logger.warning(f"[Scheduler] Missing cron_expression for {job_id}")
+                return
             try:
-                trigger = CronTrigger.from_crontab(schedule.cron_expression)
-                logger.info(f"[Scheduler] Added custom schedule {job_id}: {schedule.cron_expression}")
+                trigger = CronTrigger.from_crontab(cron_expr)
+                logger.info(f"[Scheduler] Created CUSTOM trigger for {job_id}: {cron_expr}")
             except Exception as e:
-                logger.error(f"[Scheduler] Invalid cron expression '{schedule.cron_expression}': {e}")
+                logger.error(f"[Scheduler] Invalid cron expression '{cron_expr}': {e}")
                 return
         else:
-            logger.warning(f"[Scheduler] Invalid schedule config: {schedule}")
+            logger.warning(f"[Scheduler] Unknown schedule_type '{schedule_type}' for {job_id}")
             return
 
         if trigger:
