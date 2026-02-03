@@ -865,8 +865,12 @@ def get_user_script_prompt_path(user=None):
     return path
 
 
-def load_script_prompt_file(user=None):
-    path = get_user_script_prompt_path(user=user)
+def load_script_prompt_file(user=None, custom_path=None):
+    if custom_path:
+        path = Path(custom_path)
+    else:
+        path = get_user_script_prompt_path(user=user)
+        
     if not path or not path.exists():
         return default_script_prompt_template()
     try:
@@ -894,8 +898,12 @@ def load_script_prompt_file(user=None):
     return data
 
 
-def write_script_prompt_file(data, user=None):
-    path = get_user_script_prompt_path(user=user)
+def write_script_prompt_file(data, user=None, custom_path=None):
+    if custom_path:
+        path = Path(custom_path)
+    else:
+        path = get_user_script_prompt_path(user=user)
+        
     if not path:
         return
     payload = default_script_prompt_template()
@@ -910,6 +918,8 @@ def write_script_prompt_file(data, user=None):
     payload['checklist'] = checklist
     payload['prompt'] = str(data.get('prompt') or '')
     try:
+        # Убеждаемся, что папка существует
+        path.parent.mkdir(parents=True, exist_ok=True)
         with path.open('w', encoding='utf-8') as handler:
             yaml.safe_dump(payload, handler, allow_unicode=True, sort_keys=False)
     except Exception as exc:
@@ -2014,21 +2024,28 @@ def api_prompts_sync():
 @app.route('/api/script-prompt', methods=['GET'])
 @login_required
 def api_script_prompt_get():
-    """?????????? ???????????????? ???-???? ? ??????? JSON."""
+    """Возвращает script_prompt в формате JSON. Поддерживает параметр file_path."""
     try:
-        data = get_user_script_prompt()
-        file_data = load_script_prompt_file()
-        changed = False
+        file_path = request.args.get('file_path')
+        
+        if file_path:
+            # Загружаем из указанного файла
+            data = load_script_prompt_file(user=current_user, custom_path=file_path)
+        else:
+            # Стандартная логика с БД и файлом пользователя
+            data = get_user_script_prompt()
+            file_data = load_script_prompt_file()
+            changed = False
 
-        if file_data.get('checklist') and data.get('checklist') != file_data.get('checklist'):
-            data['checklist'] = file_data['checklist']
-            changed = True
-        if isinstance(file_data.get('prompt'), str) and data.get('prompt') != file_data.get('prompt'):
-            data['prompt'] = file_data['prompt']
-            changed = True
+            if file_data.get('checklist') and data.get('checklist') != file_data.get('checklist'):
+                data['checklist'] = file_data['checklist']
+                changed = True
+            if isinstance(file_data.get('prompt'), str) and data.get('prompt') != file_data.get('prompt'):
+                data['prompt'] = file_data['prompt']
+                changed = True
 
-        if changed:
-            save_user_script_prompt(data)
+            if changed:
+                save_user_script_prompt(data)
 
         return jsonify({'success': True, 'data': data})
     except Exception as e:
@@ -2037,14 +2054,22 @@ def api_script_prompt_get():
 @app.route('/api/script-prompt/save', methods=['POST'])
 @login_required
 def api_script_prompt_save():
-    """????????? ???????????????? ???-????."""
+    """Сохраняет script_prompt. Поддерживает параметр file_path."""
     try:
         payload = request.get_json() or {}
         data = payload.get('data', {})
-        save_user_script_prompt(data)
-        write_script_prompt_file(data)
-        append_user_log('???-???? ????????', module='prompts')
-        return jsonify({'success': True, 'message': '???-???? ????????'})
+        file_path = payload.get('file_path')
+        
+        if file_path:
+            # Сохраняем только в указанный файл
+            write_script_prompt_file(data, user=current_user, custom_path=file_path)
+        else:
+            # Сохраняем в БД и в стандартный файл пользователя
+            save_user_script_prompt(data)
+            write_script_prompt_file(data)
+            
+        append_user_log('Чек-лист сохранен', module='prompts')
+        return jsonify({'success': True, 'message': 'Чек-лист сохранен'})
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)}), 500
 
@@ -2325,15 +2350,15 @@ def api_regenerate_anchor_prompt():
 3. Если новое условие конфликтует со старым, приоритет отдай новому, но сохрани остальные части промпта.
 4. Промпт должен оставаться структурированным и четким.
 5. Обязательно сохрани формат вывода с тегами [ТИПЗВОНКА:...], [КЛАСС:...], [РЕЗУЛЬТАТ:...] если они были в оригинале.
-
-Верни только доработанный промпт, без дополнительных комментариев."""
+6. ВАЖНО: Верни ТОЛЬКО текст доработанного промпта. Не добавляй никаких вводных слов, пояснений или markdown-разметки (никаких ```yaml или ```). Только чистый текст промпта."""
 
         import requests
         runtime_cfg = build_user_runtime_config()
         api_keys = runtime_cfg.get('api_keys', {})
         thebai_api_key = api_keys.get('thebai_api_key')
         thebai_url = api_keys.get('thebai_url') or 'https://api.deepseek.com/v1/chat/completions'
-        thebai_model = api_keys.get('thebai_model') or 'deepseek-reasoner'
+        # Используем deepseek-chat (V3) для более предсказуемого формата текста
+        thebai_model = 'deepseek-chat'
 
         if not thebai_api_key:
             return jsonify({'success': False, 'message': 'Укажите DeepSeek/TheB.ai API key в настройках профиля'}), 400
@@ -2358,7 +2383,7 @@ def api_regenerate_anchor_prompt():
                     "content": user_message
                 },
             ],
-            "temperature": 0.6,
+            "temperature": 0.3,
         }
 
         # Retry логика для надежности
@@ -2457,15 +2482,15 @@ def api_regenerate_checklist_item_prompt():
 4. Промпт должен оставаться четким и конкретным - это критерий оценки для одного пункта чек-листа.
 5. Промпт должен быть сфокусирован на проверке выполнения конкретного критерия.
 6. Сохрани формат и стиль оригинального промпта.
-
-Верни только доработанный промпт, без дополнительных комментариев."""
+7. ВАЖНО: Верни ТОЛЬКО текст доработанного промпта. Не добавляй никаких вводных слов, пояснений или markdown-разметки (никаких ```yaml или ```). Только чистый текст промпта."""
 
         import requests
         runtime_cfg = build_user_runtime_config()
         api_keys = runtime_cfg.get('api_keys', {})
         thebai_api_key = api_keys.get('thebai_api_key')
         thebai_url = api_keys.get('thebai_url') or 'https://api.deepseek.com/v1/chat/completions'
-        thebai_model = api_keys.get('thebai_model') or 'deepseek-reasoner'
+        # Используем deepseek-chat (V3) вместо reasoner для более предсказуемого формата текста
+        thebai_model = 'deepseek-chat' 
 
         if not thebai_api_key:
             return jsonify({'success': False, 'message': 'Укажите DeepSeek/TheB.ai API key в настройках профиля'}), 400
@@ -2490,7 +2515,7 @@ def api_regenerate_checklist_item_prompt():
                     "content": user_message
                 },
             ],
-            "temperature": 0.6,
+            "temperature": 0.3, # Понижаем температуру для большей стабильности
         }
 
         # Retry логика для надежности

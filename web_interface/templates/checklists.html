@@ -549,7 +549,12 @@
 
     async function loadChecklistPrompts() {
         try {
-            const resp = await fetch('/api/script-prompt');
+            const scriptPromptPathValue = scriptPromptPath.value || '';
+            const url = scriptPromptPathValue 
+                ? `/api/script-prompt?file_path=${encodeURIComponent(scriptPromptPathValue)}`
+                : '/api/script-prompt';
+                
+            const resp = await fetch(url);
             const result = await resp.json();
             if (result.success && result.data) {
                 checklistPromptsData = result.data;
@@ -660,11 +665,13 @@
                 checklistPromptsData.checklist[itemIndex].prompt = result.prompt;
                 
                 // Сохраняем обновленный чек-лист
+                const scriptPromptPathValue = scriptPromptPath.value || '';
                 const saveResp = await fetch('/api/script-prompt/save', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({
-                        data: checklistPromptsData
+                        data: checklistPromptsData,
+                        file_path: scriptPromptPathValue
                     })
                 });
                 
@@ -955,6 +962,91 @@
         }
     }
 
+    async function restoreAnalysisFromStorage() {
+        try {
+            const stored = localStorage.getItem('checklistAnalysisResults');
+            if (!stored) return;
+            
+            const explanations = JSON.parse(stored);
+            
+            if (Object.keys(explanations).length === 0) {
+                return;
+            }
+            
+            // Загружаем промпты чек-листа для возможности доработки
+            await loadChecklistPrompts();
+            
+            // Заполняем обоснования в уже созданных пунктах чек-листа
+            checklistItems.forEach(item => {
+                const explDiv = document.getElementById(`expl-${item.num}`);
+                const toggleBtn = document.getElementById(`toggle-${item.num}`);
+                
+                if (explanations[item.num] && explDiv && toggleBtn) {
+                    item.explanation = explanations[item.num];
+                    renderExplanationWithRefinement(explDiv, item);
+                    toggleBtn.style.display = 'inline-block';
+                }
+            });
+            
+            analyzeStatus.textContent = 'Анализ загружен из кэша';
+            analyzeStatus.className = 'ms-2 text-success';
+            analyzeStatus.style.display = 'inline';
+        } catch (err) {
+            console.error('Ошибка восстановления анализа из localStorage:', err);
+        }
+    }
+
+    async function restoreResultsFromStorage() {
+        try {
+            const stored = localStorage.getItem('checklistTestResults');
+            if (!stored) return;
+            
+            const data = JSON.parse(stored);
+            
+            // Восстанавливаем paths
+            resultMessage.textContent = data.message || 'Результаты загружены из кэша.';
+            resultLinks.innerHTML = '';
+            const paths = data.paths || {};
+            Object.entries(paths).forEach(([key, val]) => {
+                if (!val) return;
+                const div = document.createElement('div');
+                div.className = 'mb-2';
+                div.innerHTML = `<strong>${key}:</strong> <code>${val}</code>`;
+                resultLinks.appendChild(div);
+            });
+            resultsCard.style.display = 'block';
+            
+            // Восстанавливаем чек-лист
+            const checklist = data.checklist || null;
+            if (checklist && checklist.qa_text) {
+                // Показываем только заголовок без списка пунктов
+                setHtmlWithNewlines(checklistCaption, extractCaptionHeader(checklist.caption || ''));
+                
+                // Парсим и рендерим пункты чек-листа
+                checklistItems = parseChecklistItems(checklist.qa_text);
+                renderChecklistItems();
+                
+                // Показываем итоговый вывод
+                if (checklist.overall) {
+                    setHtmlWithNewlines(checklistOverall, checklist.overall.trim());
+                }
+                
+                checklistCard.style.display = 'block';
+                
+                lastTestData = {
+                    transcript_text: data.transcript_text || '',
+                    qa_text: checklist.qa_text || ''
+                };
+                analyzeBtn.style.display = 'inline-block';
+                
+                // Пытаемся восстановить результаты анализа
+                await restoreAnalysisFromStorage();
+            }
+        } catch (err) {
+            console.error('Ошибка восстановления из localStorage:', err);
+        }
+    }
+
     function clearResults() {
         resultsCard.style.display = 'none';
         checklistCard.style.display = 'none';
@@ -978,6 +1070,9 @@
     }
 
     // Загружаем метаданные при загрузке страницы
-    loadMeta();
+    document.addEventListener('DOMContentLoaded', async () => {
+        await loadMeta();
+        await restoreResultsFromStorage();
+    });
 </script>
 {% endblock %}
