@@ -2720,7 +2720,7 @@ def api_checklists_test():
                 saved_path,
                 stereo_mode=stereo_mode,
                 additional_vocab=additional_vocab,
-                timeout=int(os.getenv("CHECKLIST_TEST_TRANSCRIPTION_TIMEOUT", "120") or "120")
+                timeout=int(os.getenv("CHECKLIST_TEST_TRANSCRIPTION_TIMEOUT", "600") or "600")
             )
             if not transcript_text:
                 return jsonify({'success': False, 'message': 'Не удалось получить транскрипт.'}), 500

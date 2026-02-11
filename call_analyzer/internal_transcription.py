@@ -88,7 +88,7 @@ def transcribe_audio_with_internal_service(file_path, stereo_mode=None, addition
         logger.error("Ошибка: Не удалось подключиться к серверу транскрипции. Проверьте IP и запущен ли сервис.")
         return None
     except requests.exceptions.ReadTimeout:
-        logger.error("Ошибка: Сервер транскрипции не ответил за 10 минут.")
+        logger.error(f"Ошибка: Сервер транскрипции не ответил за {timeout} секунд.")
         return None
     except Exception as e:
         logger.error(f"Произошла ошибка при транскрипции: {e}", exc_info=True)
