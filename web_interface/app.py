@@ -3945,6 +3945,12 @@ def _parse_datetime_field(value):
         return None
 
 
+@app.route('/ats')
+@login_required
+def ats_page():
+    """Страница интеграций с АТС"""
+    return render_template('ats.html', active_page='ats')
+
 @app.route('/ftp')
 @login_required
 def ftp_page():

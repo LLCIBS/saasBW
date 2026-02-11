@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+
+{% block title %}Интеграции с АТС - Call Analyzer{% endblock %}
+
+{% block extra_css %}
+<style>
+.ats-operators-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 1.5rem;
+}
+
+.ats-operator-card {
+    background: var(--bg-primary);
+    border-radius: var(--radius-xl);
+    padding: 1.5rem;
+    box-shadow: var(--shadow-sm);
+    border: 1px solid var(--border-light);
+    transition: all var(--transition-base);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+}
+
+.ats-operator-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 4px;
+    background: var(--primary-gradient);
+    opacity: 0;
+    transition: opacity var(--transition-base);
+}
+
+.ats-operator-card:hover {
+    transform: translateY(-4px);
+    box-shadow: var(--shadow-xl);
+}
+
+.ats-operator-card:hover::before {
+    opacity: 1;
+}
+
+.ats-operator-logo {
+    width: 80px;
+    height: 80px;
+    object-fit: contain;
+    margin-bottom: 1rem;
+}
+
+.ats-operator-name {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-bottom: 0.5rem;
+}
+
+.ats-operator-desc {
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+    margin-bottom: 1rem;
+    flex-grow: 1;
+}
+
+.ats-operator-card .btn {
+    width: 100%;
+}
+
+@media (max-width: 576px) {
+    .ats-operators-grid {
+        grid-template-columns: 1fr;
+    }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Боковая панель -->
+{% include 'partials/sidebar.html' %}
+
+<!-- Основной контент -->
+<main class="col-md-9 col-lg-10 main-content">
+    <div class="p-4">
+        <div class="mb-4">
+            <h1 class="h3 mb-0">Интеграции с АТС</h1>
+            <p class="text-muted mb-0">Настройка подключений к облачным телефонным станциям</p>
+        </div>
+
+        <div class="ats-operators-grid">
+            <div class="ats-operator-card">
+                <img class="ats-operator-logo" src="{{ url_for('static', filename='images/ats/rostelecom.svg') }}" alt="Ростелеком">
+                <h3 class="ats-operator-name">Ростелеком</h3>
+                <p class="ats-operator-desc">Облачная АТС Ростелеком — настройка интеграции для получения данных о звонках</p>
+                <button type="button" class="btn btn-outline-primary btn-sm" disabled title="Скоро">
+                    <i class="fas fa-cog me-1"></i>Настроить
+                </button>
+            </div>
+
+            <div class="ats-operator-card">
+                <img class="ats-operator-logo" src="{{ url_for('static', filename='images/ats/beeline.svg') }}" alt="Билайн">
+                <h3 class="ats-operator-name">Билайн Бизнес</h3>
+                <p class="ats-operator-desc">Облачная телефония Билайн — подключение к API для экспорта записей разговоров</p>
+                <button type="button" class="btn btn-outline-primary btn-sm" disabled title="Скоро">
+                    <i class="fas fa-cog me-1"></i>Настроить
+                </button>
+            </div>
+
+            <div class="ats-operator-card">
+                <img class="ats-operator-logo" src="{{ url_for('static', filename='images/ats/megafon.svg') }}" alt="Мегафон">
+                <h3 class="ats-operator-name">МегаФон</h3>
+                <p class="ats-operator-desc">Облачная АТС МегаФон — интеграция для синхронизации записей звонков</p>
+                <button type="button" class="btn btn-outline-primary btn-sm" disabled title="Скоро">
+                    <i class="fas fa-cog me-1"></i>Настроить
+                </button>
+            </div>
+
+            <div class="ats-operator-card">
+                <img class="ats-operator-logo" src="{{ url_for('static', filename='images/ats/bitrix.svg') }}" alt="Битрикс24">
+                <h3 class="ats-operator-name">Битрикс24</h3>
+                <p class="ats-operator-desc">Телефония Битрикс24 — подключение к REST API для выгрузки записей разговоров</p>
+                <button type="button" class="btn btn-outline-primary btn-sm" disabled title="Скоро">
+                    <i class="fas fa-cog me-1"></i>Настроить
+                </button>
+            </div>
+        </div>
+    </div>
+</main>
+{% endblock %}
