@@ -4194,49 +4194,48 @@ def api_rostelecom_test(conn_id):
 def _sync_rostelecom_connection(conn_id: int):
     """Фоновая синхронизация истории звонков Ростелеком."""
     def _run():
-        try:
-            conn = RostelecomAtsConnection.query.get(conn_id)
-            if not conn:
-                return
-            from call_analyzer.rostelecom_connector import fetch_call_history
-            date_to = datetime.utcnow()
-            date_from = (conn.start_from or (date_to - timedelta(days=7)))
-            if date_from.tzinfo:
-                date_from = date_from.replace(tzinfo=None)
-            success, message, calls = fetch_call_history(
-                conn.api_url, conn.client_id, conn.sign_key,
-                date_from, date_to, timeout=60
-            )
-            with app.app_context():
+        with app.app_context():
+            try:
+                conn = RostelecomAtsConnection.query.get(conn_id)
+                if not conn:
+                    return
+                from call_analyzer.rostelecom_connector import fetch_call_history
+                date_to = datetime.utcnow()
+                date_from = (conn.start_from or (date_to - timedelta(days=7)))
+                if date_from.tzinfo:
+                    date_from = date_from.replace(tzinfo=None)
+                success, message, calls = fetch_call_history(
+                    conn.api_url, conn.client_id, conn.sign_key,
+                    date_from, date_to, timeout=60
+                )
                 RostelecomAtsConnection.query.filter_by(id=conn_id).update({
                     'last_sync': datetime.utcnow(),
                     'last_error': None if success else message
                 })
                 db.session.commit()
-            if success and calls:
-                for c in calls:
-                    sid = c.get('session_id') or c.get('sessionId')
-                    is_rec = (c.get('is_record') or c.get('isRecord') or '').lower() == 'true'
-                    if sid and is_rec:
-                        _process_rostelecom_recording(
-                            conn_id, conn.user_id, sid,
-                            c.get('from_number') or c.get('fromNumber', ''),
-                            c.get('request_number') or c.get('requestNumber', ''),
-                            c.get('request_pin') or c.get('requestPin', ''),
-                            c.get('type') or c.get('call_type', 'incoming'),
-                            c.get('timestamp') or c.get('start_time', '')
-                        )
-        except Exception as e:
-            app.logger.error(f"Rostelecom sync {conn_id}: {e}", exc_info=True)
-            try:
-                with app.app_context():
+                if success and calls:
+                    for c in calls:
+                        sid = c.get('session_id') or c.get('sessionId')
+                        is_rec = (c.get('is_record') or c.get('isRecord') or '').lower() == 'true'
+                        if sid and is_rec:
+                            _process_rostelecom_recording(
+                                conn_id, conn.user_id, sid,
+                                c.get('from_number') or c.get('fromNumber', ''),
+                                c.get('request_number') or c.get('requestNumber', ''),
+                                c.get('request_pin') or c.get('requestPin', ''),
+                                c.get('type') or c.get('call_type', 'incoming'),
+                                c.get('timestamp') or c.get('start_time', '')
+                            )
+            except Exception as e:
+                app.logger.error(f"Rostelecom sync {conn_id}: {e}", exc_info=True)
+                try:
                     RostelecomAtsConnection.query.filter_by(id=conn_id).update({
                         'last_sync': datetime.utcnow(),
                         'last_error': str(e)
                     })
                     db.session.commit()
-            except Exception:
-                pass
+                except Exception:
+                    pass
     threading.Thread(target=_run, daemon=True, name=f"Rostelecom-sync-{conn_id}").start()
 
 
