@@ -50,11 +50,15 @@ def get_record(
     sign_key: str,
     session_id: str,
     ip_address: Optional[str] = None,
-    timeout: int = 30
+    timeout: int = 30,
+    retries: int = 1,
+    retry_delay: int = 30
 ) -> Tuple[Optional[str], Optional[str]]:
     """
     Запрашивает временную ссылку на запись разговора (get_record).
-    
+    Запись может появиться не сразу после завершения звонка — при необходимости
+    выполняются повторные попытки.
+
     Returns:
         (url, error_message) - url если успешно, иначе (None, error_message)
     """
@@ -74,20 +78,30 @@ def get_record(
         "X-Client-Sign": sign,
     }
 
-    try:
-        resp = requests.post(endpoint, data=body_json.encode('utf-8'), headers=headers, timeout=timeout)
-        data = resp.json() if resp.text else {}
+    last_err = None
+    for attempt in range(max(1, retries)):
+        try:
+            resp = requests.post(endpoint, data=body_json.encode('utf-8'), headers=headers, timeout=timeout)
+            data = resp.json() if resp.text else {}
 
-        result = str(data.get("result", ""))
-        result_message = data.get("resultMessage", "")
-        url = data.get("url")
+            result = str(data.get("result", ""))
+            result_message = data.get("resultMessage", "")
+            url = data.get("url")
 
-        if result == "0" and url:
-            return url, None
-        return None, result_message or f"Ошибка get_record: {resp.status_code}"
-    except Exception as e:
-        logger.error(f"Ошибка запроса get_record: {e}", exc_info=True)
-        return None, str(e)
+            if result == "0" and url:
+                return url, None
+            last_err = result_message or f"Ошибка get_record: {resp.status_code}"
+            if attempt < retries - 1:
+                logger.info(f"get_record: попытка {attempt + 1}/{retries}, ответ: {last_err}, повтор через {retry_delay} с")
+                time.sleep(retry_delay)
+            else:
+                break
+        except Exception as e:
+            last_err = str(e)
+            logger.error(f"Ошибка запроса get_record (попытка {attempt + 1}): {e}", exc_info=True)
+            if attempt < retries - 1:
+                time.sleep(retry_delay)
+    return None, last_err
 
 
 def download_recording(url: str, save_path: Path, timeout: int = 120) -> bool:

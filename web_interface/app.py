@@ -3987,6 +3987,7 @@ def _process_rostelecom_recording(conn_id, user_id, session_id, from_number, req
                 return
             if not base_path_str:
                 base_path_str = str(Path(getattr(get_config(), 'BASE_RECORDS_PATH', '/var/calls')) / 'users' / str(user_id))
+                app.logger.info(f"Rostelecom: base_records_path не задан для user_id={user_id}, используем {base_path_str}")
             base_path = Path(base_path_str)
             ts = timestamp_str or datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S.%f')
             ts_clean = ts.replace('-', '').replace(' ', '-').replace(':', '')[:15]
@@ -3998,7 +3999,11 @@ def _process_rostelecom_recording(conn_id, user_id, session_id, from_number, req
             target_dir = base_path / str(dt.year) / f"{dt.month:02d}" / f"{dt.day:02d}"
             target_dir.mkdir(parents=True, exist_ok=True)
             save_path = target_dir / filename
-            url, err = get_record(conn_row.api_url, conn_row.client_id, conn_row.sign_key, session_id, timeout=60)
+            app.logger.info(f"Rostelecom: получаем запись session_id={session_id[:20]}..., путь={save_path}")
+            url, err = get_record(
+                conn_row.api_url, conn_row.client_id, conn_row.sign_key, session_id,
+                timeout=60, retries=5, retry_delay=30
+            )
             if err or not url:
                 app.logger.error(f"Rostelecom get_record failed: {err}")
                 with app.app_context():
@@ -4006,7 +4011,11 @@ def _process_rostelecom_recording(conn_id, user_id, session_id, from_number, req
                     db.session.commit()
                 return
             if not download_recording(url, save_path, timeout=120):
-                app.logger.error("Rostelecom download failed")
+                err_msg = "Rostelecom: ошибка скачивания записи"
+                app.logger.error(err_msg)
+                with app.app_context():
+                    RostelecomAtsConnection.query.filter_by(id=conn_id).update({'last_error': err_msg})
+                    db.session.commit()
                 return
             app.logger.info(f"Rostelecom запись сохранена: {save_path}. Watchdog call_analyzer обработает файл.")
             with app.app_context():
