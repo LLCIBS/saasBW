@@ -50,6 +50,7 @@ from database.models import (
     UserSettings,
     UserProfileData,
     FtpConnection,
+    RostelecomAtsConnection,
     UserVocabulary,
     UserPrompt,
     UserScriptPrompt,
@@ -132,6 +133,7 @@ def get_user_config_data(user=None):
             'prompts_file': cfg.prompts_file,
             'base_records_path': cfg.base_records_path,
             'ftp_connection_id': cfg.ftp_connection_id,
+            'rostelecom_ats_connection_id': getattr(cfg, 'rostelecom_ats_connection_id', None),
             'script_prompt_file': cfg.script_prompt_file,
             'additional_vocab_file': cfg.additional_vocab_file,
         })
@@ -320,6 +322,7 @@ def get_user_config_data(user=None):
             'prompts_file': cfg.prompts_file,
             'base_records_path': cfg.base_records_path,
             'ftp_connection_id': cfg.ftp_connection_id,
+            'rostelecom_ats_connection_id': getattr(cfg, 'rostelecom_ats_connection_id', None),
             'script_prompt_file': cfg.script_prompt_file,
             'additional_vocab_file': cfg.additional_vocab_file,
         })
@@ -405,6 +408,7 @@ def save_user_config_data(config_data, user=None):
     cfg.prompts_file = paths.get('prompts_file')
     cfg.base_records_path = paths.get('base_records_path')
     cfg.ftp_connection_id = paths.get('ftp_connection_id')
+    cfg.rostelecom_ats_connection_id = paths.get('rostelecom_ats_connection_id')
     cfg.script_prompt_file = paths.get('script_prompt_file')
     cfg.additional_vocab_file = paths.get('additional_vocab_file')
 
@@ -3957,6 +3961,209 @@ def _parse_datetime_field(value):
 def ats_page():
     """Страница интеграций с АТС"""
     return render_template('ats.html', active_page='ats')
+
+
+def _process_rostelecom_recording(conn_id, user_id, session_id, from_number, request_number, request_pin, call_type, timestamp_str):
+    """Фоновая обработка записи из Ростелеком: get_record, скачивание, сохранение, запуск анализа."""
+    from pathlib import Path
+    def _run():
+        try:
+            from call_analyzer.rostelecom_connector import get_record, download_recording, make_rostelecom_filename
+            from config.settings import get_config
+            from sqlalchemy import create_engine, text
+            cfg = get_config()
+            engine = create_engine(cfg.SQLALCHEMY_DATABASE_URI)
+            with engine.connect() as c:
+                conn_row = c.execute(text("""
+                    SELECT api_url, client_id, sign_key FROM rostelecom_ats_connections WHERE id = :cid
+                """), {'cid': conn_id}).fetchone()
+                r = c.execute(text("""
+                    SELECT uc.base_records_path FROM user_config uc WHERE uc.user_id = :uid
+                """), {'uid': user_id}).fetchone()
+                base_path_str = (r.base_records_path or '').strip() if r else ''
+            engine.dispose()
+            if not conn_row:
+                app.logger.error("Rostelecom conn not found")
+                return
+            if not base_path_str:
+                base_path_str = str(Path(getattr(get_config(), 'BASE_RECORDS_PATH', '/var/calls')) / 'users' / str(user_id))
+            base_path = Path(base_path_str)
+            ts = timestamp_str or datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S.%f')
+            ts_clean = ts.replace('-', '').replace(' ', '-').replace(':', '')[:15]
+            filename = make_rostelecom_filename(session_id, from_number or '', request_number or '', request_pin, call_type or 'incoming', ts_clean)
+            try:
+                dt = datetime.strptime(ts[:19].replace('T', ' '), '%Y-%m-%d %H:%M:%S')
+            except Exception:
+                dt = datetime.utcnow()
+            target_dir = base_path / str(dt.year) / f"{dt.month:02d}" / f"{dt.day:02d}"
+            target_dir.mkdir(parents=True, exist_ok=True)
+            save_path = target_dir / filename
+            url, err = get_record(conn_row.api_url, conn_row.client_id, conn_row.sign_key, session_id, timeout=60)
+            if err or not url:
+                app.logger.error(f"Rostelecom get_record failed: {err}")
+                with app.app_context():
+                    RostelecomAtsConnection.query.filter_by(id=conn_id).update({'last_error': err})
+                    db.session.commit()
+                return
+            if not download_recording(url, save_path, timeout=120):
+                app.logger.error("Rostelecom download failed")
+                return
+            app.logger.info(f"Rostelecom запись сохранена: {save_path}. Watchdog call_analyzer обработает файл.")
+            with app.app_context():
+                RostelecomAtsConnection.query.filter_by(id=conn_id).update({
+                    'last_webhook_at': datetime.utcnow(),
+                    'last_error': None
+                })
+                db.session.commit()
+        except Exception as e:
+            app.logger.error(f"Rostelecom _process_rostelecom_recording: {e}", exc_info=True)
+            try:
+                with app.app_context():
+                    RostelecomAtsConnection.query.filter_by(id=conn_id).update({'last_error': str(e)})
+                    db.session.commit()
+            except Exception:
+                pass
+    threading.Thread(target=_run, daemon=True, name=f"Rostelecom-{session_id}").start()
+
+
+@app.route('/api/ats/rostelecom/webhook', methods=['POST'])
+def api_rostelecom_webhook():
+    """
+    Webhook для получения событий call_events от облачной АТС Ростелеком.
+    Не требует авторизации — проверка по X-Client-ID и X-Client-Sign.
+    """
+    try:
+        client_id = request.headers.get('X-Client-ID') or request.headers.get('x-client-id')
+        client_sign = request.headers.get('X-Client-Sign') or request.headers.get('x-client-sign')
+        body = request.get_data(as_text=True)
+        if not client_id or not client_sign or not body:
+            return jsonify({'error': 'Missing X-Client-ID or X-Client-Sign or body'}), 400
+        conn = RostelecomAtsConnection.query.filter_by(client_id=client_id, is_active=True).first()
+        if not conn:
+            app.logger.warning(f"Rostelecom webhook: unknown client_id {client_id[:16]}...")
+            return jsonify({'error': 'Unknown client'}), 404
+        from call_analyzer.rostelecom_connector import verify_sign
+        if not verify_sign(client_id, body, conn.sign_key, client_sign):
+            app.logger.warning("Rostelecom webhook: invalid signature")
+            return jsonify({'error': 'Invalid signature'}), 403
+        data = request.get_json(force=True, silent=True) or {}
+        state = data.get('state')
+        session_id = data.get('session_id')
+        call_type = data.get('type', 'incoming')
+        timestamp = data.get('timestamp', '')
+        from_num = data.get('from_number', '')
+        req_num = data.get('request_number', '')
+        req_pin = data.get('request_pin', '')
+        is_record = (data.get('is_record') or '').lower() == 'true'
+        allowed = conn.allowed_directions if conn.allowed_directions else None
+        if allowed is not None and len(allowed) > 0 and call_type not in allowed:
+            app.logger.info(f"Rostelecom webhook: пропуск звонка type={call_type} (разрешены: {allowed})")
+            return jsonify({'result': '0', 'resultMessage': 'OK'}), 200
+        if state == 'end' and is_record and session_id:
+            _process_rostelecom_recording(conn.id, conn.user_id, session_id, from_num, req_num, req_pin, call_type, timestamp)
+        return jsonify({'result': '0', 'resultMessage': 'OK'}), 200
+    except Exception as e:
+        app.logger.error(f"Rostelecom webhook error: {e}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/ats/rostelecom/connections', methods=['GET'])
+@login_required
+def api_rostelecom_connections():
+    """Список подключений Ростелеком для текущего пользователя"""
+    try:
+        conns = RostelecomAtsConnection.query.filter_by(user_id=current_user.id).all()
+        return jsonify([{
+            'id': c.id,
+            'name': c.name,
+            'api_url': c.api_url,
+            'client_id': c.client_id[:16] + '...' if len(c.client_id) > 16 else c.client_id,
+            'is_active': c.is_active,
+            'pin_to_station': c.pin_to_station or {},
+            'allowed_directions': c.allowed_directions if c.allowed_directions else ['incoming', 'outbound', 'internal'],
+            'last_webhook_at': c.last_webhook_at.isoformat() + 'Z' if c.last_webhook_at else None,
+            'last_error': c.last_error,
+            'created_at': c.created_at.isoformat() + 'Z',
+            'updated_at': c.updated_at.isoformat() + 'Z',
+        } for c in conns])
+    except Exception as e:
+        app.logger.error(f"Rostelecom connections: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/ats/rostelecom/connections', methods=['POST'])
+@login_required
+def api_rostelecom_create():
+    """Создание подключения Ростелеком"""
+    try:
+        data = request.get_json()
+        for f in ['api_url', 'client_id', 'sign_key']:
+            if not data.get(f):
+                return jsonify({'success': False, 'message': f'Поле {f} обязательно'}), 400
+        allowed = data.get('allowed_directions')
+        if allowed is not None:
+            allowed = list(allowed) if isinstance(allowed, list) and len(allowed) > 0 else None
+        conn = RostelecomAtsConnection(
+            user_id=current_user.id,
+            name=data.get('name', 'Ростелеком'),
+            api_url=data['api_url'].rstrip('/'),
+            client_id=data['client_id'].strip(),
+            sign_key=data['sign_key'].strip(),
+            is_active=data.get('is_active', True),
+            pin_to_station=data.get('pin_to_station') or {},
+            allowed_directions=allowed,
+        )
+        db.session.add(conn)
+        db.session.commit()
+        return jsonify({'success': True, 'id': conn.id, 'message': 'Подключение создано'})
+    except Exception as e:
+        db.session.rollback()
+        app.logger.error(f"Rostelecom create: {e}")
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+
+@app.route('/api/ats/rostelecom/connections/<int:conn_id>', methods=['PUT'])
+@login_required
+def api_rostelecom_update(conn_id):
+    """Обновление подключения Ростелеком"""
+    conn = RostelecomAtsConnection.query.filter_by(id=conn_id, user_id=current_user.id).first()
+    if not conn:
+        return jsonify({'error': 'Not found'}), 404
+    try:
+        data = request.get_json()
+        if 'name' in data:
+            conn.name = data['name']
+        if 'api_url' in data:
+            conn.api_url = data['api_url'].rstrip('/')
+        if 'client_id' in data and data['client_id']:
+            conn.client_id = data['client_id'].strip()
+        if 'sign_key' in data and data['sign_key']:
+            conn.sign_key = data['sign_key'].strip()
+        if 'is_active' in data:
+            conn.is_active = bool(data['is_active'])
+        if 'pin_to_station' in data:
+            conn.pin_to_station = data['pin_to_station'] if isinstance(data['pin_to_station'], dict) else {}
+        if 'allowed_directions' in data:
+            val = data['allowed_directions']
+            conn.allowed_directions = val if isinstance(val, list) else None
+        db.session.commit()
+        return jsonify({'success': True, 'message': 'Обновлено'})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+
+@app.route('/api/ats/rostelecom/connections/<int:conn_id>', methods=['DELETE'])
+@login_required
+def api_rostelecom_delete(conn_id):
+    conn = RostelecomAtsConnection.query.filter_by(id=conn_id, user_id=current_user.id).first()
+    if not conn:
+        return jsonify({'error': 'Not found'}), 404
+    UserConfig.query.filter_by(rostelecom_ats_connection_id=conn_id).update({'rostelecom_ats_connection_id': None, 'source_type': 'local'})
+    db.session.delete(conn)
+    db.session.commit()
+    return jsonify({'success': True})
+
 
 @app.route('/ftp')
 @login_required

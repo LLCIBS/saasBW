@@ -112,6 +112,9 @@ FILENAME_PATTERNS = {
     # Формат out-* (исходящие FTP)
     'out_pattern': r'^out-([^\-]+)-([^\-]+)-(\d{8})-(\d{6})(?:-.+)?',
     
+    # Формат rostelecom-* (коннектор АТС Ростелеком)
+    'rostelecom_pattern': r'^rostelecom-(incoming|outbound|internal)-(\d+)_(\w+)_(\d{8})-(\d{6})(?:-\w+)?\.(mp3|wav)$',
+    
     # Новый формат: вход_EkbFocusMal128801_с_79536098664_на_73432260822_от_2025_10_20
     'direction_pattern': r'^вход_([a-zA-Z\-]+)(\d+)_с_(\d+)_на_(\d+)_от_(\d{4})_(\d{1,2})_(\d{1,2})(?:\.\w+)?$',
     

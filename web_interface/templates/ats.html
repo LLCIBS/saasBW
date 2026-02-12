@@ -4,86 +4,24 @@
 
 {% block extra_css %}
 <style>
-.ats-operators-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-    gap: 1.5rem;
-}
-
-.ats-operator-card {
-    background: var(--bg-primary);
-    border-radius: var(--radius-xl);
-    padding: 1.5rem;
-    box-shadow: var(--shadow-sm);
-    border: 1px solid var(--border-light);
-    transition: all var(--transition-base);
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    text-align: center;
-    position: relative;
-    overflow: hidden;
-}
-
-.ats-operator-card::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 4px;
-    background: var(--primary-gradient);
-    opacity: 0;
-    transition: opacity var(--transition-base);
-}
-
-.ats-operator-card:hover {
-    transform: translateY(-4px);
-    box-shadow: var(--shadow-xl);
-}
-
-.ats-operator-card:hover::before {
-    opacity: 1;
-}
-
-.ats-operator-logo {
-    width: 80px;
-    height: 80px;
-    object-fit: contain;
-    margin-bottom: 1rem;
-}
-
-.ats-operator-name {
-    font-size: 1.25rem;
-    font-weight: 700;
-    color: var(--text-primary);
-    margin-bottom: 0.5rem;
-}
-
-.ats-operator-desc {
-    font-size: 0.875rem;
-    color: var(--text-secondary);
-    margin-bottom: 1rem;
-    flex-grow: 1;
-}
-
-.ats-operator-card .btn {
-    width: 100%;
-}
-
-@media (max-width: 576px) {
-    .ats-operators-grid {
-        grid-template-columns: 1fr;
-    }
-}
+.ats-operators-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1.5rem; }
+.ats-operator-card { background: var(--bg-primary); border-radius: var(--radius-xl); padding: 1.5rem; box-shadow: var(--shadow-sm); border: 1px solid var(--border-light); transition: all var(--transition-base); display: flex; flex-direction: column; align-items: center; text-align: center; position: relative; overflow: hidden; }
+.ats-operator-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 4px; background: var(--primary-gradient); opacity: 0; transition: opacity var(--transition-base); }
+.ats-operator-card:hover { transform: translateY(-4px); box-shadow: var(--shadow-xl); }
+.ats-operator-card:hover::before { opacity: 1; }
+.ats-operator-logo { width: 80px; height: 80px; object-fit: contain; margin-bottom: 1rem; }
+.ats-operator-name { font-size: 1.25rem; font-weight: 700; color: var(--text-primary); margin-bottom: 0.5rem; }
+.ats-operator-desc { font-size: 0.875rem; color: var(--text-secondary); margin-bottom: 1rem; flex-grow: 1; }
+.ats-operator-card .btn { width: 100%; }
+.rostelecom-panel { background: var(--bg-primary); border-radius: var(--radius-xl); padding: 1.5rem; margin-top: 1.5rem; border: 1px solid var(--border-light); box-shadow: var(--shadow-sm); }
+.rostelecom-conn-card { background: var(--bg-secondary); border-radius: var(--radius-md); padding: 1rem; margin-bottom: 1rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem; }
+.rostelecom-webhook-url { font-family: monospace; font-size: 0.875rem; background: var(--bg-tertiary); padding: 0.5rem 0.75rem; border-radius: var(--radius-sm); word-break: break-all; }
+@media (max-width: 576px) { .ats-operators-grid { grid-template-columns: 1fr; } }
 </style>
 {% endblock %}
 
 {% block content %}
-<!-- Боковая панель -->
 {% include 'partials/sidebar.html' %}
-
-<!-- Основной контент -->
 <main class="col-md-9 col-lg-10 main-content">
     <div class="p-4">
         <div class="mb-4">
@@ -92,42 +30,262 @@
         </div>
 
         <div class="ats-operators-grid">
-            <div class="ats-operator-card">
+            <div class="ats-operator-card" id="rostelecomCard">
                 <img class="ats-operator-logo" src="{{ url_for('static', filename='images/ats/rostelecom.svg') }}" alt="Ростелеком">
                 <h3 class="ats-operator-name">Ростелеком</h3>
-                <p class="ats-operator-desc">Облачная АТС Ростелеком — настройка интеграции для получения данных о звонках</p>
-                <button type="button" class="btn btn-outline-primary btn-sm" disabled title="Скоро">
+                <p class="ats-operator-desc">Облачная АТС Ростелеком — Интеграционный API для получения записей звонков</p>
+                <button type="button" class="btn btn-primary btn-sm" onclick="toggleRostelecomPanel()">
                     <i class="fas fa-cog me-1"></i>Настроить
                 </button>
             </div>
-
             <div class="ats-operator-card">
                 <img class="ats-operator-logo" src="{{ url_for('static', filename='images/ats/beeline.svg') }}" alt="Билайн">
                 <h3 class="ats-operator-name">Билайн Бизнес</h3>
                 <p class="ats-operator-desc">Облачная телефония Билайн — подключение к API для экспорта записей разговоров</p>
-                <button type="button" class="btn btn-outline-primary btn-sm" disabled title="Скоро">
-                    <i class="fas fa-cog me-1"></i>Настроить
-                </button>
+                <button type="button" class="btn btn-outline-primary btn-sm" disabled title="Скоро"><i class="fas fa-cog me-1"></i>Настроить</button>
             </div>
-
             <div class="ats-operator-card">
                 <img class="ats-operator-logo" src="{{ url_for('static', filename='images/ats/megafon.svg') }}" alt="Мегафон">
                 <h3 class="ats-operator-name">МегаФон</h3>
                 <p class="ats-operator-desc">Облачная АТС МегаФон — интеграция для синхронизации записей звонков</p>
-                <button type="button" class="btn btn-outline-primary btn-sm" disabled title="Скоро">
-                    <i class="fas fa-cog me-1"></i>Настроить
-                </button>
+                <button type="button" class="btn btn-outline-primary btn-sm" disabled title="Скоро"><i class="fas fa-cog me-1"></i>Настроить</button>
             </div>
-
             <div class="ats-operator-card">
                 <img class="ats-operator-logo" src="{{ url_for('static', filename='images/ats/bitrix.svg') }}" alt="Битрикс24">
                 <h3 class="ats-operator-name">Битрикс24</h3>
                 <p class="ats-operator-desc">Телефония Битрикс24 — подключение к REST API для выгрузки записей разговоров</p>
-                <button type="button" class="btn btn-outline-primary btn-sm" disabled title="Скоро">
-                    <i class="fas fa-cog me-1"></i>Настроить
-                </button>
+                <button type="button" class="btn btn-outline-primary btn-sm" disabled title="Скоро"><i class="fas fa-cog me-1"></i>Настроить</button>
             </div>
+        </div>
+
+        <div class="rostelecom-panel" id="rostelecomPanel" style="display: none;">
+            <h5 class="mb-3"><i class="fas fa-plug me-2 text-primary"></i>Ростелеком — Интеграционный API</h5>
+            <div class="alert alert-info mb-4">
+                <strong>Инструкция:</strong> Подключите услугу «Интеграционный API» в <a href="https://numbers.cloudpbx.rt.ru" target="_blank" rel="noopener">ЛК Ростелеком</a>.
+                В настройках API укажите адрес внешней системы (webhook) — скопируйте URL ниже. Заполните уникальный код и ключ подписи из ЛК.
+            </div>
+            <div class="mb-4">
+                <label class="form-label fw-bold">Адрес webhook (укажите в ЛК Ростелеком):</label>
+                <div class="rostelecom-webhook-url" id="webhookUrl">{{ request.url_root.rstrip('/') }}api/ats/rostelecom/webhook</div>
+                <button type="button" class="btn btn-sm btn-outline-secondary mt-2" onclick="copyWebhookUrl()"><i class="fas fa-copy me-1"></i>Копировать</button>
+            </div>
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h6 class="mb-0">Подключения</h6>
+                <button type="button" class="btn btn-primary btn-sm" onclick="showRostelecomModal()"><i class="fas fa-plus me-1"></i>Добавить</button>
+            </div>
+            <div id="rostelecomConnectionsList"></div>
+            <div id="rostelecomEmpty" class="text-muted text-center py-4" style="display: none;">Нет подключений. Нажмите «Добавить».</div>
         </div>
     </div>
 </main>
+
+<div class="modal fade" id="rostelecomModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Подключение Ростелеком</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="rostelecomConnId">
+                <div class="mb-3">
+                    <label class="form-label">Название</label>
+                    <input type="text" class="form-control" id="rostelecomName" value="Ростелеком" placeholder="Ростелеком">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Адрес API <span class="text-danger">*</span></label>
+                    <input type="text" class="form-control" id="rostelecomApiUrl" value="https://api.cloudpbx.rt.ru" placeholder="https://api.cloudpbx.rt.ru">
+                    <div class="form-text">Для тестов: https://api-test.cloudpbx.rt.ru</div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Уникальный код идентификации (X-Client-ID) <span class="text-danger">*</span></label>
+                    <input type="text" class="form-control" id="rostelecomClientId" placeholder="Из ЛК Ростелеком">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Уникальный ключ для подписи (X-Client-Sign) <span class="text-danger">*</span></label>
+                    <input type="password" class="form-control" id="rostelecomSignKey" placeholder="Из ЛК Ростелеком (при редактировании оставьте пустым, чтобы не менять)">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Направления звонков</label>
+                    <div class="d-flex flex-wrap gap-3">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="rostelecomDirIncoming" value="incoming">
+                            <label class="form-check-label" for="rostelecomDirIncoming">Входящие</label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="rostelecomDirOutbound" value="outbound">
+                            <label class="form-check-label" for="rostelecomDirOutbound">Исходящие</label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="rostelecomDirInternal" value="internal">
+                            <label class="form-check-label" for="rostelecomDirInternal">Внутренние</label>
+                        </div>
+                    </div>
+                    <div class="form-text">Отметьте направления для получения записей. Если ничего не выбрано — все направления.</div>
+                </div>
+                <div class="form-check mb-3">
+                    <input class="form-check-input" type="checkbox" id="rostelecomActive" checked>
+                    <label class="form-check-label" for="rostelecomActive">Активно</label>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                <button type="button" class="btn btn-primary" onclick="saveRostelecomConnection()">Сохранить</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const webhookBase = window.location.origin + '/api/ats/rostelecom/webhook';
+document.getElementById('webhookUrl').textContent = webhookBase;
+
+function toggleRostelecomPanel() {
+    const p = document.getElementById('rostelecomPanel');
+    p.style.display = p.style.display === 'none' ? 'block' : 'none';
+    if (p.style.display === 'block') loadRostelecomConnections();
+}
+
+function copyWebhookUrl() {
+    navigator.clipboard.writeText(webhookBase).then(() => {
+        if (typeof showToast === 'function') showToast('URL скопирован', 'success');
+        else alert('URL скопирован');
+    });
+}
+
+function loadRostelecomConnections() {
+    fetch('/api/ats/rostelecom/connections')
+        .then(r => r.json())
+        .then(data => {
+            const list = document.getElementById('rostelecomConnectionsList');
+            const empty = document.getElementById('rostelecomEmpty');
+            list.innerHTML = '';
+            if (!data.length) {
+                empty.style.display = 'block';
+                return;
+            }
+            empty.style.display = 'none';
+            data.forEach(c => {
+                const card = document.createElement('div');
+                card.className = 'rostelecom-conn-card';
+                const dirLabels = { incoming: 'Входящие', outbound: 'Исходящие', internal: 'Внутр.' };
+                const dirStr = (c.allowed_directions && c.allowed_directions.length) ? c.allowed_directions.map(d => dirLabels[d] || d).join(', ') : 'Все';
+                card.innerHTML = `
+                    <div>
+                        <strong>${escapeHtml(c.name)}</strong> ${c.is_active ? '<span class="badge bg-success ms-1">Активно</span>' : '<span class="badge bg-secondary ms-1">Неактивно</span>'}
+                        <div class="small text-muted">${escapeHtml(c.api_url)} • ${escapeHtml(c.client_id)}</div>
+                        <div class="small">Направления: ${escapeHtml(dirStr)}</div>
+                        ${c.last_webhook_at ? '<div class="small text-success">Последний webhook: ' + new Date(c.last_webhook_at).toLocaleString() + '</div>' : ''}
+                        ${c.last_error ? '<div class="small text-danger">Ошибка: ' + escapeHtml(c.last_error) + '</div>' : ''}
+                    </div>
+                    <div class="btn-group">
+                        <button class="btn btn-sm btn-outline-primary" onclick="editRostelecomConnection(${c.id})"><i class="fas fa-edit"></i></button>
+                        <button class="btn btn-sm btn-outline-danger" onclick="deleteRostelecomConnection(${c.id}, '${escapeHtml(c.name)}')"><i class="fas fa-trash"></i></button>
+                    </div>
+                `;
+                list.appendChild(card);
+            });
+        })
+        .catch(e => console.error(e));
+}
+
+function escapeHtml(s) {
+    if (!s) return '';
+    const div = document.createElement('div');
+    div.textContent = s;
+    return div.innerHTML;
+}
+
+function setDirectionCheckboxes(arr) {
+    ['incoming', 'outbound', 'internal'].forEach(v => {
+        const el = document.getElementById('rostelecomDir' + (v === 'incoming' ? 'Incoming' : v === 'outbound' ? 'Outbound' : 'Internal'));
+        if (el) el.checked = !arr || arr.length === 0 || arr.includes(v);
+    });
+}
+
+function getDirectionCheckboxes() {
+    const arr = [];
+    if (document.getElementById('rostelecomDirIncoming').checked) arr.push('incoming');
+    if (document.getElementById('rostelecomDirOutbound').checked) arr.push('outbound');
+    if (document.getElementById('rostelecomDirInternal').checked) arr.push('internal');
+    return arr.length === 3 ? null : arr;
+}
+
+function showRostelecomModal(id) {
+    document.getElementById('rostelecomConnId').value = id || '';
+    document.getElementById('rostelecomName').value = 'Ростелеком';
+    document.getElementById('rostelecomApiUrl').value = 'https://api.cloudpbx.rt.ru';
+    document.getElementById('rostelecomClientId').value = '';
+    document.getElementById('rostelecomSignKey').value = '';
+    document.getElementById('rostelecomActive').checked = true;
+    setDirectionCheckboxes(null);
+    if (id) {
+        fetch('/api/ats/rostelecom/connections').then(r => r.json()).then(list => {
+            const c = list.find(x => x.id === parseInt(id));
+            if (c) {
+                document.getElementById('rostelecomName').value = c.name;
+                document.getElementById('rostelecomApiUrl').value = c.api_url || 'https://api.cloudpbx.rt.ru';
+                setDirectionCheckboxes(c.allowed_directions);
+            }
+        });
+    }
+    new bootstrap.Modal(document.getElementById('rostelecomModal')).show();
+}
+
+function editRostelecomConnection(id) {
+    document.getElementById('rostelecomConnId').value = id;
+    fetch('/api/ats/rostelecom/connections').then(r => r.json()).then(list => {
+        const c = list.find(x => x.id === parseInt(id));
+        if (c) {
+            document.getElementById('rostelecomName').value = c.name;
+            document.getElementById('rostelecomApiUrl').value = c.api_url || 'https://api.cloudpbx.rt.ru';
+            setDirectionCheckboxes(c.allowed_directions);
+        }
+    });
+    document.getElementById('rostelecomClientId').value = '';
+    document.getElementById('rostelecomSignKey').value = '';
+    new bootstrap.Modal(document.getElementById('rostelecomModal')).show();
+}
+
+function saveRostelecomConnection() {
+    const id = document.getElementById('rostelecomConnId').value;
+    const payload = {
+        name: document.getElementById('rostelecomName').value,
+        api_url: document.getElementById('rostelecomApiUrl').value,
+        client_id: document.getElementById('rostelecomClientId').value,
+        sign_key: document.getElementById('rostelecomSignKey').value,
+        is_active: document.getElementById('rostelecomActive').checked,
+        allowed_directions: getDirectionCheckboxes()
+    };
+    if (!payload.api_url) { alert('Укажите адрес API'); return; }
+    if (!id && (!payload.client_id || !payload.sign_key)) {
+        alert('При создании укажите код идентификации и ключ подписи');
+        return;
+    }
+    const url = id ? `/api/ats/rostelecom/connections/${id}` : '/api/ats/rostelecom/connections';
+    const method = id ? 'PUT' : 'POST';
+    fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(id ? { ...payload } : payload)
+    }).then(r => r.json()).then(data => {
+        if (data.success) {
+            bootstrap.Modal.getInstance(document.getElementById('rostelecomModal')).hide();
+            loadRostelecomConnections();
+            if (typeof showToast === 'function') showToast(data.message || 'Сохранено', 'success');
+        } else alert(data.message || 'Ошибка');
+    }).catch(e => alert('Ошибка: ' + e));
+}
+
+function deleteRostelecomConnection(id, name) {
+    if (!confirm('Удалить подключение «' + name + '»?')) return;
+    fetch(`/api/ats/rostelecom/connections/${id}`, { method: 'DELETE' })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) { loadRostelecomConnections(); if (typeof showToast === 'function') showToast('Удалено', 'success'); }
+        });
+}
+</script>
 {% endblock %}

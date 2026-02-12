@@ -281,6 +281,22 @@ def parse_filename(file_name: str):
             # Падать не будем — попробуем общий формат ниже
             pass
 
+    # Поддержка формата rostelecom-* (коннектор АТС Ростелеком)
+    m = re.match(config.FILENAME_PATTERNS.get('rostelecom_pattern', ''), file_name, re.IGNORECASE)
+    if m:
+        try:
+            call_type = m.group(1)
+            from_phone = m.group(2)
+            pin_or_station = m.group(3)
+            yyyymmdd = m.group(4)
+            hhmmss = m.group(5)
+            call_time = datetime.datetime.strptime(f"{yyyymmdd}{hhmmss}", "%Y%m%d%H%M%S")
+            phone = normalize_phone_number(from_phone) if call_type == "incoming" else normalize_phone_number(pin_or_station)
+            station = pin_or_station if call_type == "incoming" else from_phone
+            return phone, station, call_time
+        except Exception:
+            pass
+
     # Поддержка формата out-* (исходящие FTP):
     # out-<phone>-<station>-<YYYYMMDD>-<HHMMSS>-...
     m = re.match(config.FILENAME_PATTERNS['out_pattern'], file_name, re.IGNORECASE)
@@ -385,6 +401,7 @@ def is_valid_call_filename(filename: str) -> bool:
         or name_lower.startswith("external-")
         or name_lower.startswith("вход_")
         or name_lower.startswith("out-")
+        or name_lower.startswith("rostelecom-")
     ):
         return True
 

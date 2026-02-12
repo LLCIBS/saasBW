@@ -22,8 +22,9 @@ def default_config_template():
             'prompts_file': '',
             'additional_vocab_file': '',
             'script_prompt_file': '',
-            'source_type': 'local',  # 'local' или 'ftp'
-            'ftp_connection_id': None  # ID FTP подключения, если source_type = 'ftp'
+            'source_type': 'local',  # 'local', 'ftp' или 'rostelecom'
+            'ftp_connection_id': None,  # ID FTP подключения, если source_type = 'ftp'
+            'rostelecom_ats_connection_id': None  # ID подключения Ростелеком, если source_type = 'rostelecom'
         },
         'employee_by_extension': {},
         'stations': {},

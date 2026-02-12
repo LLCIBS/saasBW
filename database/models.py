@@ -188,6 +188,39 @@ class FtpConnection(db.Model):
     # В production рекомендуется использовать переменные окружения или зашифрованное хранилище
 
 
+class RostelecomAtsConnection(db.Model):
+    """Подключение к облачной АТС Ростелеком (Интеграционный API)"""
+    __tablename__ = 'rostelecom_ats_connections'
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
+    name = db.Column(db.String(200), nullable=False, default='Ростелеком')
+    # Адрес API Ростелеком (например https://api.cloudpbx.rt.ru)
+    api_url = db.Column(db.String(500), nullable=False)
+    # Уникальный код идентификации (X-Client-ID) из ЛК Ростелеком
+    client_id = db.Column(db.String(100), nullable=False)
+    # Уникальный ключ для подписи (X-Client-Sign) из ЛК Ростелеком
+    sign_key = db.Column(db.String(100), nullable=False)
+    is_active = db.Column(db.Boolean, default=True, nullable=False)
+    # Маппинг request_pin (внутренний номер) -> station_code для маршрутизации
+    pin_to_station = db.Column(JSONB, nullable=True)  # {"317": "9301", "318": "9302"}
+    # Фильтр по направлению: ["incoming", "outbound", "internal"]. Пусто/None = все направления
+    allowed_directions = db.Column(JSONB, nullable=True)
+    last_webhook_at = db.Column(db.DateTime, nullable=True)
+    last_error = db.Column(Text, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    __table_args__ = (
+        Index('idx_rostelecom_user_active', 'user_id', 'is_active'),
+    )
+
+    user = db.relationship('User', backref=db.backref('rostelecom_ats_connections', lazy='dynamic'))
+
+    def __repr__(self):
+        return f'<RostelecomAtsConnection {self.name} (user={self.user_id})>'
+
+
 class SystemLog(db.Model):
     """�?�?�?��>? �?��?�'��?�?�<�: �>�?�?�?�?"""
     __tablename__ = 'system_logs'
@@ -318,10 +351,11 @@ class UserConfig(db.Model):
     business_profile = db.Column(db.String(50), default='autoservice', nullable=False)
     
     # Paths
-    source_type = db.Column(db.String(50), nullable=True)  # 'ftp' или 'local'
+    source_type = db.Column(db.String(50), nullable=True)  # 'local', 'ftp' или 'rostelecom'
     prompts_file = db.Column(db.String(1000), nullable=True)
     base_records_path = db.Column(db.String(1000), nullable=True)
     ftp_connection_id = db.Column(db.Integer, db.ForeignKey('ftp_connections.id'), nullable=True)
+    rostelecom_ats_connection_id = db.Column(db.Integer, db.ForeignKey('rostelecom_ats_connections.id'), nullable=True)
     script_prompt_file = db.Column(db.String(1000), nullable=True)
     additional_vocab_file = db.Column(db.String(1000), nullable=True)
     
@@ -359,6 +393,7 @@ class UserConfig(db.Model):
     
     user = db.relationship('User', backref=db.backref('config', uselist=False, cascade='all, delete-orphan'))
     ftp_connection = db.relationship('FtpConnection', foreign_keys=[ftp_connection_id])
+    rostelecom_ats_connection = db.relationship('RostelecomAtsConnection', foreign_keys=[rostelecom_ats_connection_id])
     
     def __repr__(self):
         return f'<UserConfig user_id={self.user_id}>'
