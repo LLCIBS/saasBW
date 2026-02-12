@@ -1110,7 +1110,7 @@ db.init_app(app)
 login_manager.init_app(app)
 app.register_blueprint(auth_bp)
 
-AUTH_EXEMPT_ENDPOINTS = {'static'}
+AUTH_EXEMPT_ENDPOINTS = {'static', 'api_rostelecom_webhook'}
 
 
 @app.before_request

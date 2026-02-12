@@ -232,9 +232,12 @@ def domain_call_history(
         resp = requests.post(endpoint, data=body_json.encode('utf-8'), headers=headers, timeout=timeout)
         data = resp.json() if resp.text else {}
         result = str(data.get("result", ""))
+        result_message = (data.get("resultMessage") or "").strip()
         if resp.status_code == 200 and result == "0":
             return True, "Выгрузка заказана", data.get("order_id")
-        return False, data.get("resultMessage", f"Ошибка {resp.status_code}"), None
+        if result_message and "уже существует" in result_message.lower():
+            return False, "Выгрузка с этим периодом уже запрошена. Дождитесь уведомления о готовности файла или попробуйте через 5–10 минут.", None
+        return False, result_message or f"Ошибка {resp.status_code}", None
     except Exception as e:
         logger.error(f"Rostelecom domain_call_history: {e}", exc_info=True)
         return False, str(e), None
