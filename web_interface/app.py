@@ -4047,6 +4047,44 @@ def api_rostelecom_webhook():
             app.logger.warning("Rostelecom webhook: invalid signature")
             return jsonify({'error': 'Invalid signature'}), 403
         data = request.get_json(force=True, silent=True) or {}
+        order_id = data.get('order_id')
+        result_code = data.get('result')
+        if order_id is not None and result_code is not None:
+            if str(result_code) == '0':
+                def _process_history_file():
+                    with app.app_context():
+                        try:
+                            from call_analyzer.rostelecom_connector import download_call_history
+                            ok, _, rows = download_call_history(
+                                conn.api_url, conn.client_id, conn.sign_key, str(order_id), timeout=120
+                            )
+                            if ok and rows:
+                                allowed = conn.allowed_directions if conn.allowed_directions else None
+                                dir_map = {"1": "incoming", "2": "outbound", "3": "internal"}
+                                for r in rows:
+                                    sid = (r.get("session_id") or "").strip()
+                                    if not sid:
+                                        continue
+                                    is_rec = (r.get("is_record") or "").strip().upper() in ("TRUE", "1", "YES")
+                                    if not is_rec:
+                                        continue
+                                    direction_val = r.get("direction", "1")
+                                    call_type = dir_map.get(str(direction_val).strip(), "incoming")
+                                    if allowed and call_type not in allowed:
+                                        continue
+                                    _process_rostelecom_recording(
+                                        conn.id, conn.user_id, sid,
+                                        (r.get("orig_number") or "").strip(),
+                                        (r.get("dest_number") or "").strip(),
+                                        (r.get("answering_pin") or r.get("orig_pin") or "").strip(),
+                                        call_type,
+                                        (r.get("start_call_date") or "").strip(),
+                                    )
+                        except Exception as e:
+                            app.logger.error(f"Rostelecom history_file_completed: {e}", exc_info=True)
+                threading.Thread(target=_process_history_file, daemon=True, name=f"Rostelecom-history-{order_id}").start()
+            return jsonify({'result': '0', 'resultMessage': 'OK'}), 200
+
         state = data.get('state')
         session_id = data.get('session_id')
         call_type = data.get('type', 'incoming')
@@ -4214,9 +4252,13 @@ def _sync_rostelecom_connection(conn_id: int):
                 })
                 db.session.commit()
                 if success and calls:
+                    allowed = conn.allowed_directions if conn.allowed_directions else None
                     for c in calls:
                         sid = c.get('session_id') or c.get('sessionId')
                         is_rec = (c.get('is_record') or c.get('isRecord') or '').lower() == 'true'
+                        call_type = c.get('type') or c.get('call_type') or 'incoming'
+                        if allowed and call_type not in allowed:
+                            continue
                         if sid and is_rec:
                             _process_rostelecom_recording(
                                 conn_id, conn.user_id, sid,

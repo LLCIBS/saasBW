@@ -6,14 +6,18 @@
 Интеграционный API. Руководство администратора домена v7.5
 """
 
+import csv
+import gzip
 import hashlib
+import io
 import json
 import logging
 import re
+import time
 import requests
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, Dict, Any, Tuple
+from typing import Optional, Dict, Any, Tuple, List
 from urllib.parse import urljoin
 
 logger = logging.getLogger(__name__)
@@ -188,49 +192,173 @@ def test_connection(
         return False, str(e)
 
 
+def domain_call_history(
+    api_url: str,
+    client_id: str,
+    sign_key: str,
+    date_start: str,
+    date_end: str,
+    direction: int = 0,
+    state: int = 0,
+    phone_number: Optional[str] = None,
+    timeout: int = 30
+) -> Tuple[bool, str, Optional[str]]:
+    """
+    Запрос на формирование файла с выгрузкой журнала вызовов домена (A.3.8).
+    date_start/date_end — по Москве, формат "yyyy-MM-dd HH:mm:ss".
+    direction: 0=все, 1=входящие, 2=исходящие, 3=внутренние.
+    state: 0=все, 1=принят, 2=не принят.
+
+    Returns:
+        (success, message, order_id)
+    """
+    body = {
+        "date_start": date_start,
+        "date_end": date_end,
+        "direction": direction,
+        "state": state,
+    }
+    if phone_number:
+        body["phone_number"] = phone_number
+    body_json = json.dumps(body, ensure_ascii=False, separators=(',', ':'))
+    sign = compute_sign(client_id, body_json, sign_key)
+    endpoint = urljoin(api_url.rstrip('/') + '/', 'domain_call_history')
+    headers = {
+        "Content-Type": "application/json; charset=utf-8",
+        "X-Client-ID": client_id,
+        "X-Client-Sign": sign,
+    }
+    try:
+        resp = requests.post(endpoint, data=body_json.encode('utf-8'), headers=headers, timeout=timeout)
+        data = resp.json() if resp.text else {}
+        result = str(data.get("result", ""))
+        if resp.status_code == 200 and result == "0":
+            return True, "Выгрузка заказана", data.get("order_id")
+        return False, data.get("resultMessage", f"Ошибка {resp.status_code}"), None
+    except Exception as e:
+        logger.error(f"Rostelecom domain_call_history: {e}", exc_info=True)
+        return False, str(e), None
+
+
+def download_call_history(
+    api_url: str,
+    client_id: str,
+    sign_key: str,
+    order_id: str,
+    timeout: int = 60
+) -> Tuple[bool, str, List[Dict[str, Any]]]:
+    """
+    Запрос на скачивание файла журнала вызовов (A.3.9).
+    Ответ — .CSV в gzip. Парсим в список словарей по столбцам.
+
+    Returns:
+        (success, message, rows) — rows с ключами session_id, is_record, start_call_date, direction, orig_number, dest_number, answering_pin, ...
+    """
+    body = {"order_id": order_id}
+    body_json = json.dumps(body, ensure_ascii=False, separators=(',', ':'))
+    sign = compute_sign(client_id, body_json, sign_key)
+    endpoint = urljoin(api_url.rstrip('/') + '/', 'download_call_history')
+    headers = {
+        "Content-Type": "application/json; charset=utf-8",
+        "X-Client-ID": client_id,
+        "X-Client-Sign": sign,
+    }
+    try:
+        resp = requests.post(endpoint, data=body_json.encode('utf-8'), headers=headers, timeout=timeout)
+        ct = (resp.headers.get("Content-Type") or "").lower()
+        if "application/json" in ct or (resp.text and resp.text.strip().startswith('{')):
+            data = resp.json() if resp.text else {}
+            result = str(data.get("result", ""))
+            msg = data.get("resultMessage", "Файл ещё не готов")
+            if result != "0":
+                return False, msg, []
+            return False, msg or "Неожиданный JSON-ответ", []
+
+        raw = resp.content
+        if not raw:
+            return False, "Пустой ответ", []
+
+        try:
+            decompressed = gzip.decompress(raw)
+        except Exception:
+            decompressed = raw
+        text = decompressed.decode("utf-8", errors="replace")
+        reader = csv.DictReader(io.StringIO(text), delimiter=',')
+        rows = list(reader)
+        return True, f"Загружено записей: {len(rows)}", rows
+    except Exception as e:
+        logger.error(f"Rostelecom download_call_history: {e}", exc_info=True)
+        return False, str(e), []
+
+
 def fetch_call_history(
     api_url: str,
     client_id: str,
     sign_key: str,
     date_from: datetime,
     date_to: datetime,
+    direction: int = 0,
+    state: int = 0,
+    poll_interval: int = 20,
+    poll_max_wait: int = 300,
     timeout: int = 60
 ) -> Tuple[bool, str, list]:
     """
-    Пытается получить историю звонков за период через API Ростелеком.
-    Пробует методы call_history, cdr. Если метод недоступен — возвращает пустой список.
+    Получение истории звонков по документации Ростелеком:
+    1) domain_call_history — заказ выгрузки → order_id;
+    2) опрос download_call_history до появления файла (или таймаут);
+    3) разбор CSV и приведение к формату {session_id, from_number, request_number, request_pin, type, timestamp, is_record}.
 
     Returns:
-        (success, message, list_of_calls) — успех, сообщение, список вызовов [{session_id, from_number, ...}]
+        (success, message, list_of_calls) — список готов для передачи в get_record по session_id.
     """
-    for method in ('call_history', 'cdr', 'call_list'):
-        body = {
-            'date_from': date_from.strftime('%Y-%m-%d'),
-            'date_to': date_to.strftime('%Y-%m-%d'),
-        }
-        body_json = json.dumps(body, ensure_ascii=False, separators=(',', ':'))
-        sign = compute_sign(client_id, body_json, sign_key)
-        endpoint = urljoin(api_url.rstrip('/') + '/', method)
-        headers = {
-            "Content-Type": "application/json; charset=utf-8",
-            "X-Client-ID": client_id,
-            "X-Client-Sign": sign,
-        }
-        try:
-            resp = requests.post(endpoint, data=body_json.encode('utf-8'), headers=headers, timeout=timeout)
-            if resp.status_code == 404:
-                continue
-            data = resp.json() if resp.text else {}
-            result = str(data.get("result", ""))
-            if resp.status_code == 200 and result == "0":
-                calls = data.get("calls", data.get("items", data.get("list", [])))
-                if isinstance(calls, list):
-                    return True, "История получена", calls
-            if resp.status_code == 200:
-                return False, data.get("resultMessage", "Неизвестная ошибка"), []
-        except Exception as e:
-            logger.debug(f"Rostelecom {method}: {e}")
-    return False, "API Ростелеком не предоставляет метод выгрузки истории. Звонки приходят по webhook.", []
+    date_start = date_from.strftime("%Y-%m-%d 00:00:00")
+    date_end = date_to.strftime("%Y-%m-%d 23:59:59")
+    ok, msg, order_id = domain_call_history(
+        api_url, client_id, sign_key, date_start, date_end,
+        direction=direction, state=state, timeout=timeout
+    )
+    if not ok or not order_id:
+        return False, msg or "Не получен order_id", []
+
+    waited = 0
+    while waited < poll_max_wait:
+        time.sleep(min(poll_interval, poll_max_wait - waited))
+        waited += poll_interval
+        ok, msg, rows = download_call_history(api_url, client_id, sign_key, order_id, timeout=timeout)
+        if ok and rows is not None:
+            # Приводим строки CSV к формату, ожидаемому sync: from_number, request_number, request_pin, type, timestamp, is_record
+            # CSV: session_id, direction (1=вх, 2=исх, 3=внутр), orig_number, orig_pin, dest_number, answering_pin, start_call_date, is_record
+            dir_map = {"1": "incoming", "2": "outbound", "3": "internal"}
+            calls = []
+            for r in rows:
+                sid = (r.get("session_id") or "").strip()
+                if not sid:
+                    continue
+                is_rec = (r.get("is_record") or "").strip().upper() in ("TRUE", "1", "YES")
+                direction_val = r.get("direction", "1")
+                call_type = dir_map.get(str(direction_val).strip(), "incoming")
+                start_date = (r.get("start_call_date") or "").strip()
+                orig = (r.get("orig_number") or "").strip()
+                dest = (r.get("dest_number") or "").strip()
+                ans_pin = (r.get("answering_pin") or "").strip()
+                orig_pin = (r.get("orig_pin") or "").strip()
+                calls.append({
+                    "session_id": sid,
+                    "from_number": orig,
+                    "request_number": dest,
+                    "request_pin": ans_pin or orig_pin,
+                    "type": call_type,
+                    "timestamp": start_date,
+                    "is_record": "true" if is_rec else "false",
+                })
+            return True, msg, calls
+        if "ещё не готов" in (msg or "").lower() or "not ready" in (msg or "").lower():
+            continue
+        if msg and "загружено" not in msg.lower():
+            return False, msg, []
+
+    return False, "Файл выгрузки не получен за отведённое время. Попробуйте позже или проверьте уведомления.", []
 
 
 def parse_rostelecom_filename(filename: str) -> Optional[Tuple[str, str, datetime]]:
