@@ -1047,6 +1047,7 @@ def legacy_config_override(runtime_cfg):
         transcription_cfg = runtime_cfg.get('transcription') or {}
         _set_attr('TBANK_STEREO_ENABLED', bool(transcription_cfg.get('tbank_stereo_enabled', False)))
         _set_attr('USE_ADDITIONAL_VOCAB', bool(transcription_cfg.get('use_additional_vocab', True)))
+        _set_attr('AUTO_DETECT_OPERATOR_NAME', bool(transcription_cfg.get('auto_detect_operator_name', True)))
 
         _set_attr('EMPLOYEE_BY_EXTENSION', deepcopy(runtime_cfg.get('employee_by_extension') or {}))
         _set_attr('STATION_NAMES', deepcopy(runtime_cfg.get('stations') or {}))
@@ -1506,10 +1507,16 @@ def api_rescan_current_day():
             # Создаем временный экземпляр CallHandler для обработки
             event_handler = CallHandler()
             
+            # Получаем пользовательскую конфигурацию для корректной обработки станций
+            runtime_cfg = build_user_runtime_config()
+            
             # Запускаем переобход в отдельном потоке, чтобы не блокировать запрос
             def run_scan():
                 try:
-                    processed_count = scan_current_day_folder(event_handler, str(current_day_path))
+                    # Применяем пользовательский конфиг, чтобы CallHandler видел
+                    # правильные STATION_NAMES, STATION_MAPPING, EMPLOYEE_BY_EXTENSION
+                    with legacy_config_override(runtime_cfg):
+                        processed_count = scan_current_day_folder(event_handler, str(current_day_path))
                     app.logger.info(f"[WEB] Ручной переобход завершен. Обработано файлов: {processed_count}")
                 except Exception as e:
                     app.logger.error(f"[WEB] Ошибка в потоке переобхода: {e}", exc_info=True)

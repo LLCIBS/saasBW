@@ -681,13 +681,15 @@ def create_excel_report(transcriptions_folder, output_file_path, telegram_messag
                     except Exception:
                         date_time_obj = None
 
-            # Инициализируем значения по умолчанию
-            consultant_surname = 'Не указано'
-            station_code = 'Неизвестно'
+            # station_code и consultant_surname уже инициализированы выше (строки 624-625)
+            # и могли быть обновлены при парсинге имени файла — НЕ сбрасываем их
+            # Сохраняем station_code из имени файла как fallback
+            station_code_from_filename = station_code if station_code != 'Неизвестно' else None
             
             print(f"DEBUG: Обрабатываем файл {file}")
             print(f"DEBUG: base_name = {base_name}")
             print(f"DEBUG: phone_number = {phone_number}, date_time_obj = {date_time_obj}")
+            print(f"DEBUG: station_code из имени файла = {station_code_from_filename}")
             
             # Сначала пытаемся получить station_code из call_records_dict
             if date_time_obj and phone_number:
@@ -720,8 +722,16 @@ def create_excel_report(transcriptions_folder, output_file_path, telegram_messag
                             break
                     if not matched:
                         print(f"DEBUG: Не найдено соответствия для файла {file}")
+                        # Восстанавливаем station_code из имени файла, если он был извлечён
+                        if station_code_from_filename and station_code == 'Неизвестно':
+                            station_code = station_code_from_filename
+                            print(f"DEBUG: Восстановлен station_code из имени файла: {station_code}")
             else:
                 print(f"DEBUG: Не удалось извлечь phone_number или date_time_obj из файла {file}")
+                # Восстанавливаем station_code из имени файла, если он был извлечён
+                if station_code_from_filename and station_code == 'Неизвестно':
+                    station_code = station_code_from_filename
+                    print(f"DEBUG: Восстановлен station_code из имени файла: {station_code}")
             
             # Приоритет 1: Извлекаем имя оператора из транскрипции (диалога)
             # Диалог может быть в файле анализа или в отдельном txt файле
@@ -763,25 +773,30 @@ def create_excel_report(transcriptions_folder, output_file_path, telegram_messag
             except Exception as e:
                 print(f"DEBUG: Не удалось извлечь диалог из файла анализа: {e}")
             
-            # Получаем имя оператора с приоритетом: из транскрипции, затем из таблицы
+            # Получаем имя оператора с приоритетом:
+            # 1. Из конфига EMPLOYEE_BY_EXTENSION (надёжный источник)
+            # 2. Из транскрипции (менее надёжный, только как fallback)
             if station_code and station_code != 'Неизвестно':
                 consultant_surname_before = consultant_surname  # Сохраняем для сравнения
                 
-                # get_operator_name может вернуть "Не указано", если не найдет
-                extracted_name = get_operator_name(dialog_text, station_code)
+                # Приоритет 1: Берём имя из конфига EMPLOYEE_BY_EXTENSION
+                if station_code in employee_by_extension:
+                    config_name = employee_by_extension[station_code]
+                    if config_name and config_name != 'Не указано':
+                        consultant_surname = config_name
+                        print(f"DEBUG: Имя оператора из конфига: '{consultant_surname}' (station_code={station_code})")
                 
-                # Если удалось извлечь новое имя, и оно не "Не указано" - обновляем
-                if extracted_name and extracted_name != 'Не указано':
-                    consultant_surname = extracted_name
-                    print(f"DEBUG: Имя оператора обновлено с '{consultant_surname_before}' на '{consultant_surname}' (извлечено из транскрипции/конфига)")
-                elif consultant_surname == 'Не указано' and extracted_name == 'Не указано':
-                    # Если было "Не указано" и осталось "Не указано", пробуем поискать в конфиге напрямую
-                    # (get_operator_name уже должна это делать, но на всякий случай)
-                    if station_code in employee_by_extension:
-                        consultant_surname = employee_by_extension[station_code]
-                        print(f"DEBUG: Имя оператора взято из конфига по коду станции: {consultant_surname}")
-                else:
-                     print(f"DEBUG: Оставили имя '{consultant_surname}' (get_operator_name вернул '{extracted_name}')")
+                # Приоритет 2: Если имя всё ещё не определено, пробуем из транскрипции
+                if consultant_surname == 'Не указано':
+                    extracted_name = get_operator_name(dialog_text, station_code)
+                    if extracted_name and extracted_name != 'Не указано':
+                        consultant_surname = extracted_name
+                        print(f"DEBUG: Имя оператора из транскрипции: '{consultant_surname}' (station_code={station_code})")
+                    else:
+                        print(f"DEBUG: Не удалось определить имя оператора для station_code={station_code}")
+                
+                if consultant_surname != consultant_surname_before:
+                    print(f"DEBUG: Имя оператора обновлено с '{consultant_surname_before}' на '{consultant_surname}'")
 
             # Применяем маппинг станций: если это подстанция, находим основную станцию
             if station_code and station_code != 'Неизвестно':

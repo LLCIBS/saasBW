@@ -108,6 +108,12 @@ def get_main_station_code(station_code):
         if station_code in sub_codes:
             return main_code
     
+    # Не найдено — логируем для диагностики
+    logger.debug(
+        f"Станция {station_code} не найдена. "
+        f"STATION_NAMES keys: {list(config.STATION_NAMES.keys())}, "
+        f"STATION_MAPPING: {config.STATION_MAPPING}"
+    )
     return None
 
 @notify_on_error()
@@ -665,12 +671,24 @@ class CallHandler(FileSystemEventHandler):
             if main_station_code and main_station_code != station_code:
                 logger.info(f"Подстанция {station_code} привязана к основной станции {main_station_code}")
 
-            if main_station_code in config.STATION_NAMES:
-                logger.info(f"Станция {station_code} (основная: {main_station_code}) – локальная (Bestway). Запуск транскрипции + анализа.")
+            # Определяем эффективный код станции для обработки
+            # Приоритет: main_station_code (из STATION_NAMES/STATION_MAPPING),
+            # иначе station_code напрямую (если есть в EMPLOYEE_BY_EXTENSION)
+            effective_station = None
+            if main_station_code and main_station_code in config.STATION_NAMES:
+                effective_station = main_station_code
+            elif station_code in getattr(config, 'EMPLOYEE_BY_EXTENSION', {}):
+                # Станция есть в привязке сотрудников, но не в STATION_NAMES/STATION_MAPPING
+                effective_station = station_code
+                logger.info(f"Станция {station_code} не найдена в STATION_NAMES/STATION_MAPPING, "
+                           f"но есть в EMPLOYEE_BY_EXTENSION. Обрабатываем.")
+            
+            if effective_station:
+                logger.info(f"Станция {station_code} (эффективная: {effective_station}) – запуск транскрипции + анализа.")
                 def _wrapped_process():
                     try:
-                        # Передаем основную станцию для группировки, но оригинальную для определения оператора
-                        transcribe_and_analyze(file_path, main_station_code, original_station_code=station_code)
+                        # Передаем эффективную станцию для группировки, но оригинальную для определения оператора
+                        transcribe_and_analyze(file_path, effective_station, original_station_code=station_code)
                     except Exception as e:
                         logger.error(f"Критическая ошибка при обработке файла {file_path.name}: {e}", exc_info=True)
                         # Удаляем файл из _processed_files при ошибке, чтобы можно было повторить
@@ -681,7 +699,8 @@ class CallHandler(FileSystemEventHandler):
                         _release_lock()
                 executor.submit(_wrapped_process)
             else:
-                logger.warning(f"Неизвестный код станции: {station_code} (файл {file_path.name})")
+                logger.warning(f"Неизвестный код станции: {station_code} (файл {file_path.name}). "
+                              f"Станция не найдена ни в STATION_NAMES, ни в STATION_MAPPING, ни в EMPLOYEE_BY_EXTENSION.")
                 # Удаляем из _processed_files, если станция неизвестна
                 with _processed_files_lock:
                     _processed_files.discard(file_path.name)
