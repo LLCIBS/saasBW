@@ -11,6 +11,8 @@ import gzip
 import hashlib
 import io
 import json
+import os
+import tempfile
 import logging
 import re
 import time
@@ -305,12 +307,41 @@ def download_call_history(
         first_line = lines[0].lower()
         has_headers = "session_id" in first_line
 
-        if has_headers:
-            reader = csv.DictReader(io.StringIO(text), delimiter=',')
-        else:
-            reader = csv.DictReader(io.StringIO(text), fieldnames=CSV_COLUMNS, delimiter=',')
+        # Читаем CSV через файл с newline='' — корректная обработка переводов строк
+        tmp_path = None
+        rows = []
+        try:
+            fd, tmp_path = tempfile.mkstemp(suffix=".csv", text=True)
+            with os.fdopen(fd, "w", encoding="utf-8", newline="") as f:
+                f.write(text)
+            with open(tmp_path, "r", encoding="utf-8", newline="") as f:
+                if has_headers:
+                    reader = csv.DictReader(f, delimiter=",")
+                else:
+                    reader = csv.DictReader(f, fieldnames=CSV_COLUMNS, delimiter=",")
+                rows = list(reader)
+        except csv.Error as ce:
+            if "new-line" in str(ce).lower() or "newline" in str(ce).lower():
+                # Fallback: некорректные переносы в полях — считаем разделителем \r\n, иначе \n
+                logger.warning(f"Rostelecom CSV: fallback из-за вложенных переносов — {ce}")
+                sep = "\r\n" if "\r\n" in text else "\n"
+                lines = text.split(sep)
+                sanitized = "\n".join(ln.replace("\n", " ").replace("\r", " ") for ln in lines)
+                try:
+                    with io.StringIO(sanitized) as s:
+                        rdr = csv.DictReader(s, fieldnames=CSV_COLUMNS, delimiter=",")
+                        rows = [r for r in rdr if (r.get("session_id") or "").strip()]
+                except csv.Error:
+                    rows = []
+            else:
+                raise
+        finally:
+            if tmp_path and os.path.exists(tmp_path):
+                try:
+                    os.unlink(tmp_path)
+                except OSError:
+                    pass
 
-        rows = list(reader)
         logger.info(f"Rostelecom download_call_history: {len(rows)} строк, заголовки={has_headers}")
         return True, f"Загружено записей: {len(rows)}", rows
     except Exception as e:
