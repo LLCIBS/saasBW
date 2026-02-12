@@ -123,6 +123,11 @@
                     </div>
                     <div class="form-text">Отметьте направления для получения записей. Если ничего не выбрано — все направления.</div>
                 </div>
+                <div class="mb-3">
+                    <label class="form-label">Собирать звонки с даты</label>
+                    <input type="datetime-local" class="form-control" id="rostelecomStartFrom" placeholder="Не задано">
+                    <div class="form-text">Звонки до этой даты игнорируются. Оставьте пустым для приёма всех.</div>
+                </div>
                 <div class="form-check mb-3">
                     <input class="form-check-input" type="checkbox" id="rostelecomActive" checked>
                     <label class="form-check-label" for="rostelecomActive">Активно</label>
@@ -172,15 +177,20 @@ function loadRostelecomConnections() {
                 card.className = 'rostelecom-conn-card';
                 const dirLabels = { incoming: 'Входящие', outbound: 'Исходящие', internal: 'Внутр.' };
                 const dirStr = (c.allowed_directions && c.allowed_directions.length) ? c.allowed_directions.map(d => dirLabels[d] || d).join(', ') : 'Все';
+                const startFromStr = c.start_from ? new Date(c.start_from).toLocaleString('ru-RU') : 'Не задано';
+                const lastSyncStr = c.last_sync ? new Date(c.last_sync).toLocaleString('ru-RU') : '—';
                 card.innerHTML = `
                     <div>
                         <strong>${escapeHtml(c.name)}</strong> ${c.is_active ? '<span class="badge bg-success ms-1">Активно</span>' : '<span class="badge bg-secondary ms-1">Неактивно</span>'}
                         <div class="small text-muted">${escapeHtml(c.api_url)} • ${escapeHtml(c.client_id)}</div>
                         <div class="small">Направления: ${escapeHtml(dirStr)}</div>
-                        ${c.last_webhook_at ? '<div class="small text-success">Последний webhook: ' + new Date(c.last_webhook_at).toLocaleString() + '</div>' : ''}
+                        <div class="small">С даты: ${escapeHtml(startFromStr)}</div>
+                        <div class="small">Синхронизация: ${escapeHtml(lastSyncStr)}</div>
+                        ${c.last_webhook_at ? '<div class="small text-success">Webhook: ' + new Date(c.last_webhook_at).toLocaleString() + '</div>' : ''}
                         ${c.last_error ? '<div class="small text-danger">Ошибка: ' + escapeHtml(c.last_error) + '</div>' : ''}
                     </div>
                     <div class="btn-group">
+                        <button class="btn btn-sm btn-success" onclick="syncRostelecomConnection(${c.id})" title="Синхронизировать"><i class="fas fa-sync me-1"></i>Синхр.</button>
                         <button class="btn btn-sm btn-outline-primary" onclick="testRostelecomConnection(${c.id})" title="Проверить подключение"><i class="fas fa-vial me-1"></i>Проверить</button>
                         <button class="btn btn-sm btn-outline-primary" onclick="editRostelecomConnection(${c.id})"><i class="fas fa-edit"></i></button>
                         <button class="btn btn-sm btn-outline-danger" onclick="deleteRostelecomConnection(${c.id}, '${escapeHtml(c.name)}')"><i class="fas fa-trash"></i></button>
@@ -214,12 +224,20 @@ function getDirectionCheckboxes() {
     return arr.length === 3 ? null : arr;
 }
 
+function formatDatetimeLocal(isoString) {
+    if (!isoString) return '';
+    const d = new Date(isoString);
+    const pad = v => String(v).padStart(2, '0');
+    return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + 'T' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+}
+
 function showRostelecomModal(id) {
     document.getElementById('rostelecomConnId').value = id || '';
     document.getElementById('rostelecomName').value = 'Ростелеком';
     document.getElementById('rostelecomApiUrl').value = 'https://api.cloudpbx.rt.ru';
     document.getElementById('rostelecomClientId').value = '';
     document.getElementById('rostelecomSignKey').value = '';
+    document.getElementById('rostelecomStartFrom').value = '';
     document.getElementById('rostelecomActive').checked = true;
     setDirectionCheckboxes(null);
     if (id) {
@@ -228,6 +246,7 @@ function showRostelecomModal(id) {
             if (c) {
                 document.getElementById('rostelecomName').value = c.name;
                 document.getElementById('rostelecomApiUrl').value = c.api_url || 'https://api.cloudpbx.rt.ru';
+                document.getElementById('rostelecomStartFrom').value = formatDatetimeLocal(c.start_from);
                 setDirectionCheckboxes(c.allowed_directions);
             }
         });
@@ -242,6 +261,7 @@ function editRostelecomConnection(id) {
         if (c) {
             document.getElementById('rostelecomName').value = c.name;
             document.getElementById('rostelecomApiUrl').value = c.api_url || 'https://api.cloudpbx.rt.ru';
+            document.getElementById('rostelecomStartFrom').value = formatDatetimeLocal(c.start_from);
             setDirectionCheckboxes(c.allowed_directions);
         }
     });
@@ -252,13 +272,15 @@ function editRostelecomConnection(id) {
 
 function saveRostelecomConnection() {
     const id = document.getElementById('rostelecomConnId').value;
+    const startFromVal = document.getElementById('rostelecomStartFrom').value;
     const payload = {
         name: document.getElementById('rostelecomName').value,
         api_url: document.getElementById('rostelecomApiUrl').value,
         client_id: document.getElementById('rostelecomClientId').value,
         sign_key: document.getElementById('rostelecomSignKey').value,
         is_active: document.getElementById('rostelecomActive').checked,
-        allowed_directions: getDirectionCheckboxes()
+        allowed_directions: getDirectionCheckboxes(),
+        start_from: startFromVal ? new Date(startFromVal).toISOString() : null
     };
     if (!payload.api_url) { alert('Укажите адрес API'); return; }
     if (!id && (!payload.client_id || !payload.sign_key)) {
@@ -278,6 +300,25 @@ function saveRostelecomConnection() {
             if (typeof showToast === 'function') showToast(data.message || 'Сохранено', 'success');
         } else alert(data.message || 'Ошибка');
     }).catch(e => alert('Ошибка: ' + e));
+}
+
+async function syncRostelecomConnection(id) {
+    try {
+        if (typeof showToast === 'function') showToast('Запуск синхронизации...', 'info');
+        const r = await fetch(`/api/ats/rostelecom/connections/${id}/sync`, { method: 'POST' });
+        const data = await r.json();
+        if (data.success) {
+            if (typeof showToast === 'function') showToast(data.message || 'Синхронизация запущена', 'success');
+            else alert(data.message || 'Синхронизация запущена');
+            loadRostelecomConnections();
+        } else {
+            if (typeof showToast === 'function') showToast(data.message || 'Ошибка', 'danger');
+            else alert(data.message || 'Ошибка');
+        }
+    } catch (e) {
+        if (typeof showToast === 'function') showToast('Ошибка: ' + e, 'danger');
+        else alert('Ошибка: ' + e);
+    }
 }
 
 async function testRostelecomConnection(id) {

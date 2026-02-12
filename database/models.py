@@ -206,6 +206,9 @@ class RostelecomAtsConnection(db.Model):
     pin_to_station = db.Column(JSONB, nullable=True)  # {"317": "9301", "318": "9302"}
     # Фильтр по направлению: ["incoming", "outbound", "internal"]. Пусто/None = все направления
     allowed_directions = db.Column(JSONB, nullable=True)
+    # Дата, с которой обрабатывать звонки (webhook + sync). Пусто = все
+    start_from = db.Column(db.DateTime, nullable=True)
+    last_sync = db.Column(db.DateTime, nullable=True)  # Время последней синхронизации
     last_webhook_at = db.Column(db.DateTime, nullable=True)
     last_error = db.Column(Text, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)

@@ -188,6 +188,51 @@ def test_connection(
         return False, str(e)
 
 
+def fetch_call_history(
+    api_url: str,
+    client_id: str,
+    sign_key: str,
+    date_from: datetime,
+    date_to: datetime,
+    timeout: int = 60
+) -> Tuple[bool, str, list]:
+    """
+    Пытается получить историю звонков за период через API Ростелеком.
+    Пробует методы call_history, cdr. Если метод недоступен — возвращает пустой список.
+
+    Returns:
+        (success, message, list_of_calls) — успех, сообщение, список вызовов [{session_id, from_number, ...}]
+    """
+    for method in ('call_history', 'cdr', 'call_list'):
+        body = {
+            'date_from': date_from.strftime('%Y-%m-%d'),
+            'date_to': date_to.strftime('%Y-%m-%d'),
+        }
+        body_json = json.dumps(body, ensure_ascii=False, separators=(',', ':'))
+        sign = compute_sign(client_id, body_json, sign_key)
+        endpoint = urljoin(api_url.rstrip('/') + '/', method)
+        headers = {
+            "Content-Type": "application/json; charset=utf-8",
+            "X-Client-ID": client_id,
+            "X-Client-Sign": sign,
+        }
+        try:
+            resp = requests.post(endpoint, data=body_json.encode('utf-8'), headers=headers, timeout=timeout)
+            if resp.status_code == 404:
+                continue
+            data = resp.json() if resp.text else {}
+            result = str(data.get("result", ""))
+            if resp.status_code == 200 and result == "0":
+                calls = data.get("calls", data.get("items", data.get("list", [])))
+                if isinstance(calls, list):
+                    return True, "История получена", calls
+            if resp.status_code == 200:
+                return False, data.get("resultMessage", "Неизвестная ошибка"), []
+        except Exception as e:
+            logger.debug(f"Rostelecom {method}: {e}")
+    return False, "API Ростелеком не предоставляет метод выгрузки истории. Звонки приходят по webhook.", []
+
+
 def parse_rostelecom_filename(filename: str) -> Optional[Tuple[str, str, datetime]]:
     """
     Парсит имя файла rostelecom-*.

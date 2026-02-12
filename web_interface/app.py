@@ -4059,6 +4059,16 @@ def api_rostelecom_webhook():
         if allowed is not None and len(allowed) > 0 and call_type not in allowed:
             app.logger.info(f"Rostelecom webhook: пропуск звонка type={call_type} (разрешены: {allowed})")
             return jsonify({'result': '0', 'resultMessage': 'OK'}), 200
+        if conn.start_from and timestamp:
+            try:
+                ts_clean = (timestamp or '')[:19].replace('T', ' ')
+                call_dt = datetime.strptime(ts_clean, '%Y-%m-%d %H:%M:%S')
+                start_dt = conn.start_from.replace(tzinfo=None) if conn.start_from.tzinfo else conn.start_from
+                if call_dt < start_dt:
+                    app.logger.info(f"Rostelecom webhook: пропуск звонка до start_from {conn.start_from}")
+                    return jsonify({'result': '0', 'resultMessage': 'OK'}), 200
+            except Exception:
+                pass
         if state == 'end' and is_record and session_id:
             _process_rostelecom_recording(conn.id, conn.user_id, session_id, from_num, req_num, req_pin, call_type, timestamp)
         return jsonify({'result': '0', 'resultMessage': 'OK'}), 200
@@ -4081,6 +4091,8 @@ def api_rostelecom_connections():
             'is_active': c.is_active,
             'pin_to_station': c.pin_to_station or {},
             'allowed_directions': c.allowed_directions if c.allowed_directions else ['incoming', 'outbound', 'internal'],
+            'start_from': c.start_from.isoformat() + 'Z' if c.start_from else None,
+            'last_sync': c.last_sync.isoformat() + 'Z' if c.last_sync else None,
             'last_webhook_at': c.last_webhook_at.isoformat() + 'Z' if c.last_webhook_at else None,
             'last_error': c.last_error,
             'created_at': c.created_at.isoformat() + 'Z',
@@ -4103,6 +4115,7 @@ def api_rostelecom_create():
         allowed = data.get('allowed_directions')
         if allowed is not None:
             allowed = list(allowed) if isinstance(allowed, list) and len(allowed) > 0 else None
+        start_from = _parse_datetime_field(data.get('start_from'))
         conn = RostelecomAtsConnection(
             user_id=current_user.id,
             name=data.get('name', 'Ростелеком'),
@@ -4112,6 +4125,7 @@ def api_rostelecom_create():
             is_active=data.get('is_active', True),
             pin_to_station=data.get('pin_to_station') or {},
             allowed_directions=allowed,
+            start_from=start_from,
         )
         db.session.add(conn)
         db.session.commit()
@@ -4146,6 +4160,8 @@ def api_rostelecom_update(conn_id):
         if 'allowed_directions' in data:
             val = data['allowed_directions']
             conn.allowed_directions = val if isinstance(val, list) else None
+        if 'start_from' in data:
+            conn.start_from = _parse_datetime_field(data.get('start_from'))
         db.session.commit()
         return jsonify({'success': True, 'message': 'Обновлено'})
     except Exception as e:
@@ -4173,6 +4189,66 @@ def api_rostelecom_test(conn_id):
     except Exception as e:
         app.logger.error(f"Ошибка теста Ростелеком {conn_id}: {e}")
         return jsonify({'success': False, 'message': str(e)}), 500
+
+
+def _sync_rostelecom_connection(conn_id: int):
+    """Фоновая синхронизация истории звонков Ростелеком."""
+    def _run():
+        try:
+            conn = RostelecomAtsConnection.query.get(conn_id)
+            if not conn:
+                return
+            from call_analyzer.rostelecom_connector import fetch_call_history
+            date_to = datetime.utcnow()
+            date_from = (conn.start_from or (date_to - timedelta(days=7)))
+            if date_from.tzinfo:
+                date_from = date_from.replace(tzinfo=None)
+            success, message, calls = fetch_call_history(
+                conn.api_url, conn.client_id, conn.sign_key,
+                date_from, date_to, timeout=60
+            )
+            with app.app_context():
+                RostelecomAtsConnection.query.filter_by(id=conn_id).update({
+                    'last_sync': datetime.utcnow(),
+                    'last_error': None if success else message
+                })
+                db.session.commit()
+            if success and calls:
+                for c in calls:
+                    sid = c.get('session_id') or c.get('sessionId')
+                    is_rec = (c.get('is_record') or c.get('isRecord') or '').lower() == 'true'
+                    if sid and is_rec:
+                        _process_rostelecom_recording(
+                            conn_id, conn.user_id, sid,
+                            c.get('from_number') or c.get('fromNumber', ''),
+                            c.get('request_number') or c.get('requestNumber', ''),
+                            c.get('request_pin') or c.get('requestPin', ''),
+                            c.get('type') or c.get('call_type', 'incoming'),
+                            c.get('timestamp') or c.get('start_time', '')
+                        )
+        except Exception as e:
+            app.logger.error(f"Rostelecom sync {conn_id}: {e}", exc_info=True)
+            try:
+                with app.app_context():
+                    RostelecomAtsConnection.query.filter_by(id=conn_id).update({
+                        'last_sync': datetime.utcnow(),
+                        'last_error': str(e)
+                    })
+                    db.session.commit()
+            except Exception:
+                pass
+    threading.Thread(target=_run, daemon=True, name=f"Rostelecom-sync-{conn_id}").start()
+
+
+@app.route('/api/ats/rostelecom/connections/<int:conn_id>/sync', methods=['POST'])
+@login_required
+def api_rostelecom_sync(conn_id):
+    """Запуск синхронизации истории звонков Ростелеком"""
+    conn = RostelecomAtsConnection.query.filter_by(id=conn_id, user_id=current_user.id).first()
+    if not conn:
+        return jsonify({'success': False, 'message': 'Подключение не найдено'}), 404
+    _sync_rostelecom_connection(conn_id)
+    return jsonify({'success': True, 'message': 'Синхронизация запущена'})
 
 
 @app.route('/api/ats/rostelecom/connections/<int:conn_id>', methods=['DELETE'])
