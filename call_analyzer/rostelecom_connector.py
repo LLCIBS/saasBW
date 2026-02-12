@@ -283,8 +283,32 @@ def download_call_history(
         except Exception:
             decompressed = raw
         text = decompressed.decode("utf-8", errors="replace")
-        reader = csv.DictReader(io.StringIO(text), delimiter=',')
+
+        # Столбцы CSV по документации Ростелеком (A.3.9, Таблица A.3.14)
+        CSV_COLUMNS = [
+            "session_id", "call_type", "direction", "state",
+            "orig_number", "orig_pin", "dest_number",
+            "answering_sipuri", "answering_pin",
+            "start_call_date", "duration",
+            "is_voicemail", "is_record", "is_fax",
+            "status_code", "status_string",
+        ]
+
+        lines = text.strip().splitlines()
+        if not lines:
+            return True, "Загружено записей: 0", []
+
+        # Проверяем, есть ли заголовки (если первая строка содержит session_id)
+        first_line = lines[0].lower()
+        has_headers = "session_id" in first_line
+
+        if has_headers:
+            reader = csv.DictReader(io.StringIO(text), delimiter=',')
+        else:
+            reader = csv.DictReader(io.StringIO(text), fieldnames=CSV_COLUMNS, delimiter=',')
+
         rows = list(reader)
+        logger.info(f"Rostelecom download_call_history: {len(rows)} строк, заголовки={has_headers}")
         return True, f"Загружено записей: {len(rows)}", rows
     except Exception as e:
         logger.error(f"Rostelecom download_call_history: {e}", exc_info=True)

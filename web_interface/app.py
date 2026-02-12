@@ -4027,12 +4027,19 @@ def _process_rostelecom_recording(conn_id, user_id, session_id, from_number, req
 
 
 @app.route('/api/ats/rostelecom/webhook', methods=['POST'])
-def api_rostelecom_webhook():
+@app.route('/api/ats/rostelecom/webhook/', methods=['POST'])
+@app.route('/api/ats/rostelecom/webhook/<path:method_name>', methods=['POST'])
+def api_rostelecom_webhook(method_name=None):
     """
-    Webhook для получения событий call_events от облачной АТС Ростелеком.
+    Webhook для получения событий от облачной АТС Ростелеком.
+    Ростелеком отправляет запросы на <адрес>/<метод>:
+      - /call_events — уведомления о вызовах
+      - /history_file_completed — файл выгрузки готов
+      - /get_number_info — запрос информации о номере
     Не требует авторизации — проверка по X-Client-ID и X-Client-Sign.
     """
     try:
+        app.logger.info(f"Rostelecom webhook: method={method_name}, path={request.path}")
         client_id = request.headers.get('X-Client-ID') or request.headers.get('x-client-id')
         client_sign = request.headers.get('X-Client-Sign') or request.headers.get('x-client-sign')
         body = request.get_data(as_text=True)
@@ -4242,10 +4249,12 @@ def _sync_rostelecom_connection(conn_id: int):
                 date_from = (conn.start_from or (date_to - timedelta(days=7)))
                 if date_from.tzinfo:
                     date_from = date_from.replace(tzinfo=None)
+                app.logger.info(f"Rostelecom sync {conn_id}: запрос выгрузки за {date_from} — {date_to}")
                 success, message, calls = fetch_call_history(
                     conn.api_url, conn.client_id, conn.sign_key,
                     date_from, date_to, timeout=60
                 )
+                app.logger.info(f"Rostelecom sync {conn_id}: success={success}, msg={message}, calls={len(calls) if calls else 0}")
                 RostelecomAtsConnection.query.filter_by(id=conn_id).update({
                     'last_sync': datetime.utcnow(),
                     'last_error': None if success else message
