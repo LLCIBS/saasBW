@@ -4153,6 +4153,28 @@ def api_rostelecom_update(conn_id):
         return jsonify({'success': False, 'message': str(e)}), 500
 
 
+@app.route('/api/ats/rostelecom/connections/<int:conn_id>/test', methods=['POST'])
+@login_required
+def api_rostelecom_test(conn_id):
+    """Проверка подключения к API Ростелеком"""
+    conn = RostelecomAtsConnection.query.filter_by(id=conn_id, user_id=current_user.id).first()
+    if not conn:
+        return jsonify({'success': False, 'message': 'Подключение не найдено'}), 404
+    try:
+        from call_analyzer.rostelecom_connector import test_connection
+        success, message = test_connection(
+            api_url=conn.api_url,
+            client_id=conn.client_id,
+            sign_key=conn.sign_key,
+        )
+        if success:
+            return jsonify({'success': True, 'message': message})
+        return jsonify({'success': False, 'message': message}), 400
+    except Exception as e:
+        app.logger.error(f"Ошибка теста Ростелеком {conn_id}: {e}")
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+
 @app.route('/api/ats/rostelecom/connections/<int:conn_id>', methods=['DELETE'])
 @login_required
 def api_rostelecom_delete(conn_id):

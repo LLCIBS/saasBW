@@ -133,6 +133,61 @@ def make_rostelecom_filename(
     return f"rostelecom-{call_type}-{from_clean}_{pin}_{ts_clean}-{sid_short}.mp3"
 
 
+def test_connection(
+    api_url: str,
+    client_id: str,
+    sign_key: str,
+    timeout: int = 15
+) -> Tuple[bool, str]:
+    """
+    Проверяет подключение к API Ростелеком.
+    Вызывает get_record с тестовым session_id — API вернёт ошибку сессии, но проверка
+    подписи и учётных данных пройдёт (200 + result != 0 = аутентификация успешна).
+    
+    Returns:
+        (success, message) — успех и сообщение для пользователя
+    """
+    body = {"session_id": "00000000-0000-0000-0000-000000000000"}
+    body_json = json.dumps(body, ensure_ascii=False, separators=(',', ':'))
+    sign = compute_sign(client_id, body_json, sign_key)
+    
+    endpoint = urljoin(api_url.rstrip('/') + '/', 'get_record')
+    headers = {
+        "Content-Type": "application/json; charset=utf-8",
+        "X-Client-ID": client_id,
+        "X-Client-Sign": sign,
+    }
+    
+    try:
+        resp = requests.post(endpoint, data=body_json.encode('utf-8'), headers=headers, timeout=timeout)
+        data = resp.json() if resp.text else {}
+        
+        result = str(data.get("result", ""))
+        result_message = data.get("resultMessage", "")
+        
+        # 200 + result != "0" — аутентификация прошла, сессия не найдена (ожидаемо для теста)
+        if resp.status_code == 200 and result != "0":
+            if "session" in (result_message or "").lower() or "сесси" in (result_message or "").lower():
+                return True, "Подключение успешно (учётные данные верны)"
+            return True, "Подключение успешно"
+        if resp.status_code == 200 and result == "0":
+            return True, "Подключение успешно"
+        if resp.status_code == 401:
+            return False, "Неверный код идентификации или ключ подписи"
+        if resp.status_code == 403:
+            return False, "Доступ запрещён. Проверьте права в ЛК Ростелеком"
+        if resp.status_code >= 400:
+            return False, result_message or f"Ошибка API: {resp.status_code}"
+        return True, "Подключение успешно"
+    except requests.exceptions.Timeout:
+        return False, "Таймаут соединения. Проверьте адрес API и доступность сети"
+    except requests.exceptions.ConnectionError:
+        return False, "Ошибка соединения. Проверьте адрес API"
+    except Exception as e:
+        logger.error(f"Ошибка теста подключения Ростелеком: {e}", exc_info=True)
+        return False, str(e)
+
+
 def parse_rostelecom_filename(filename: str) -> Optional[Tuple[str, str, datetime]]:
     """
     Парсит имя файла rostelecom-*.

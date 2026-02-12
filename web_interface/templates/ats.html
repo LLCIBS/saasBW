@@ -181,6 +181,7 @@ function loadRostelecomConnections() {
                         ${c.last_error ? '<div class="small text-danger">Ошибка: ' + escapeHtml(c.last_error) + '</div>' : ''}
                     </div>
                     <div class="btn-group">
+                        <button class="btn btn-sm btn-outline-primary" onclick="testRostelecomConnection(${c.id})" title="Проверить подключение"><i class="fas fa-vial me-1"></i>Проверить</button>
                         <button class="btn btn-sm btn-outline-primary" onclick="editRostelecomConnection(${c.id})"><i class="fas fa-edit"></i></button>
                         <button class="btn btn-sm btn-outline-danger" onclick="deleteRostelecomConnection(${c.id}, '${escapeHtml(c.name)}')"><i class="fas fa-trash"></i></button>
                     </div>
@@ -277,6 +278,24 @@ function saveRostelecomConnection() {
             if (typeof showToast === 'function') showToast(data.message || 'Сохранено', 'success');
         } else alert(data.message || 'Ошибка');
     }).catch(e => alert('Ошибка: ' + e));
+}
+
+async function testRostelecomConnection(id) {
+    try {
+        if (typeof showToast === 'function') showToast('Проверка подключения...', 'info');
+        const r = await fetch(`/api/ats/rostelecom/connections/${id}/test`, { method: 'POST' });
+        const data = await r.json();
+        if (data.success) {
+            if (typeof showToast === 'function') showToast(data.message || 'Подключение успешно', 'success');
+            else alert(data.message || 'Подключение успешно');
+        } else {
+            if (typeof showToast === 'function') showToast(data.message || 'Ошибка подключения', 'danger');
+            else alert(data.message || 'Ошибка подключения');
+        }
+    } catch (e) {
+        if (typeof showToast === 'function') showToast('Ошибка проверки: ' + e, 'danger');
+        else alert('Ошибка проверки: ' + e);
+    }
 }
 
 function deleteRostelecomConnection(id, name) {
