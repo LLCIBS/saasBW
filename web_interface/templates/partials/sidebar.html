@@ -72,6 +72,12 @@
                 </a>
             </li>
             <li class="nav-item">
+                <a class="nav-link {{ 'active' if active_page == 'finetune' else '' }}" href="/finetune" title="Дообучение модели распознавания">
+                    <i class="fas fa-brain"></i>
+                    <span>Дообучение</span>
+                </a>
+            </li>
+            <li class="nav-item">
                 <a class="nav-link {{ 'active' if active_page == 'logs' else '' }}" href="/logs" title="Системные логи">
                     <i class="fas fa-file-lines"></i>
                     <span>Логи</span>

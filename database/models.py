@@ -595,3 +595,42 @@ class ReportSchedule(db.Model):
 
     def __repr__(self):
         return f'<ReportSchedule user_id={self.user_id} type={self.report_type} {self.schedule_type}>'
+
+
+class FinetuneSample(db.Model):
+    """Образец для дообучения: аудио + правильная транскрипция"""
+    __tablename__ = 'finetune_samples'
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
+    filename = db.Column(db.String(500), nullable=False)
+    audio_path = db.Column(db.String(1000), nullable=False)
+    transcript = db.Column(Text, nullable=False)
+    duration_sec = db.Column(db.Float, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    user = db.relationship('User', backref=db.backref('finetune_samples', lazy='dynamic', cascade='all, delete-orphan'))
+
+
+class FinetuneJob(db.Model):
+    """Задача дообучения модели Whisper"""
+    __tablename__ = 'finetune_jobs'
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
+    status = db.Column(db.String(30), default='pending', nullable=False)  # pending, preparing, training, converting, completed, failed
+    total_samples = db.Column(db.Integer, default=0)
+    epochs = db.Column(db.Integer, default=3)
+    lora_r = db.Column(db.Integer, default=32)
+    learning_rate = db.Column(db.Float, default=1e-4)
+    progress = db.Column(db.Float, default=0.0)  # 0.0 - 100.0
+    current_step = db.Column(db.String(200), nullable=True)  # описание текущего шага
+    model_path = db.Column(db.String(1000), nullable=True)  # путь к готовой модели
+    error_message = db.Column(Text, nullable=True)
+    wer_before = db.Column(db.Float, nullable=True)
+    wer_after = db.Column(db.Float, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    started_at = db.Column(db.DateTime, nullable=True)
+    finished_at = db.Column(db.DateTime, nullable=True)
+
+    user = db.relationship('User', backref=db.backref('finetune_jobs', lazy='dynamic', cascade='all, delete-orphan'))

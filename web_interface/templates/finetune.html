@@ -1,0 +1,650 @@
+{% extends "base.html" %}
+
+{% block title %}Дообучение модели - Call Analyzer{% endblock %}
+
+{% block content %}
+<!-- Боковая панель -->
+{% include 'partials/sidebar.html' %}
+
+<!-- Основной контент -->
+<main class="col-md-9 col-lg-10 main-content">
+    <div class="p-4">
+        <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
+            <div>
+                <h1 class="h3 mb-1">
+                    <i class="fas fa-brain me-2"></i>Дообучение модели распознавания
+                </h1>
+                <p class="text-muted mb-0">Загрузите образцы звонков с правильными транскрипциями для улучшения качества распознавания.</p>
+            </div>
+        </div>
+
+        <div class="row g-4">
+            <!-- Левая колонка: загрузка образцов -->
+            <div class="col-lg-7">
+                <!-- Загрузка нового образца -->
+                <div class="config-section">
+                    <h3 class="config-title">
+                        <i class="fas fa-upload me-2"></i>Загрузка образцов
+                    </h3>
+                    <p class="text-muted mb-3">
+                        Загружайте аудиофрагменты (5-30 сек) с правильным текстом. Чем больше разнообразных примеров — тем лучше результат.
+                    </p>
+
+                    <form id="uploadForm" enctype="multipart/form-data">
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold">Аудиофайл</label>
+                            <input class="form-control" type="file" id="audioFile" name="audio" 
+                                   accept=".wav,.mp3,.flac,.ogg,.m4a" required>
+                            <div class="form-text">WAV, MP3, FLAC, OGG (5-30 секунд, один спикер)</div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold">Правильная транскрипция</label>
+                            <textarea class="form-control" id="transcriptText" name="transcript" rows="3"
+                                      placeholder="Введите точный текст того, что говорится в аудио..." required></textarea>
+                            <div class="form-text">Пишите как должно быть: правильные имена, термины, пунктуацию</div>
+                        </div>
+
+                        <div class="d-flex gap-2 align-items-center">
+                            <button type="submit" class="btn btn-save" id="uploadBtn">
+                                <i class="fas fa-plus me-2"></i>Добавить образец
+                            </button>
+                            <button type="button" class="btn btn-outline-primary" id="autoTranscribeBtn" onclick="autoTranscribe()">
+                                <i class="fas fa-magic me-2"></i>Распознать и исправить
+                            </button>
+                            <div id="uploadStatus" class="text-muted small"></div>
+                        </div>
+                    </form>
+                </div>
+
+                <!-- Массовая загрузка -->
+                <div class="config-section mt-4">
+                    <h3 class="config-title">
+                        <i class="fas fa-file-archive me-2"></i>Массовая загрузка
+                    </h3>
+                    <p class="text-muted mb-3">
+                        Загрузите ZIP-архив с файлами. Структура: аудиофайл + текстовый файл с таким же именем.
+                    </p>
+                    <div class="mb-3">
+                        <input class="form-control" type="file" id="bulkFile" accept=".zip">
+                        <div class="form-text">
+                            Пример: <code>call_001.wav</code> + <code>call_001.txt</code> (текст транскрипции)
+                        </div>
+                    </div>
+                    <button class="btn btn-outline-primary" onclick="bulkUpload()" id="bulkUploadBtn">
+                        <i class="fas fa-upload me-2"></i>Загрузить архив
+                    </button>
+                    <div id="bulkStatus" class="mt-2"></div>
+                </div>
+
+                <!-- Список образцов -->
+                <div class="config-section mt-4">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h3 class="config-title mb-0">
+                            <i class="fas fa-database me-2"></i>Загруженные образцы
+                            <span class="badge bg-primary ms-2" id="samplesCount">0</span>
+                        </h3>
+                        <button class="btn btn-outline-danger btn-sm" onclick="deleteAllSamples()" id="deleteAllBtn" style="display:none;">
+                            <i class="fas fa-trash me-1"></i>Удалить все
+                        </button>
+                    </div>
+                    <div id="samplesContainer">
+                        <div class="text-center text-muted py-4">
+                            <i class="fas fa-inbox" style="font-size: 2rem;"></i>
+                            <p class="mt-2">Пока нет образцов. Загрузите первый!</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Правая колонка: обучение и статус -->
+            <div class="col-lg-5">
+                <!-- Панель обучения -->
+                <div class="config-section">
+                    <h3 class="config-title">
+                        <i class="fas fa-rocket me-2"></i>Запуск обучения
+                    </h3>
+
+                    <div class="mb-3">
+                        <div class="d-flex justify-content-between text-muted small mb-1">
+                            <span>Загружено образцов:</span>
+                            <span id="trainSamplesCount" class="fw-semibold">0</span>
+                        </div>
+                        <div class="progress" style="height: 6px;">
+                            <div class="progress-bar" id="samplesProgress" style="width: 0%"></div>
+                        </div>
+                        <div class="form-text">
+                            Рекомендуется: минимум 50, оптимально 100-200 образцов
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Количество эпох</label>
+                        <select class="form-select" id="epochsSelect">
+                            <option value="2">2 (быстрое, если много данных)</option>
+                            <option value="3" selected>3 (рекомендуемое)</option>
+                            <option value="5">5 (тщательное, если мало данных)</option>
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Ранг LoRA</label>
+                        <select class="form-select" id="loraRankSelect">
+                            <option value="16">16 (быстрее, меньше VRAM)</option>
+                            <option value="32" selected>32 (рекомендуемое)</option>
+                            <option value="64">64 (точнее, больше VRAM)</option>
+                        </select>
+                    </div>
+
+                    <button class="btn btn-save w-100" onclick="startTraining()" id="startTrainingBtn">
+                        <i class="fas fa-play me-2"></i>Начать дообучение
+                    </button>
+                    <div class="form-text text-center mt-2">
+                        Потребуется GPU (10-60 минут)
+                    </div>
+                </div>
+
+                <!-- Статус текущего обучения -->
+                <div class="config-section mt-4" id="trainingStatusSection" style="display:none;">
+                    <h3 class="config-title">
+                        <i class="fas fa-cog fa-spin me-2"></i>Статус обучения
+                    </h3>
+                    <div class="mb-3">
+                        <div class="d-flex justify-content-between mb-1">
+                            <span class="fw-semibold" id="trainingStep">Ожидание...</span>
+                            <span id="trainingPercent">0%</span>
+                        </div>
+                        <div class="progress" style="height: 10px;">
+                            <div class="progress-bar progress-bar-striped progress-bar-animated" id="trainingProgress" style="width: 0%"></div>
+                        </div>
+                    </div>
+                    <div id="trainingDetails" class="small text-muted"></div>
+                </div>
+
+                <!-- История обучений -->
+                <div class="config-section mt-4">
+                    <h3 class="config-title">
+                        <i class="fas fa-history me-2"></i>История обучений
+                    </h3>
+                    <div id="jobsContainer">
+                        <div class="text-center text-muted py-3">
+                            <p class="mb-0">Обучений ещё не было</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Применённая модель -->
+                <div class="config-section mt-4">
+                    <h3 class="config-title">
+                        <i class="fas fa-check-circle me-2"></i>Активная модель
+                    </h3>
+                    <div id="activeModelInfo">
+                        <div class="d-flex align-items-center">
+                            <span class="badge bg-secondary me-2">Базовая</span>
+                            <span>openai/whisper-large-v3</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</main>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let pollInterval = null;
+
+document.addEventListener('DOMContentLoaded', function() {
+    loadSamples();
+    loadJobs();
+
+    document.getElementById('uploadForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+        uploadSample();
+    });
+});
+
+// ====== ОБРАЗЦЫ ======
+
+async function uploadSample() {
+    const fileInput = document.getElementById('audioFile');
+    const transcript = document.getElementById('transcriptText').value.trim();
+    
+    if (!fileInput.files.length) {
+        showAlert('Выберите аудиофайл', 'warning');
+        return;
+    }
+    if (!transcript) {
+        showAlert('Введите транскрипцию', 'warning');
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append('audio', fileInput.files[0]);
+    formData.append('transcript', transcript);
+
+    const btn = document.getElementById('uploadBtn');
+    const status = document.getElementById('uploadStatus');
+    btn.disabled = true;
+    status.textContent = 'Загрузка...';
+
+    try {
+        const resp = await fetch('/api/finetune/samples', {
+            method: 'POST',
+            body: formData
+        });
+        const data = await resp.json();
+        if (data.success) {
+            showAlert('Образец добавлен', 'success');
+            fileInput.value = '';
+            document.getElementById('transcriptText').value = '';
+            loadSamples();
+        } else {
+            showAlert(data.message || 'Ошибка загрузки', 'danger');
+        }
+    } catch (err) {
+        showAlert('Ошибка сети', 'danger');
+    } finally {
+        btn.disabled = false;
+        status.textContent = '';
+    }
+}
+
+async function autoTranscribe() {
+    const fileInput = document.getElementById('audioFile');
+    if (!fileInput.files.length) {
+        showAlert('Сначала выберите аудиофайл', 'warning');
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append('audio', fileInput.files[0]);
+
+    const btn = document.getElementById('autoTranscribeBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Распознавание...';
+
+    try {
+        const resp = await fetch('/api/finetune/transcribe', {
+            method: 'POST',
+            body: formData
+        });
+        const data = await resp.json();
+        if (data.success) {
+            document.getElementById('transcriptText').value = data.transcript;
+            showAlert('Текст распознан. Исправьте ошибки и добавьте образец.', 'info');
+        } else {
+            showAlert(data.message || 'Ошибка распознавания', 'danger');
+        }
+    } catch (err) {
+        showAlert('Ошибка сети', 'danger');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-magic me-2"></i>Распознать и исправить';
+    }
+}
+
+async function bulkUpload() {
+    const fileInput = document.getElementById('bulkFile');
+    if (!fileInput.files.length) {
+        showAlert('Выберите ZIP-архив', 'warning');
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append('archive', fileInput.files[0]);
+
+    const btn = document.getElementById('bulkUploadBtn');
+    const status = document.getElementById('bulkStatus');
+    btn.disabled = true;
+    status.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Обработка архива...';
+
+    try {
+        const resp = await fetch('/api/finetune/samples/bulk', {
+            method: 'POST',
+            body: formData
+        });
+        const data = await resp.json();
+        if (data.success) {
+            showAlert(`Загружено ${data.added} образцов` + (data.skipped ? `, пропущено ${data.skipped}` : ''), 'success');
+            fileInput.value = '';
+            loadSamples();
+        } else {
+            showAlert(data.message || 'Ошибка загрузки', 'danger');
+        }
+    } catch (err) {
+        showAlert('Ошибка сети', 'danger');
+    } finally {
+        btn.disabled = false;
+        status.innerHTML = '';
+    }
+}
+
+async function loadSamples() {
+    try {
+        const resp = await fetch('/api/finetune/samples');
+        const data = await resp.json();
+        renderSamples(data.samples || []);
+    } catch (err) {
+        console.error('Ошибка загрузки образцов:', err);
+    }
+}
+
+function renderSamples(samples) {
+    const container = document.getElementById('samplesContainer');
+    const countBadge = document.getElementById('samplesCount');
+    const trainCount = document.getElementById('trainSamplesCount');
+    const deleteAllBtn = document.getElementById('deleteAllBtn');
+    const progressBar = document.getElementById('samplesProgress');
+
+    countBadge.textContent = samples.length;
+    trainCount.textContent = samples.length;
+    deleteAllBtn.style.display = samples.length > 0 ? '' : 'none';
+    
+    // Прогресс: 50 = минимум, 200 = максимум
+    const pct = Math.min(100, Math.round(samples.length / 200 * 100));
+    progressBar.style.width = pct + '%';
+    progressBar.className = 'progress-bar' + (samples.length >= 50 ? ' bg-success' : samples.length >= 20 ? ' bg-warning' : ' bg-danger');
+
+    if (samples.length === 0) {
+        container.innerHTML = `
+            <div class="text-center text-muted py-4">
+                <i class="fas fa-inbox" style="font-size: 2rem;"></i>
+                <p class="mt-2">Пока нет образцов. Загрузите первый!</p>
+            </div>`;
+        return;
+    }
+
+    let html = '<div class="list-group list-group-flush" style="max-height: 500px; overflow-y: auto;">';
+    samples.forEach(s => {
+        const dur = s.duration_sec ? `${s.duration_sec.toFixed(1)}с` : '—';
+        const date = new Date(s.created_at).toLocaleDateString('ru-RU');
+        html += `
+        <div class="list-group-item px-0">
+            <div class="d-flex justify-content-between align-items-start">
+                <div class="flex-grow-1 me-3" style="min-width: 0;">
+                    <div class="d-flex align-items-center gap-2 mb-1">
+                        <i class="fas fa-file-audio text-primary"></i>
+                        <strong class="text-truncate" style="max-width: 200px;" title="${s.filename}">${s.filename}</strong>
+                        <span class="badge bg-light text-dark">${dur}</span>
+                        <span class="text-muted small">${date}</span>
+                    </div>
+                    <div class="text-muted small text-truncate" title="${escapeHtml(s.transcript)}">${escapeHtml(s.transcript)}</div>
+                </div>
+                <div class="d-flex gap-1">
+                    <button class="btn btn-outline-secondary btn-sm" onclick="editSample(${s.id})" title="Редактировать">
+                        <i class="fas fa-edit"></i>
+                    </button>
+                    <button class="btn btn-outline-danger btn-sm" onclick="deleteSample(${s.id})" title="Удалить">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </div>
+            </div>
+        </div>`;
+    });
+    html += '</div>';
+    container.innerHTML = html;
+}
+
+async function deleteSample(id) {
+    if (!confirm('Удалить этот образец?')) return;
+    try {
+        const resp = await fetch(`/api/finetune/samples/${id}`, { method: 'DELETE' });
+        const data = await resp.json();
+        if (data.success) {
+            loadSamples();
+        } else {
+            showAlert(data.message || 'Ошибка удаления', 'danger');
+        }
+    } catch (err) {
+        showAlert('Ошибка сети', 'danger');
+    }
+}
+
+async function deleteAllSamples() {
+    if (!confirm('Удалить все образцы? Это действие нельзя отменить.')) return;
+    try {
+        const resp = await fetch('/api/finetune/samples/all', { method: 'DELETE' });
+        const data = await resp.json();
+        if (data.success) {
+            showAlert('Все образцы удалены', 'success');
+            loadSamples();
+        }
+    } catch (err) {
+        showAlert('Ошибка сети', 'danger');
+    }
+}
+
+function editSample(id) {
+    const newText = prompt('Новый текст транскрипции:');
+    if (newText === null || !newText.trim()) return;
+    fetch(`/api/finetune/samples/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ transcript: newText.trim() })
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            showAlert('Транскрипция обновлена', 'success');
+            loadSamples();
+        } else {
+            showAlert(data.message || 'Ошибка', 'danger');
+        }
+    })
+    .catch(() => showAlert('Ошибка сети', 'danger'));
+}
+
+// ====== ОБУЧЕНИЕ ======
+
+async function startTraining() {
+    const samplesCount = parseInt(document.getElementById('trainSamplesCount').textContent);
+    if (samplesCount < 5) {
+        showAlert('Нужно минимум 5 образцов для обучения', 'warning');
+        return;
+    }
+
+    if (!confirm(`Начать дообучение на ${samplesCount} образцах? Процесс может занять 10-60 минут.`)) return;
+
+    const btn = document.getElementById('startTrainingBtn');
+    btn.disabled = true;
+
+    try {
+        const resp = await fetch('/api/finetune/train', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                epochs: parseInt(document.getElementById('epochsSelect').value),
+                lora_r: parseInt(document.getElementById('loraRankSelect').value),
+            })
+        });
+        const data = await resp.json();
+        if (data.success) {
+            showAlert('Обучение запущено!', 'success');
+            document.getElementById('trainingStatusSection').style.display = '';
+            startPolling(data.job_id);
+        } else {
+            showAlert(data.message || 'Ошибка запуска', 'danger');
+            btn.disabled = false;
+        }
+    } catch (err) {
+        showAlert('Ошибка сети', 'danger');
+        btn.disabled = false;
+    }
+}
+
+function startPolling(jobId) {
+    if (pollInterval) clearInterval(pollInterval);
+    pollInterval = setInterval(() => pollJobStatus(jobId), 3000);
+    pollJobStatus(jobId);
+}
+
+async function pollJobStatus(jobId) {
+    try {
+        const resp = await fetch(`/api/finetune/jobs/${jobId}`);
+        const job = await resp.json();
+
+        const statusSection = document.getElementById('trainingStatusSection');
+        statusSection.style.display = '';
+
+        document.getElementById('trainingStep').textContent = job.current_step || 'Обработка...';
+        document.getElementById('trainingPercent').textContent = Math.round(job.progress || 0) + '%';
+        document.getElementById('trainingProgress').style.width = (job.progress || 0) + '%';
+
+        const details = document.getElementById('trainingDetails');
+        if (job.status === 'completed') {
+            clearInterval(pollInterval);
+            pollInterval = null;
+            document.getElementById('startTrainingBtn').disabled = false;
+            
+            const titleEl = statusSection.querySelector('.config-title');
+            titleEl.innerHTML = '<i class="fas fa-check-circle text-success me-2"></i>Обучение завершено';
+            document.getElementById('trainingProgress').classList.remove('progress-bar-animated');
+            document.getElementById('trainingProgress').classList.add('bg-success');
+            
+            let detailsHtml = '<div class="alert alert-success mt-3">';
+            detailsHtml += '<i class="fas fa-trophy me-2"></i><strong>Модель готова!</strong><br>';
+            if (job.wer_after !== null && job.wer_before !== null) {
+                detailsHtml += `WER: ${job.wer_before.toFixed(1)}% → ${job.wer_after.toFixed(1)}%<br>`;
+            }
+            detailsHtml += '</div>';
+            
+            if (job.model_path) {
+                detailsHtml += `
+                    <button class="btn btn-save w-100 mt-2" onclick="applyModel(${job.id})">
+                        <i class="fas fa-check me-2"></i>Применить модель
+                    </button>`;
+            }
+            details.innerHTML = detailsHtml;
+            loadJobs();
+            
+        } else if (job.status === 'failed') {
+            clearInterval(pollInterval);
+            pollInterval = null;
+            document.getElementById('startTrainingBtn').disabled = false;
+            
+            const titleEl = statusSection.querySelector('.config-title');
+            titleEl.innerHTML = '<i class="fas fa-times-circle text-danger me-2"></i>Ошибка обучения';
+            document.getElementById('trainingProgress').classList.remove('progress-bar-animated');
+            document.getElementById('trainingProgress').classList.add('bg-danger');
+            
+            details.innerHTML = `<div class="alert alert-danger mt-3">${escapeHtml(job.error_message || 'Неизвестная ошибка')}</div>`;
+            loadJobs();
+        }
+    } catch (err) {
+        console.error('Ошибка polling:', err);
+    }
+}
+
+async function applyModel(jobId) {
+    if (!confirm('Применить дообученную модель? Текущая модель будет заменена.')) return;
+    try {
+        const resp = await fetch(`/api/finetune/jobs/${jobId}/apply`, { method: 'POST' });
+        const data = await resp.json();
+        if (data.success) {
+            showAlert('Модель применена! Перезапустите сервис транскрипции.', 'success');
+            loadActiveModel();
+        } else {
+            showAlert(data.message || 'Ошибка применения', 'danger');
+        }
+    } catch (err) {
+        showAlert('Ошибка сети', 'danger');
+    }
+}
+
+// ====== ИСТОРИЯ ======
+
+async function loadJobs() {
+    try {
+        const resp = await fetch('/api/finetune/jobs');
+        const data = await resp.json();
+        renderJobs(data.jobs || []);
+        
+        // Проверяем, есть ли активное обучение
+        const active = (data.jobs || []).find(j => ['pending', 'preparing', 'training', 'converting'].includes(j.status));
+        if (active) {
+            document.getElementById('startTrainingBtn').disabled = true;
+            startPolling(active.id);
+        }
+    } catch (err) {
+        console.error('Ошибка загрузки задач:', err);
+    }
+}
+
+function renderJobs(jobs) {
+    const container = document.getElementById('jobsContainer');
+    if (jobs.length === 0) {
+        container.innerHTML = '<div class="text-center text-muted py-3"><p class="mb-0">Обучений ещё не было</p></div>';
+        return;
+    }
+
+    const statusIcons = {
+        'pending': '<i class="fas fa-clock text-muted"></i>',
+        'preparing': '<i class="fas fa-cog fa-spin text-info"></i>',
+        'training': '<i class="fas fa-cog fa-spin text-primary"></i>',
+        'converting': '<i class="fas fa-cog fa-spin text-warning"></i>',
+        'completed': '<i class="fas fa-check-circle text-success"></i>',
+        'failed': '<i class="fas fa-times-circle text-danger"></i>',
+    };
+    const statusNames = {
+        'pending': 'Ожидание',
+        'preparing': 'Подготовка',
+        'training': 'Обучение',
+        'converting': 'Конвертация',
+        'completed': 'Завершено',
+        'failed': 'Ошибка',
+    };
+
+    let html = '';
+    jobs.forEach(j => {
+        const icon = statusIcons[j.status] || '';
+        const statusName = statusNames[j.status] || j.status;
+        const date = new Date(j.created_at).toLocaleString('ru-RU');
+        const wer = (j.wer_before !== null && j.wer_after !== null) 
+            ? `WER: ${j.wer_before.toFixed(1)}% → ${j.wer_after.toFixed(1)}%` 
+            : '';
+
+        html += `
+        <div class="d-flex align-items-center gap-2 py-2 border-bottom">
+            ${icon}
+            <div class="flex-grow-1">
+                <div class="small fw-semibold">${statusName}</div>
+                <div class="text-muted" style="font-size: 0.75rem;">${date} · ${j.total_samples} обр. · ${j.epochs} эп. ${wer ? '· ' + wer : ''}</div>
+            </div>
+            ${j.status === 'completed' && j.model_path ? `<button class="btn btn-outline-success btn-sm" onclick="applyModel(${j.id})" title="Применить"><i class="fas fa-check"></i></button>` : ''}
+        </div>`;
+    });
+    container.innerHTML = html;
+}
+
+async function loadActiveModel() {
+    try {
+        const resp = await fetch('/api/finetune/active-model');
+        const data = await resp.json();
+        const container = document.getElementById('activeModelInfo');
+        if (data.is_custom) {
+            container.innerHTML = `
+                <div class="d-flex align-items-center">
+                    <span class="badge bg-success me-2">Дообученная</span>
+                    <span class="small">${escapeHtml(data.model_name)}</span>
+                </div>
+                <div class="text-muted small mt-1">Применена: ${data.applied_at || '—'}</div>`;
+        } else {
+            container.innerHTML = `
+                <div class="d-flex align-items-center">
+                    <span class="badge bg-secondary me-2">Базовая</span>
+                    <span>${escapeHtml(data.model_name)}</span>
+                </div>`;
+        }
+    } catch (err) {
+        console.error('Ошибка получения модели:', err);
+    }
+}
+
+function escapeHtml(str) {
+    if (!str) return '';
+    return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+</script>
+{% endblock %}

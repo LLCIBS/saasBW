@@ -60,6 +60,8 @@ from database.models import (
     UserStationChatId,
     UserEmployeeExtension,
     ReportSchedule,
+    FinetuneSample,
+    FinetuneJob,
     BUSINESS_PROFILES,
     VOCAB_PRESETS,
 )
@@ -3072,6 +3074,680 @@ def api_vocabulary_save():
         return jsonify({'success': True, 'message': 'Словарь сохранен'})
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)})
+
+
+# ==================== ДООБУЧЕНИЕ МОДЕЛИ ====================
+
+@app.route('/finetune')
+@login_required
+def finetune_page():
+    """Страница дообучения модели распознавания"""
+    return render_template('finetune.html', active_page='finetune')
+
+
+@app.route('/api/finetune/samples', methods=['GET'])
+@login_required
+def api_finetune_samples_list():
+    """Список образцов пользователя."""
+    samples = FinetuneSample.query.filter_by(user_id=current_user.id).order_by(
+        FinetuneSample.created_at.desc()
+    ).all()
+    return jsonify({'samples': [{
+        'id': s.id,
+        'filename': s.filename,
+        'transcript': s.transcript,
+        'duration_sec': s.duration_sec,
+        'created_at': s.created_at.isoformat(),
+    } for s in samples]})
+
+
+@app.route('/api/finetune/samples', methods=['POST'])
+@login_required
+def api_finetune_samples_upload():
+    """Загрузка одного образца (аудио + транскрипция)."""
+    upload = request.files.get('audio')
+    transcript = (request.form.get('transcript') or '').strip()
+
+    if not upload or not upload.filename:
+        return jsonify({'success': False, 'message': 'Файл не выбран.'}), 400
+    if not transcript:
+        return jsonify({'success': False, 'message': 'Транскрипция не указана.'}), 400
+
+    try:
+        safe_name = secure_filename(upload.filename)
+        if not safe_name:
+            safe_name = f"sample_{int(time.time())}.wav"
+
+        # Сохраняем файл
+        finetune_dir = _get_finetune_data_dir()
+        audio_dir = finetune_dir / 'audio'
+        audio_dir.mkdir(parents=True, exist_ok=True)
+
+        # Уникальное имя
+        dest = audio_dir / f"{current_user.id}_{int(time.time())}_{safe_name}"
+        upload.save(dest)
+
+        # Длительность
+        duration = _get_audio_duration(dest)
+
+        sample = FinetuneSample(
+            user_id=current_user.id,
+            filename=safe_name,
+            audio_path=str(dest),
+            transcript=transcript,
+            duration_sec=duration,
+        )
+        db.session.add(sample)
+        db.session.commit()
+
+        return jsonify({'success': True, 'id': sample.id})
+    except Exception as e:
+        app.logger.error("Ошибка загрузки образца: %s", e)
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+
+@app.route('/api/finetune/samples/bulk', methods=['POST'])
+@login_required
+def api_finetune_samples_bulk():
+    """Массовая загрузка из ZIP-архива."""
+    import zipfile
+    import tempfile
+
+    upload = request.files.get('archive')
+    if not upload or not upload.filename:
+        return jsonify({'success': False, 'message': 'Файл не выбран.'}), 400
+
+    try:
+        finetune_dir = _get_finetune_data_dir()
+        audio_dir = finetune_dir / 'audio'
+        audio_dir.mkdir(parents=True, exist_ok=True)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            zip_path = Path(tmpdir) / 'upload.zip'
+            upload.save(zip_path)
+
+            with zipfile.ZipFile(zip_path, 'r') as zf:
+                zf.extractall(tmpdir)
+
+            # Ищем пары аудио + txt
+            audio_extensions = {'.wav', '.mp3', '.flac', '.ogg', '.m4a'}
+            added = 0
+            skipped = 0
+
+            tmp_path = Path(tmpdir)
+            audio_files = []
+            for ext in audio_extensions:
+                audio_files.extend(tmp_path.rglob(f'*{ext}'))
+
+            for audio_file in sorted(audio_files):
+                txt_file = audio_file.with_suffix('.txt')
+                if not txt_file.exists():
+                    skipped += 1
+                    continue
+
+                transcript = txt_file.read_text(encoding='utf-8').strip()
+                if not transcript:
+                    skipped += 1
+                    continue
+
+                safe_name = secure_filename(audio_file.name) or f"sample_{added}.wav"
+                dest = audio_dir / f"{current_user.id}_{int(time.time())}_{added}_{safe_name}"
+                shutil.copy2(audio_file, dest)
+
+                duration = _get_audio_duration(dest)
+
+                sample = FinetuneSample(
+                    user_id=current_user.id,
+                    filename=safe_name,
+                    audio_path=str(dest),
+                    transcript=transcript,
+                    duration_sec=duration,
+                )
+                db.session.add(sample)
+                added += 1
+
+            db.session.commit()
+            return jsonify({'success': True, 'added': added, 'skipped': skipped})
+
+    except Exception as e:
+        app.logger.error("Ошибка массовой загрузки: %s", e)
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+
+@app.route('/api/finetune/samples/<int:sample_id>', methods=['PUT'])
+@login_required
+def api_finetune_sample_update(sample_id):
+    """Обновление транскрипции образца."""
+    sample = FinetuneSample.query.filter_by(id=sample_id, user_id=current_user.id).first()
+    if not sample:
+        return jsonify({'success': False, 'message': 'Образец не найден'}), 404
+
+    data = request.get_json() or {}
+    new_text = (data.get('transcript') or '').strip()
+    if not new_text:
+        return jsonify({'success': False, 'message': 'Текст не может быть пустым'}), 400
+
+    sample.transcript = new_text
+    db.session.commit()
+    return jsonify({'success': True})
+
+
+@app.route('/api/finetune/samples/<int:sample_id>', methods=['DELETE'])
+@login_required
+def api_finetune_sample_delete(sample_id):
+    """Удаление образца."""
+    sample = FinetuneSample.query.filter_by(id=sample_id, user_id=current_user.id).first()
+    if not sample:
+        return jsonify({'success': False, 'message': 'Образец не найден'}), 404
+
+    # Удаляем файл
+    try:
+        audio_path = Path(sample.audio_path)
+        if audio_path.exists():
+            audio_path.unlink()
+    except Exception:
+        pass
+
+    db.session.delete(sample)
+    db.session.commit()
+    return jsonify({'success': True})
+
+
+@app.route('/api/finetune/samples/all', methods=['DELETE'])
+@login_required
+def api_finetune_samples_delete_all():
+    """Удаление всех образцов пользователя."""
+    samples = FinetuneSample.query.filter_by(user_id=current_user.id).all()
+    for s in samples:
+        try:
+            p = Path(s.audio_path)
+            if p.exists():
+                p.unlink()
+        except Exception:
+            pass
+        db.session.delete(s)
+    db.session.commit()
+    return jsonify({'success': True})
+
+
+@app.route('/api/finetune/transcribe', methods=['POST'])
+@login_required
+def api_finetune_transcribe():
+    """Автоматическое распознавание загруженного файла (чтобы пользователь мог исправить)."""
+    if not transcribe_audio_with_internal_service:
+        return jsonify({'success': False, 'message': 'Сервис транскрипции недоступен'}), 500
+
+    upload = request.files.get('audio')
+    if not upload or not upload.filename:
+        return jsonify({'success': False, 'message': 'Файл не выбран'}), 400
+
+    try:
+        import tempfile
+        with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as tmp:
+            upload.save(tmp.name)
+            tmp_path = tmp.name
+
+        runtime_cfg = build_user_runtime_config()
+        stereo_mode = bool((runtime_cfg.get('transcription') or {}).get('tbank_stereo_enabled', False))
+        additional_vocab = load_additional_vocab() if load_additional_vocab else []
+
+        transcript_text = transcribe_audio_with_internal_service(
+            tmp_path,
+            stereo_mode=stereo_mode,
+            additional_vocab=additional_vocab,
+            timeout=120
+        )
+
+        try:
+            os.unlink(tmp_path)
+        except Exception:
+            pass
+
+        if not transcript_text:
+            return jsonify({'success': False, 'message': 'Не удалось распознать'}), 500
+
+        # Очищаем от меток спикеров для удобства редактирования
+        clean_text = transcript_text
+        import re as _re
+        clean_text = _re.sub(r'SPEAKER_\d+:\s*', '', clean_text)
+        clean_text = clean_text.strip()
+
+        return jsonify({'success': True, 'transcript': clean_text})
+    except Exception as e:
+        app.logger.error("Ошибка автотранскрибации: %s", e)
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+
+@app.route('/api/finetune/train', methods=['POST'])
+@login_required
+def api_finetune_train():
+    """Запуск дообучения модели."""
+    # Проверяем, нет ли уже активного обучения
+    active = FinetuneJob.query.filter_by(user_id=current_user.id).filter(
+        FinetuneJob.status.in_(['pending', 'preparing', 'training', 'converting'])
+    ).first()
+    if active:
+        return jsonify({'success': False, 'message': 'Обучение уже запущено'}), 400
+
+    samples_count = FinetuneSample.query.filter_by(user_id=current_user.id).count()
+    if samples_count < 5:
+        return jsonify({'success': False, 'message': f'Нужно минимум 5 образцов (сейчас {samples_count})'}), 400
+
+    data = request.get_json() or {}
+    epochs = int(data.get('epochs', 3))
+    lora_r = int(data.get('lora_r', 32))
+
+    job = FinetuneJob(
+        user_id=current_user.id,
+        status='pending',
+        total_samples=samples_count,
+        epochs=epochs,
+        lora_r=lora_r,
+        progress=0.0,
+        current_step='В очереди',
+    )
+    db.session.add(job)
+    db.session.commit()
+
+    # Запускаем в фоновом потоке
+    thread = threading.Thread(
+        target=_run_finetune_job,
+        args=(app._get_current_object(), job.id, current_user.id),
+        daemon=True,
+    )
+    thread.start()
+
+    return jsonify({'success': True, 'job_id': job.id})
+
+
+@app.route('/api/finetune/jobs', methods=['GET'])
+@login_required
+def api_finetune_jobs_list():
+    """Список задач обучения."""
+    jobs = FinetuneJob.query.filter_by(user_id=current_user.id).order_by(
+        FinetuneJob.created_at.desc()
+    ).limit(20).all()
+    return jsonify({'jobs': [{
+        'id': j.id,
+        'status': j.status,
+        'total_samples': j.total_samples,
+        'epochs': j.epochs,
+        'progress': j.progress,
+        'current_step': j.current_step,
+        'model_path': j.model_path,
+        'error_message': j.error_message,
+        'wer_before': j.wer_before,
+        'wer_after': j.wer_after,
+        'created_at': j.created_at.isoformat(),
+        'started_at': j.started_at.isoformat() if j.started_at else None,
+        'finished_at': j.finished_at.isoformat() if j.finished_at else None,
+    } for j in jobs]})
+
+
+@app.route('/api/finetune/jobs/<int:job_id>', methods=['GET'])
+@login_required
+def api_finetune_job_status(job_id):
+    """Статус конкретной задачи обучения."""
+    job = FinetuneJob.query.filter_by(id=job_id, user_id=current_user.id).first()
+    if not job:
+        return jsonify({'error': 'Задача не найдена'}), 404
+    return jsonify({
+        'id': job.id,
+        'status': job.status,
+        'progress': job.progress,
+        'current_step': job.current_step,
+        'model_path': job.model_path,
+        'error_message': job.error_message,
+        'wer_before': job.wer_before,
+        'wer_after': job.wer_after,
+    })
+
+
+@app.route('/api/finetune/jobs/<int:job_id>/apply', methods=['POST'])
+@login_required
+def api_finetune_apply_model(job_id):
+    """Применение обученной модели."""
+    job = FinetuneJob.query.filter_by(id=job_id, user_id=current_user.id).first()
+    if not job or job.status != 'completed' or not job.model_path:
+        return jsonify({'success': False, 'message': 'Модель не готова'}), 400
+
+    try:
+        # Сохраняем путь к модели в конфигурацию пользователя
+        config_data = get_user_config_data()
+        transcription_cfg = config_data.get('transcription') or {}
+        transcription_cfg['custom_model_path'] = job.model_path
+        config_data['transcription'] = transcription_cfg
+        save_user_config_data(config_data)
+
+        append_user_log(f'Применена дообученная модель: {job.model_path}', module='finetune')
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+
+@app.route('/api/finetune/active-model', methods=['GET'])
+@login_required
+def api_finetune_active_model():
+    """Информация об активной модели."""
+    config_data = get_user_config_data()
+    transcription_cfg = config_data.get('transcription') or {}
+    custom_path = transcription_cfg.get('custom_model_path', '')
+
+    if custom_path:
+        return jsonify({
+            'is_custom': True,
+            'model_name': Path(custom_path).name,
+            'model_path': custom_path,
+        })
+    else:
+        return jsonify({
+            'is_custom': False,
+            'model_name': 'openai/whisper-large-v3',
+        })
+
+
+def _get_finetune_data_dir():
+    """Директория для данных дообучения пользователя."""
+    runtime_cfg = build_user_runtime_config()
+    paths_cfg = runtime_cfg.get('paths', {}) or {}
+    base = paths_cfg.get('base_records_path') or str(Path.cwd())
+    finetune_dir = Path(base) / 'finetune'
+    finetune_dir.mkdir(parents=True, exist_ok=True)
+    return finetune_dir
+
+
+def _get_audio_duration(filepath):
+    """Получить длительность аудиофайла в секундах."""
+    try:
+        import librosa
+        y, sr = librosa.load(str(filepath), sr=None, duration=60)
+        return round(len(y) / sr, 1)
+    except Exception:
+        try:
+            import subprocess
+            result = subprocess.run(
+                ['ffprobe', '-v', 'quiet', '-show_entries', 'format=duration',
+                 '-of', 'csv=p=0', str(filepath)],
+                capture_output=True, text=True, timeout=10
+            )
+            return round(float(result.stdout.strip()), 1)
+        except Exception:
+            return None
+
+
+def _run_finetune_job(flask_app, job_id, user_id):
+    """Фоновое выполнение дообучения."""
+    with flask_app.app_context():
+        job = FinetuneJob.query.get(job_id)
+        if not job:
+            return
+
+        try:
+            job.status = 'preparing'
+            job.started_at = datetime.utcnow()
+            job.current_step = 'Подготовка датасета...'
+            job.progress = 5.0
+            db.session.commit()
+
+            # 1. Собираем образцы
+            samples = FinetuneSample.query.filter_by(user_id=user_id).all()
+            if not samples:
+                raise ValueError("Нет образцов для обучения")
+
+            finetune_dir = Path(samples[0].audio_path).parent.parent
+            dataset_dir = finetune_dir / 'prepared_dataset' / str(job_id)
+            output_dir = finetune_dir / 'models' / f'job_{job_id}'
+            ct2_dir = finetune_dir / 'models' / f'job_{job_id}_ct2'
+
+            dataset_dir.mkdir(parents=True, exist_ok=True)
+            output_dir.mkdir(parents=True, exist_ok=True)
+
+            # 2. Создаём датасет
+            job.current_step = 'Создание датасета...'
+            job.progress = 10.0
+            db.session.commit()
+
+            records = []
+            for s in samples:
+                if Path(s.audio_path).exists():
+                    records.append({
+                        'audio': s.audio_path,
+                        'text': s.transcript,
+                    })
+
+            if len(records) < 5:
+                raise ValueError(f"Слишком мало валидных образцов: {len(records)}")
+
+            from datasets import Dataset, Audio, DatasetDict
+            ds = Dataset.from_list(records)
+            ds = ds.cast_column('audio', Audio(sampling_rate=16000))
+            split = ds.train_test_split(test_size=max(0.1, 2 / len(records)), seed=42)
+            dataset = DatasetDict({'train': split['train'], 'test': split['test']})
+            dataset.save_to_disk(str(dataset_dir))
+
+            # 3. Загружаем модель и процессор
+            job.status = 'training'
+            job.current_step = 'Загрузка модели Whisper...'
+            job.progress = 15.0
+            db.session.commit()
+
+            import torch
+            from transformers import (
+                WhisperForConditionalGeneration,
+                WhisperProcessor,
+                Seq2SeqTrainingArguments,
+                Seq2SeqTrainer,
+            )
+            from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
+
+            base_model = "openai/whisper-large-v3"
+            device = "cuda" if torch.cuda.is_available() else "cpu"
+
+            processor = WhisperProcessor.from_pretrained(base_model, language="russian", task="transcribe")
+            model = WhisperForConditionalGeneration.from_pretrained(
+                base_model,
+                torch_dtype=torch.float16 if device == "cuda" else torch.float32,
+            )
+            model.generation_config.language = "russian"
+            model.generation_config.task = "transcribe"
+            model.generation_config.forced_decoder_ids = None
+
+            # LoRA
+            lora_config = LoraConfig(
+                r=job.lora_r,
+                lora_alpha=job.lora_r * 2,
+                target_modules=["q_proj", "v_proj"],
+                lora_dropout=0.05,
+                bias="none",
+            )
+            model = prepare_model_for_kbit_training(model)
+            model = get_peft_model(model, lora_config)
+
+            job.current_step = 'Подготовка данных для обучения...'
+            job.progress = 25.0
+            db.session.commit()
+
+            # Подготовка данных
+            def prepare_fn(batch):
+                audio = batch["audio"]
+                batch["input_features"] = processor.feature_extractor(
+                    audio["array"], sampling_rate=audio["sampling_rate"]
+                ).input_features[0]
+                batch["labels"] = processor.tokenizer(batch["text"]).input_ids
+                return batch
+
+            dataset = dataset.map(prepare_fn, remove_columns=dataset.column_names["train"], num_proc=1)
+
+            # Data collator
+            from dataclasses import dataclass
+            from typing import Any, Dict, List, Union
+
+            @dataclass
+            class SpeechCollator:
+                processor: Any
+                def __call__(self, features: List[Dict[str, Union[List[int], torch.Tensor]]]) -> Dict[str, torch.Tensor]:
+                    input_feats = [{"input_features": f["input_features"]} for f in features]
+                    batch = self.processor.feature_extractor.pad(input_feats, return_tensors="pt")
+                    label_feats = [{"input_ids": f["labels"]} for f in features]
+                    labels_batch = self.processor.tokenizer.pad(label_feats, return_tensors="pt")
+                    labels = labels_batch["input_ids"].masked_fill(labels_batch.attention_mask.ne(1), -100)
+                    if (labels[:, 0] == self.processor.tokenizer.bos_token_id).all().cpu().item():
+                        labels = labels[:, 1:]
+                    batch["labels"] = labels
+                    return batch
+
+            # Метрика
+            import evaluate
+            wer_metric = evaluate.load("wer")
+
+            def compute_metrics(pred):
+                pred_ids = pred.predictions
+                label_ids = pred.label_ids
+                label_ids[label_ids == -100] = processor.tokenizer.pad_token_id
+                pred_str = processor.tokenizer.batch_decode(pred_ids, skip_special_tokens=True)
+                label_str = processor.tokenizer.batch_decode(label_ids, skip_special_tokens=True)
+                wer = 100 * wer_metric.compute(predictions=pred_str, references=label_str)
+                return {"wer": wer}
+
+            job.current_step = 'Обучение модели...'
+            job.progress = 30.0
+            db.session.commit()
+
+            batch_size = 4 if device == "cuda" else 1
+            training_args = Seq2SeqTrainingArguments(
+                output_dir=str(output_dir),
+                per_device_train_batch_size=batch_size,
+                per_device_eval_batch_size=batch_size,
+                gradient_accumulation_steps=2,
+                learning_rate=job.learning_rate,
+                warmup_steps=50,
+                num_train_epochs=job.epochs,
+                fp16=(device == "cuda"),
+                eval_strategy="epoch",
+                save_strategy="epoch",
+                logging_steps=10,
+                predict_with_generate=True,
+                generation_max_length=225,
+                load_best_model_at_end=True,
+                metric_for_best_model="wer",
+                greater_is_better=False,
+                save_total_limit=2,
+                remove_unused_columns=False,
+                label_names=["labels"],
+                report_to=[],
+            )
+
+            # Callback для обновления прогресса
+            from transformers import TrainerCallback
+
+            class ProgressCallback(TrainerCallback):
+                def on_log(self, args, state, control, logs=None, **kwargs):
+                    if state.max_steps > 0:
+                        pct = 30.0 + (state.global_step / state.max_steps) * 55.0
+                        try:
+                            with flask_app.app_context():
+                                j = FinetuneJob.query.get(job_id)
+                                if j:
+                                    j.progress = min(pct, 85.0)
+                                    j.current_step = f'Обучение: шаг {state.global_step}/{state.max_steps}'
+                                    db.session.commit()
+                        except Exception:
+                            pass
+
+            trainer = Seq2SeqTrainer(
+                model=model,
+                args=training_args,
+                train_dataset=dataset["train"],
+                eval_dataset=dataset["test"],
+                data_collator=SpeechCollator(processor=processor),
+                compute_metrics=compute_metrics,
+                tokenizer=processor.feature_extractor,
+                callbacks=[ProgressCallback()],
+            )
+
+            trainer.train()
+
+            # Сохраняем результаты WER
+            eval_results = trainer.evaluate()
+            wer_after = eval_results.get('eval_wer', None)
+
+            # 4. Сохраняем LoRA
+            job.current_step = 'Сохранение адаптера...'
+            job.progress = 88.0
+            db.session.commit()
+
+            model.save_pretrained(str(output_dir))
+            processor.save_pretrained(str(output_dir))
+
+            # 5. Объединяем и конвертируем
+            job.status = 'converting'
+            job.current_step = 'Конвертация в faster-whisper...'
+            job.progress = 90.0
+            db.session.commit()
+
+            try:
+                from peft import PeftModel as PeftModelLoad
+                base_model_reload = WhisperForConditionalGeneration.from_pretrained(
+                    base_model, torch_dtype=torch.float16
+                )
+                peft_model = PeftModelLoad.from_pretrained(base_model_reload, str(output_dir))
+                merged = peft_model.merge_and_unload()
+
+                merged_dir = output_dir / 'merged'
+                merged_dir.mkdir(exist_ok=True)
+                merged.save_pretrained(str(merged_dir))
+                processor.save_pretrained(str(merged_dir))
+
+                job.current_step = 'CTranslate2 конвертация...'
+                job.progress = 95.0
+                db.session.commit()
+
+                # Конвертация в CTranslate2
+                ct2_dir.mkdir(parents=True, exist_ok=True)
+                ct2_result = subprocess.run(
+                    ['ct2-transformers-converter',
+                     '--model', str(merged_dir),
+                     '--output_dir', str(ct2_dir),
+                     '--copy_files', 'tokenizer.json', 'preprocessor_config.json',
+                     '--quantization', 'float16'],
+                    capture_output=True, text=True, timeout=600
+                )
+
+                if ct2_result.returncode != 0:
+                    raise RuntimeError(f"ct2 conversion failed: {ct2_result.stderr}")
+
+                # Копируем остальные файлы токенизатора
+                for fname in ['tokenizer.json', 'preprocessor_config.json', 'added_tokens.json',
+                              'special_tokens_map.json', 'vocab.json', 'merges.txt',
+                              'normalizer.json', 'tokenizer_config.json']:
+                    src = merged_dir / fname
+                    if src.exists() and not (ct2_dir / fname).exists():
+                        shutil.copy2(src, ct2_dir / fname)
+
+                final_model_path = str(ct2_dir)
+
+            except Exception as convert_err:
+                app.logger.warning("CTranslate2 конвертация не удалась: %s. Используем HuggingFace модель.", convert_err)
+                final_model_path = str(output_dir / 'merged') if (output_dir / 'merged').exists() else str(output_dir)
+
+            # Завершено
+            job.status = 'completed'
+            job.progress = 100.0
+            job.current_step = 'Обучение завершено!'
+            job.model_path = final_model_path
+            job.wer_after = wer_after
+            job.finished_at = datetime.utcnow()
+            db.session.commit()
+
+        except Exception as e:
+            app.logger.error("Ошибка дообучения (job %s): %s", job_id, e, exc_info=True)
+            job.status = 'failed'
+            job.error_message = str(e)
+            job.finished_at = datetime.utcnow()
+            db.session.commit()
+
+
+# ==================== ОТЧЁТЫ ====================
 
 @app.route('/reports')
 @login_required
