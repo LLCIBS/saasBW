@@ -543,7 +543,7 @@ def call_theb_ai(dialog_text: str, script_prompt: str) -> str:
         "Content-Type": "application/json"
     }
     payload = {
-        "model": "deepseek-chat",
+        "model": getattr(config, "THEBAI_MODEL", "deepseek-reasoner"),
         "messages": [{"role": "user", "content": full_prompt}],
         "temperature": 0,  # Детерминированный разбор по чек-листу при одинаковой транскрипции
         #"stream": False

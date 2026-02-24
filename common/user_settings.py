@@ -4,11 +4,13 @@ from pathlib import Path
 
 def default_config_template():
     return {
+        'llm_provider': 'deepseek',  # 'deepseek' или 'local_gemma'
         'api_keys': {
             'speechmatics_api_key': '',
             'thebai_api_key': '',
-            'thebai_url': 'https://api.deepseek.com/v1/chat/completions',
-            'thebai_model': 'deepseek-reasoner',
+            # URL и модель берём из project_config (THEBAI_URL/THEBAI_MODEL) через fallback
+            'thebai_url': '',
+            'thebai_model': '',
             'telegram_bot_token': ''
         },
         'telegram': {
@@ -159,6 +161,7 @@ def build_runtime_config(project_config, config_data=None, user_id=None):
     runtime = {
         'api_keys': runtime_api_keys,
         'paths': runtime_paths,
+        'llm_provider': (config_data.get('llm_provider') or 'deepseek'),
         'telegram': config_data.get('telegram') or {
             'alert_chat_id': _fallback('ALERT_CHAT_ID', ''),
             'tg_channel_nizh': _fallback('TG_CHANNEL_NIZH', ''),
@@ -184,5 +187,7 @@ def build_runtime_config(project_config, config_data=None, user_id=None):
     
     # Обновляем config_data для сохранения синхронизации
     config_data['transcription'] = runtime['transcription']
+    if 'llm_provider' not in config_data or not config_data.get('llm_provider'):
+        config_data['llm_provider'] = runtime['llm_provider']
 
     return runtime, config_data, changed

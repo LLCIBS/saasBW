@@ -286,6 +286,38 @@
                             <div class="help-text">Токен бота для отправки уведомлений и отчетов</div>
                         </div>
                     </div>
+
+                    <div class="form-row-single mt-3">
+                        <div class="switch-wrapper">
+                            <label>Провайдер AI-аналитики звонков</label>
+                            <div class="btn-group" role="group" id="llmProviderGroup">
+                                <input type="radio" class="btn-check" name="llmProvider" id="llmProviderDeepseek" value="deepseek" checked>
+                                <label class="btn btn-outline-primary" for="llmProviderDeepseek">
+                                    <i class="fas fa-cloud me-1"></i> DeepSeek (облако)
+                                </label>
+                                <input type="radio" class="btn-check" name="llmProvider" id="llmProviderLocalGemma" value="local_gemma">
+                                <label class="btn btn-outline-primary" for="llmProviderLocalGemma">
+                                    <i class="fas fa-server me-1"></i> Локальная Gemma
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="input-wrapper">
+                            <label for="thebaiUrl">URL сервиса анализа (LLM)</label>
+                            <input type="text" class="form-control" id="thebaiUrl"
+                                   placeholder="https://api.deepseek.com/v1/chat/completions">
+                            <div class="help-text">OpenAI-совместимый endpoint <code>/v1/chat/completions</code> (DeepSeek или локальная Gemma).</div>
+                        </div>
+
+                        <div class="input-wrapper">
+                            <label for="thebaiModel">Модель LLM</label>
+                            <input type="text" class="form-control" id="thebaiModel"
+                                   placeholder="deepseek-reasoner">
+                            <div class="help-text">Имя модели, например <code>deepseek-chat</code>, <code>deepseek-reasoner</code> или <code>gemma2:2b</code>.</div>
+                        </div>
+                    </div>
                 </form>
             </div>
         </div>
@@ -694,6 +726,19 @@ document.addEventListener('DOMContentLoaded', async function() {
         document.getElementById('speechmaticsApiKey').value = configData.api_keys?.speechmatics_api_key || '';
         document.getElementById('thebaiApiKey').value = configData.api_keys?.thebai_api_key || '';
         document.getElementById('telegramBotToken').value = configData.api_keys?.telegram_bot_token || '';
+
+        // LLM / DeepSeek / Gemma
+        const apiKeys = configData.api_keys || {};
+        const currentUrl = apiKeys.thebai_url || 'https://api.deepseek.com/v1/chat/completions';
+        const currentModel = apiKeys.thebai_model || 'deepseek-reasoner';
+
+        document.getElementById('thebaiUrl').value = currentUrl;
+        document.getElementById('thebaiModel').value = currentModel;
+
+        // Определяем провайдера по URL (по умолчанию DeepSeek)
+        const provider = (currentUrl || '').includes('deepseek.com') ? 'deepseek' : 'local_gemma';
+        document.getElementById('llmProviderDeepseek').checked = (provider === 'deepseek');
+        document.getElementById('llmProviderLocalGemma').checked = (provider === 'local_gemma');
         
         document.getElementById('alertChatId').value = configData.telegram?.alert_chat_id || '';
         document.getElementById('reportsChatId').value = configData.telegram?.reports_chat_id || '';
@@ -767,6 +812,35 @@ function ensureFilenameConfig() {
     }
     if (!Array.isArray(configData.filename.extensions) || configData.filename.extensions.length === 0) {
         configData.filename.extensions = ['.mp3', '.wav'];
+    }
+}
+
+// Переключение провайдера LLM (DeepSeek / локальная Gemma)
+document.querySelectorAll('input[name="llmProvider"]').forEach(radio => {
+    radio.addEventListener('change', function() {
+        onLlmProviderChange(this.value);
+    });
+});
+
+function onLlmProviderChange(provider) {
+    const urlInput = document.getElementById('thebaiUrl');
+    const modelInput = document.getElementById('thebaiModel');
+
+    if (provider === 'deepseek') {
+        if (!urlInput.value || !urlInput.value.startsWith('http')) {
+            urlInput.value = 'https://api.deepseek.com/v1/chat/completions';
+        }
+        if (!modelInput.value) {
+            modelInput.value = 'deepseek-reasoner';
+        }
+    } else if (provider === 'local_gemma') {
+        // Подставляем типичные значения для локальной Gemma, если поля не заданы явно
+        if (!urlInput.value || urlInput.value.includes('deepseek.com')) {
+            urlInput.value = 'http://10.8.0.2:11434/v1/chat/completions';
+        }
+        if (!modelInput.value || modelInput.value.startsWith('deepseek')) {
+            modelInput.value = 'gemma2:2b';
+        }
     }
 }
 
@@ -1049,6 +1123,8 @@ async function saveAllConfig() {
             api_keys: {
                 speechmatics_api_key: document.getElementById('speechmaticsApiKey').value,
                 thebai_api_key: document.getElementById('thebaiApiKey').value,
+                thebai_url: document.getElementById('thebaiUrl').value,
+                thebai_model: document.getElementById('thebaiModel').value,
                 telegram_bot_token: document.getElementById('telegramBotToken').value
             },
             telegram: {

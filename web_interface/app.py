@@ -330,12 +330,14 @@ def get_user_config_data(user=None):
         })
         config_data['paths'] = paths
 
-        # API Keys
+        # API Keys (thebai_url/thebai_model из БД — без перезапуска)
+        _def_url = getattr(project_config, 'THEBAI_URL', 'https://api.deepseek.com/v1/chat/completions')
+        _def_model = getattr(project_config, 'THEBAI_MODEL', 'deepseek-reasoner')
         config_data['api_keys'] = {
             'speechmatics_api_key': cfg.speechmatics_api_key or '',
             'thebai_api_key': cfg.thebai_api_key or '',
-            'thebai_url': config_data['api_keys'].get('thebai_url', 'https://api.deepseek.com/v1/chat/completions'),
-            'thebai_model': config_data['api_keys'].get('thebai_model', 'deepseek-reasoner'),
+            'thebai_url': (getattr(cfg, 'thebai_url', None) or '').strip() or _def_url,
+            'thebai_model': (getattr(cfg, 'thebai_model', None) or '').strip() or _def_model,
             'telegram_bot_token': cfg.telegram_bot_token or '',
         }
 
@@ -416,6 +418,8 @@ def save_user_config_data(config_data, user=None):
 
     cfg.speechmatics_api_key = api_keys.get('speechmatics_api_key')
     cfg.thebai_api_key = api_keys.get('thebai_api_key')
+    cfg.thebai_url = (api_keys.get('thebai_url') or '').strip() or None
+    cfg.thebai_model = (api_keys.get('thebai_model') or '').strip() or None
     cfg.telegram_bot_token = api_keys.get('telegram_bot_token')
 
     cfg.alert_chat_id = telegram_cfg.get('alert_chat_id')
@@ -2126,7 +2130,7 @@ def api_generate_prompt():
         }.get(profile, 'в любой сфере услуг')
 
         prompt_request = {
-            "model": "deepseek-chat", # Используем deepseek-chat (V3) для скорости и стабильности
+            "model": thebai_model,
             "messages": [
                 {
                     "role": "system",
@@ -2260,8 +2264,7 @@ def api_generate_anchor_prompt():
         api_keys = runtime_cfg.get('api_keys', {})
         thebai_api_key = api_keys.get('thebai_api_key')
         thebai_url = api_keys.get('thebai_url') or 'https://api.deepseek.com/v1/chat/completions'
-        # Используем deepseek-chat (V3) для более предсказуемого формата текста
-        thebai_model = 'deepseek-chat'
+        thebai_model = api_keys.get('thebai_model') or 'deepseek-chat'
 
         if not thebai_api_key:
             return jsonify({'success': False, 'message': 'Укажите DeepSeek/TheB.ai API key в настройках профиля'}), 400
@@ -2393,8 +2396,7 @@ def api_regenerate_anchor_prompt():
         api_keys = runtime_cfg.get('api_keys', {})
         thebai_api_key = api_keys.get('thebai_api_key')
         thebai_url = api_keys.get('thebai_url') or 'https://api.deepseek.com/v1/chat/completions'
-        # Используем deepseek-chat (V3) для более предсказуемого формата текста
-        thebai_model = 'deepseek-chat'
+        thebai_model = api_keys.get('thebai_model') or 'deepseek-chat'
 
         if not thebai_api_key:
             return jsonify({'success': False, 'message': 'Укажите DeepSeek/TheB.ai API key в настройках профиля'}), 400
@@ -5403,7 +5405,7 @@ def api_config_save_all():
             config_data['business_profile'] = data['business_profile']
         if 'api_keys' in data:
             config_data['api_keys'] = data['api_keys']
-        
+
         if 'telegram' in data:
             config_data['telegram'] = data['telegram']
             

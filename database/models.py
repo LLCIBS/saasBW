@@ -364,6 +364,8 @@ class UserConfig(db.Model):
     
     # API Keys
     thebai_api_key = db.Column(db.String(255), nullable=True)
+    thebai_url = db.Column(db.String(500), nullable=True)  # URL LLM (DeepSeek или локальная Gemma)
+    thebai_model = db.Column(db.String(100), nullable=True)  # имя модели (deepseek-chat, gemma2:9b и т.д.)
     telegram_bot_token = db.Column(db.String(255), nullable=True)
     speechmatics_api_key = db.Column(db.String(255), nullable=True)
     
