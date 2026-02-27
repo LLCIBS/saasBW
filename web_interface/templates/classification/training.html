@@ -1,0 +1,311 @@
+﻿{% extends "base.html" %}
+
+{% block title %}Обучающие примеры - Система разбора звонков{% endblock %}
+
+{% block content %}
+{% include 'partials/sidebar.html' %}
+<main class="col-md-9 col-lg-10 main-content">
+    <div class="p-4">
+        {% include 'classification/_nav.html' %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2">
+        <i class="fas fa-graduation-cap me-2"></i>
+        Обучающие примеры
+    </h1>
+    <div class="btn-toolbar mb-2 mb-md-0">
+        <div class="btn-group me-2">
+            <a href="{{ url_for('classification.training_add_page') }}" class="btn btn-success btn-custom">
+                <i class="fas fa-plus me-1"></i>
+                Добавить пример
+            </a>
+        </div>
+    </div>
+</div>
+
+<!-- Фильтры -->
+<div class="card mb-4">
+    <div class="card-header">
+        <h5 class="card-title mb-0">
+            <i class="fas fa-filter me-2"></i>
+            Фильтры
+        </h5>
+    </div>
+    <div class="card-body">
+        <form method="GET" class="row g-3">
+            <div class="col-md-4">
+                <label for="category" class="form-label">Категория</label>
+                <select class="form-select" id="category" name="category">
+                    <option value="">Все категории</option>
+                    {% for num, name in categories.items() %}
+                        <option value="{{ num }}" {{ 'selected' if category_filter == num }}>
+                            {{ num }}. {{ name }}
+                        </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2 d-flex align-items-end">
+                <button type="submit" class="btn btn-primary btn-custom me-2">
+                    <i class="fas fa-search me-1"></i>
+                    Применить
+                </button>
+                <a href="{{ url_for('classification.training_page') }}" class="btn btn-outline-secondary btn-custom">
+                    <i class="fas fa-times me-1"></i>
+                    Сбросить
+                </a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Таблица примеров -->
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="card-title mb-0">
+            <i class="fas fa-list me-2"></i>
+            Список примеров
+            {% if pagination %}
+                <small class="text-muted">({{ pagination.total }} примеров)</small>
+            {% endif %}
+        </h5>
+    </div>
+    <div class="card-body p-0">
+        {% if examples %}
+            <div class="table-responsive">
+                <table class="table table-hover mb-0">
+                    <thead class="table-dark">
+                        <tr>
+                            <th>ID</th>
+                            <th>Категория</th>
+                            <th>Транскрипция</th>
+                            <th>Обоснование</th>
+                            <th>Исходная категория</th>
+                            <th>Использований</th>
+                            <th>Статус</th>
+                            <th>Действия</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for example in examples %}
+                        <tr class="{{ 'table-secondary' if not example.is_active }}">
+                            <td>
+                                <span class="badge bg-primary">{{ example.id }}</span>
+                            </td>
+                            <td>
+                                <div class="fw-bold text-success">
+                                    {{ example.correct_category }}. {{ example.category_name }}
+                                </div>
+                            </td>
+                            <td>
+                                <div class="text-truncate" style="max-width: 250px;" 
+                                     title="{{ example.transcription }}">
+                                    {{ example.transcription }}
+                                </div>
+                            </td>
+                            <td>
+                                <div class="text-truncate" style="max-width: 200px;" 
+                                     title="{{ example.correct_reasoning }}">
+                                    {{ example.correct_reasoning }}
+                                </div>
+                            </td>
+                            <td>
+                                {% if example.original_category %}
+                                    <div class="text-danger">
+                                        {{ example.original_category }}. {{ example.original_category_name }}
+                                    </div>
+                                {% else %}
+                                    <span class="text-muted">-</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <span class="badge bg-info">{{ example.used_count }}</span>
+                            </td>
+                            <td>
+                                {% if example.is_active %}
+                                    <span class="badge bg-success">Активен</span>
+                                {% else %}
+                                    <span class="badge bg-secondary">Отключен</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <div class="btn-group" role="group">
+                                    <button type="button" class="btn btn-sm btn-outline-info" 
+                                            onclick="showExampleDetails({{ example.id }})" 
+                                            data-bs-toggle="modal" data-bs-target="#exampleModal">
+                                        <i class="fas fa-eye"></i>
+                                    </button>
+                                    <a href="{{ url_for('classification.training_toggle_example', example_id=example.id) }}" 
+                                       class="btn btn-sm btn-outline-warning"
+                                       title="{{ 'Отключить' if example.is_active else 'Включить' }}">
+                                        <i class="fas fa-{{ 'toggle-off' if example.is_active else 'toggle-on' }}"></i>
+                                    </a>
+                                    <a href="{{ url_for('classification.training_delete_example', example_id=example.id) }}" 
+                                       class="btn btn-sm btn-outline-danger"
+                                       onclick="return confirm('Удалить этот пример?')"
+                                       title="Удалить">
+                                        <i class="fas fa-trash"></i>
+                                    </a>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            
+            <!-- Пагинация -->
+            {% if pagination and pagination.pages > 1 %}
+                <div class="card-footer">
+                    <nav aria-label="Навигация по страницам">
+                        <ul class="pagination justify-content-center mb-0">
+                            {% if pagination.has_prev %}
+                                <li class="page-item">
+                                    <a class="page-link" href="{{ url_for('classification.training_page', page=pagination.page-1, category=category_filter) }}">
+                                        <i class="fas fa-chevron-left"></i>
+                                    </a>
+                                </li>
+                            {% endif %}
+                            
+                            {% for page_num in range(1, pagination.pages + 1) %}
+                                {% if page_num == pagination.page %}
+                                    <li class="page-item active">
+                                        <span class="page-link">{{ page_num }}</span>
+                                    </li>
+                                {% elif page_num <= 3 or page_num > pagination.pages - 3 or (page_num >= pagination.page - 1 and page_num <= pagination.page + 1) %}
+                                    <li class="page-item">
+                                        <a class="page-link" href="{{ url_for('classification.training_page', page=page_num, category=category_filter) }}">
+                                            {{ page_num }}
+                                        </a>
+                                    </li>
+                                {% elif page_num == 4 or page_num == pagination.pages - 3 %}
+                                    <li class="page-item disabled">
+                                        <span class="page-link">...</span>
+                                    </li>
+                                {% endif %}
+                            {% endfor %}
+                            
+                            {% if pagination.has_next %}
+                                <li class="page-item">
+                                    <a class="page-link" href="{{ url_for('classification.training_page', page=pagination.page+1, category=category_filter) }}">
+                                        <i class="fas fa-chevron-right"></i>
+                                    </a>
+                                </li>
+                            {% endif %}
+                        </ul>
+                    </nav>
+                </div>
+            {% endif %}
+        {% else %}
+            <div class="text-center py-5">
+                <i class="fas fa-graduation-cap fa-3x text-muted mb-3"></i>
+                <h5 class="text-muted">Обучающие примеры не найдены</h5>
+                <p class="text-muted">Добавьте первый обучающий пример для улучшения работы ИИ.</p>
+                <a href="{{ url_for('classification.training_add_page') }}" class="btn btn-success btn-custom">
+                    <i class="fas fa-plus me-2"></i>
+                    Добавить пример
+                </a>
+            </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Модальное окно с деталями примера -->
+<div class="modal fade" id="exampleModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Детали обучающего примера</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div id="exampleDetails">
+                    <!-- Содержимое будет загружено через JavaScript -->
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Закрыть</button>
+            </div>
+        </div>
+    </div>
+</div>
+    </div>
+</main>
+    </div>
+</main>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const examples = {{ examples|tojson }};
+
+function showExampleDetails(exampleId) {
+    const example = examples.find(ex => ex.id === exampleId);
+    if (!example) return;
+    
+    const detailsHtml = `
+        <div class="row">
+            <div class="col-md-6">
+                <h6><i class="fas fa-tag me-2"></i>Основная информация</h6>
+                <table class="table table-sm table-borderless">
+                    <tr>
+                        <td><strong>ID:</strong></td>
+                        <td><span class="badge bg-primary">${example.id}</span></td>
+                    </tr>
+                    <tr>
+                        <td><strong>Правильная категория:</strong></td>
+                        <td><span class="text-success fw-bold">${example.correct_category}. ${example.category_name}</span></td>
+                    </tr>
+                    <tr>
+                        <td><strong>Исходная категория:</strong></td>
+                        <td>${example.original_category ? 
+                            '<span class="text-danger">' + example.original_category + '. ' + example.original_category_name + '</span>' : 
+                            '<span class="text-muted">-</span>'}</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Использований:</strong></td>
+                        <td><span class="badge bg-info">${example.used_count}</span></td>
+                    </tr>
+                    <tr>
+                        <td><strong>Статус:</strong></td>
+                        <td>${example.is_active ? 
+                            '<span class="badge bg-success">Активен</span>' : 
+                            '<span class="badge bg-secondary">Отключен</span>'}</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Создан:</strong></td>
+                        <td><small class="text-muted">${example.created_at || 'Неизвестно'}</small></td>
+                    </tr>
+                </table>
+            </div>
+            <div class="col-md-6">
+                <h6><i class="fas fa-comment me-2"></i>Комментарий оператора</h6>
+                <div class="alert alert-light">
+                    ${example.operator_comment || '<em class="text-muted">Комментарий отсутствует</em>'}
+                </div>
+            </div>
+        </div>
+        
+        <hr>
+        
+        <h6><i class="fas fa-file-alt me-2"></i>Транскрипция</h6>
+        <div class="transcription-text mb-3">
+            ${example.transcription}
+        </div>
+        
+        <h6><i class="fas fa-lightbulb me-2"></i>Правильное обоснование</h6>
+        <div class="alert alert-success">
+            ${example.correct_reasoning}
+        </div>
+        
+        ${example.original_reasoning ? `
+            <h6><i class="fas fa-times-circle me-2"></i>Исходное обоснование</h6>
+            <div class="alert alert-danger">
+                ${example.original_reasoning}
+            </div>
+        ` : ''}
+    `;
+    
+    document.getElementById('exampleDetails').innerHTML = detailsHtml;
+}
+</script>
+{% endblock %}
+

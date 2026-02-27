@@ -1,0 +1,315 @@
+﻿{% extends "base.html" %}
+
+{% block title %}Добавить пример - Система разбора звонков{% endblock %}
+
+{% block content %}
+{% include 'partials/sidebar.html' %}
+<main class="col-md-9 col-lg-10 main-content">
+    <div class="p-4">
+        {% include 'classification/_nav.html' %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2">
+        <i class="fas fa-plus me-2"></i>
+        Добавить обучающий пример
+    </h1>
+    <div class="btn-toolbar mb-2 mb-md-0">
+        <div class="btn-group me-2">
+            <a href="{{ url_for('classification.training_page') }}" class="btn btn-outline-secondary btn-custom">
+                <i class="fas fa-arrow-left me-1"></i>
+                Назад к примерам
+            </a>
+        </div>
+    </div>
+</div>
+
+<!-- Инструкция -->
+<div class="alert alert-info mb-4">
+    <h5><i class="fas fa-info-circle me-2"></i>Как добавить качественный обучающий пример</h5>
+    <ul class="mb-0">
+        <li><strong>Транскрипция:</strong> Вставьте полный текст разговора или его ключевую часть</li>
+        <li><strong>Правильная категория:</strong> Выберите категорию, которая точно соответствует содержанию звонка</li>
+        <li><strong>Обоснование:</strong> Объясните, почему именно эта категория правильная, укажите ключевые фразы</li>
+        <li><strong>Исходная категория:</strong> Если исправляете ошибку ИИ, укажите что было классифицировано неправильно</li>
+    </ul>
+</div>
+
+<!-- Форма добавления -->
+<div class="card">
+    <div class="card-header">
+        <h5 class="card-title mb-0">
+            <i class="fas fa-edit me-2"></i>
+            Форма добавления примера
+        </h5>
+    </div>
+    <div class="card-body">
+        <form method="POST">
+            <!-- Транскрипция -->
+            <div class="mb-4">
+                <label for="transcription" class="form-label">
+                    <i class="fas fa-file-alt me-1"></i>
+                    <strong>Транскрипция звонка</strong>
+                    <span class="text-danger">*</span>
+                </label>
+                <textarea class="form-control" id="transcription" name="transcription" rows="6" 
+                        placeholder="Вставьте текст разговора здесь..." required></textarea>
+                <div class="form-text">Вставьте полную транскрипцию или ключевую часть разговора</div>
+            </div>
+
+            <div class="row">
+                <!-- Правильная категория -->
+                <div class="col-md-6 mb-4">
+                    <label for="correct_category" class="form-label">
+                        <i class="fas fa-tag me-1"></i>
+                        <strong>Правильная категория</strong>
+                        <span class="text-danger">*</span>
+                    </label>
+                    <select class="form-select" id="correct_category" name="correct_category" required>
+                        <option value="">Выберите правильную категорию</option>
+                        {% for num, name in categories.items() %}
+                            <option value="{{ num }}">{{ num }}. {{ name }}</option>
+                        {% endfor %}
+                    </select>
+                    <div class="form-text">Категория, которая точно соответствует содержанию звонка</div>
+                </div>
+
+                <!-- Исходная категория (необязательно) -->
+                <div class="col-md-6 mb-4">
+                    <label for="original_category" class="form-label">
+                        <i class="fas fa-times-circle me-1"></i>
+                        <strong>Исходная (неправильная) категория</strong>
+                    </label>
+                    <select class="form-select" id="original_category" name="original_category">
+                        <option value="">Не указана</option>
+                        {% for num, name in categories.items() %}
+                            <option value="{{ num }}">{{ num }}. {{ name }}</option>
+                        {% endfor %}
+                    </select>
+                    <div class="form-text">Если исправляете ошибку ИИ, укажите что было классифицировано неправильно</div>
+                </div>
+            </div>
+
+            <!-- Правильное обоснование -->
+            <div class="mb-4">
+                <label for="correct_reasoning" class="form-label">
+                    <i class="fas fa-lightbulb me-1"></i>
+                    <strong>Правильное обоснование</strong>
+                    <span class="text-danger">*</span>
+                </label>
+                <textarea class="form-control" id="correct_reasoning" name="correct_reasoning" rows="4" 
+                        placeholder="Объясните, почему эта категория правильная. Укажите ключевые фразы из разговора..." required></textarea>
+                <div class="form-text">Детально объясните выбор категории, укажите ключевые слова и фразы</div>
+            </div>
+
+            <!-- Исходное обоснование (необязательно) -->
+            <div class="mb-4">
+                <label for="original_reasoning" class="form-label">
+                    <i class="fas fa-exclamation-triangle me-1"></i>
+                    <strong>Исходное (неправильное) обоснование</strong>
+                </label>
+                <textarea class="form-control" id="original_reasoning" name="original_reasoning" rows="3" 
+                        placeholder="Если есть неправильное обоснование ИИ, вставьте его сюда..."></textarea>
+                <div class="form-text">Обоснование, которое дал ИИ при неправильной классификации</div>
+            </div>
+
+            <!-- Комментарий оператора -->
+            <div class="mb-4">
+                <label for="operator_comment" class="form-label">
+                    <i class="fas fa-comment me-1"></i>
+                    <strong>Комментарий оператора</strong>
+                </label>
+                <textarea class="form-control" id="operator_comment" name="operator_comment" rows="2" 
+                        placeholder="Дополнительные пояснения, контекст или особенности этого случая..."></textarea>
+                <div class="form-text">Любые дополнительные пояснения или особенности этого случая</div>
+            </div>
+
+            <!-- Кнопки -->
+            <div class="d-flex justify-content-between">
+                <div>
+                    <button type="submit" class="btn btn-success btn-custom me-2">
+                        <i class="fas fa-save me-1"></i>
+                        Сохранить пример
+                    </button>
+                    <button type="button" class="btn btn-outline-warning btn-custom" onclick="resetForm()">
+                        <i class="fas fa-undo me-1"></i>
+                        Очистить форму
+                    </button>
+                </div>
+                <div>
+                    <a href="{{ url_for('classification.training_page') }}" class="btn btn-outline-secondary btn-custom">
+                        <i class="fas fa-times me-1"></i>
+                        Отмена
+                    </a>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Примеры хороших обучающих примеров -->
+<div class="row mt-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-star me-2"></i>
+                    Примеры качественных обучающих примеров
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="accordion" id="examplesAccordion">
+                    <!-- Пример 1: Запись на сервис -->
+                    <div class="accordion-item">
+                        <h2 class="accordion-header" id="example1">
+                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" 
+                                    data-bs-target="#collapse1">
+                                <span class="badge bg-success me-2">2</span>
+                                Пример: ЗАПИСЬ НА СЕРВИС
+                            </button>
+                        </h2>
+                        <div id="collapse1" class="accordion-collapse collapse" data-bs-parent="#examplesAccordion">
+                            <div class="accordion-body">
+                                <strong>Транскрипция:</strong>
+                                <div class="transcription-text mb-2">
+                                    "Здравствуйте, хочу записать свой Toyota Camry 2015 года на диагностику двигателя. Когда можно подъехать? - Можем принять завтра в 14:00. - Отлично, записывайте меня на завтра в 14:00."
+                                </div>
+                                <strong>Правильное обоснование:</strong>
+                                <div class="alert alert-success mb-2">
+                                    Клиент четко записывается на конкретное время (завтра в 14:00) для целевого автомобиля (Toyota Camry 2015). Есть конкретная договоренность о времени визита - это запись на сервис.
+                                </div>
+                                <strong>Ключевые фразы:</strong> "записать", "завтра в 14:00", "записывайте меня", конкретное время
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Пример 2: Консультация -->
+                    <div class="accordion-item">
+                        <h2 class="accordion-header" id="example2">
+                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" 
+                                    data-bs-target="#collapse2">
+                                <span class="badge bg-info me-2">3</span>
+                                Пример: КОНСУЛЬТАЦИЯ
+                            </button>
+                        </h2>
+                        <div id="collapse2" class="accordion-collapse collapse" data-bs-parent="#examplesAccordion">
+                            <div class="accordion-body">
+                                <strong>Транскрипция:</strong>
+                                <div class="transcription-text mb-2">
+                                    "Сколько будет стоить замена тормозных колодок на Honda Civic? - От 8000 рублей с работой. - Понятно, подумаю и перезвоню. Спасибо."
+                                </div>
+                                <strong>Правильное обоснование:</strong>
+                                <div class="alert alert-info mb-2">
+                                    Клиент уточняет стоимость услуги, но конкретной записи не делает. Говорит "подумаю и перезвоню" - нет четкой договоренности о времени визита. Это консультация.
+                                </div>
+                                <strong>Ключевые фразы:</strong> "сколько будет стоить", "подумаю", "перезвоню", нет конкретной записи
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Пример 3: Последующий контакт -->
+                    <div class="accordion-item">
+                        <h2 class="accordion-header" id="example3">
+                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" 
+                                    data-bs-target="#collapse3">
+                                <span class="badge bg-primary me-2">13</span>
+                                Пример: ПОСЛЕДУЮЩИЙ КОНТАКТ
+                            </button>
+                        </h2>
+                        <div id="collapse3" class="accordion-collapse collapse" data-bs-parent="#examplesAccordion">
+                            <div class="accordion-body">
+                                <strong>Транскрипция:</strong>
+                                <div class="transcription-text mb-2">
+                                    "Здравствуйте, я записан к вам на сегодня в 15:00, хотел уточнить - нужно ли привозить документы на машину? - Да, обязательно ПТС и СТС."
+                                </div>
+                                <strong>Правильное обоснование:</strong>
+                                <div class="alert alert-primary mb-2">
+                                    Клиент уже записан (существующая запись) и уточняет детали по уже оформленной записи. Это не новая запись, а последующий контакт по уже существующей записи.
+                                </div>
+                                <strong>Ключевые фразы:</strong> "я записан", "на сегодня в 15:00", "уточнить", уже существующая запись
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+    </div>
+</main>
+    </div>
+</main>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function resetForm() {
+    if (confirm('Очистить всю форму?')) {
+        document.querySelector('form').reset();
+    }
+}
+
+// Автозаполнение обоснования на основе выбранной категории
+document.getElementById('correct_category').addEventListener('change', function() {
+    const category = this.value;
+    const reasoningField = document.getElementById('correct_reasoning');
+    
+    // Если поле обоснования пустое, предлагаем шаблон
+    if (!reasoningField.value.trim()) {
+        let template = '';
+        
+        switch(category) {
+            case '2':
+                template = 'Клиент делает конкретную запись на определенное время/дату для целевого автомобиля. Ключевые фразы: ';
+                break;
+            case '3':
+                template = 'Клиент уточняет информацию без конкретной записи. Нет четкой договоренности о времени визита. Ключевые фразы: ';
+                break;
+            case '13':
+                template = 'Клиент звонит по уже существующей записи или автомобилю в сервисе. Ключевые фразы: ';
+                break;
+            case '1':
+                template = 'Звонок не соответствует критериям целевого (отечественный авто, старый, не клиент и т.д.). Ключевые фразы: ';
+                break;
+            case '4':
+                template = 'Клиент прямо отказывается или откладывает решение. Ключевые фразы: ';
+                break;
+        }
+        
+        if (template) {
+            reasoningField.value = template;
+            reasoningField.focus();
+            // Устанавливаем курсор в конец
+            reasoningField.setSelectionRange(template.length, template.length);
+        }
+    }
+});
+
+// Подсветка обязательных полей при отправке
+document.querySelector('form').addEventListener('submit', function(e) {
+    const requiredFields = ['transcription', 'correct_category', 'correct_reasoning'];
+    let hasErrors = false;
+    
+    requiredFields.forEach(fieldName => {
+        const field = document.getElementById(fieldName);
+        if (!field.value.trim()) {
+            field.classList.add('is-invalid');
+            hasErrors = true;
+        } else {
+            field.classList.remove('is-invalid');
+        }
+    });
+    
+    if (hasErrors) {
+        e.preventDefault();
+        alert('Пожалуйста, заполните все обязательные поля');
+    }
+});
+
+// Убираем подсветку ошибки при вводе
+document.querySelectorAll('input, textarea, select').forEach(field => {
+    field.addEventListener('input', function() {
+        this.classList.remove('is-invalid');
+    });
+});
+</script>
+{% endblock %}
+

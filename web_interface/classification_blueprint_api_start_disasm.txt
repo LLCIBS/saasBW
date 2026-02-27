@@ -1,0 +1,181 @@
+ 405            RESUME                   0
+
+ 408            LOAD_GLOBAL              0 (request)
+                LOAD_ATTR                2 (get_json)
+                PUSH_NULL
+                LOAD_CONST               1 (True)
+                LOAD_CONST               2 (('silent',))
+                CALL_KW                  1
+                COPY                     1
+                TO_BOOL
+                POP_JUMP_IF_TRUE         2 (to L1)
+                POP_TOP
+                BUILD_MAP                0
+        L1:     STORE_FAST               0 (data)
+
+ 409            LOAD_GLOBAL              5 (str + NULL)
+                LOAD_FAST                0 (data)
+                LOAD_ATTR                7 (get + NULL|self)
+                LOAD_CONST               3 ('input_folder')
+                LOAD_CONST               4 ('')
+                CALL                     2
+                CALL                     1
+                LOAD_ATTR                9 (strip + NULL|self)
+                CALL                     0
+                STORE_FAST               1 (input_folder)
+
+ 410            LOAD_GLOBAL              5 (str + NULL)
+                LOAD_FAST                0 (data)
+                LOAD_ATTR                7 (get + NULL|self)
+                LOAD_CONST               5 ('output_file')
+                LOAD_CONST               4 ('')
+                CALL                     2
+                CALL                     1
+                LOAD_ATTR                9 (strip + NULL|self)
+                CALL                     0
+                STORE_FAST               2 (output_file)
+
+ 411            LOAD_GLOBAL             11 (int + NULL)
+                LOAD_FAST                0 (data)
+                LOAD_ATTR                7 (get + NULL|self)
+                LOAD_CONST               6 ('context_days')
+                LOAD_CONST               7 (7)
+                CALL                     2
+                CALL                     1
+                STORE_FAST               3 (context_days)
+
+ 413            LOAD_FAST                1 (input_folder)
+                TO_BOOL
+                POP_JUMP_IF_FALSE        7 (to L2)
+                LOAD_FAST                2 (output_file)
+                TO_BOOL
+                POP_JUMP_IF_TRUE        16 (to L3)
+
+ 414    L2:     LOAD_GLOBAL             13 (jsonify + NULL)
+                LOAD_CONST               8 (False)
+                LOAD_CONST               9 ('Не заполнены обязательные поля')
+                LOAD_CONST              10 (('success', 'message'))
+                BUILD_CONST_KEY_MAP      2
+                CALL                     1
+                LOAD_CONST              11 (400)
+                BUILD_TUPLE              2
+                RETURN_VALUE
+
+ 416    L3:     NOP
+
+ 417    L4:     LOAD_GLOBAL             15 (Path + NULL)
+                LOAD_FAST                1 (input_folder)
+                CALL                     1
+                LOAD_ATTR               17 (resolve + NULL|self)
+                CALL                     0
+                STORE_FAST               4 (input_path)
+
+ 421    L5:     LOAD_GLOBAL             21 (_user_base_records_path + NULL)
+                CALL                     0
+                LOAD_ATTR               17 (resolve + NULL|self)
+                CALL                     0
+                STORE_FAST               5 (base)
+
+ 422            LOAD_GLOBAL              5 (str + NULL)
+                LOAD_FAST                4 (input_path)
+                CALL                     1
+                LOAD_ATTR               23 (startswith + NULL|self)
+                LOAD_GLOBAL              5 (str + NULL)
+                LOAD_FAST                5 (base)
+                CALL                     1
+                CALL                     1
+                TO_BOOL
+                POP_JUMP_IF_FALSE       21 (to L6)
+                LOAD_FAST                4 (input_path)
+                LOAD_ATTR               25 (exists + NULL|self)
+                CALL                     0
+                TO_BOOL
+                POP_JUMP_IF_TRUE        16 (to L7)
+
+ 423    L6:     LOAD_GLOBAL             13 (jsonify + NULL)
+                LOAD_CONST               8 (False)
+                LOAD_CONST              13 ('Папка вне рабочей области пользователя')
+                LOAD_CONST              10 (('success', 'message'))
+                BUILD_CONST_KEY_MAP      2
+                CALL                     1
+                LOAD_CONST              11 (400)
+                BUILD_TUPLE              2
+                RETURN_VALUE
+
+ 425    L7:     LOAD_GLOBAL             27 (secure_filename + NULL)
+                LOAD_FAST                2 (output_file)
+                CALL                     1
+                STORE_FAST               6 (filename)
+
+ 426            LOAD_FAST                6 (filename)
+                LOAD_ATTR               29 (lower + NULL|self)
+                CALL                     0
+                LOAD_ATTR               31 (endswith + NULL|self)
+                LOAD_CONST              14 ('.xlsx')
+                CALL                     1
+                TO_BOOL
+                POP_JUMP_IF_TRUE         5 (to L8)
+
+ 427            LOAD_FAST                6 (filename)
+                FORMAT_SIMPLE
+                LOAD_CONST              14 ('.xlsx')
+                BUILD_STRING             2
+                STORE_FAST               6 (filename)
+
+ 428    L8:     LOAD_FAST                6 (filename)
+                TO_BOOL
+                POP_JUMP_IF_TRUE        16 (to L9)
+
+ 429            LOAD_GLOBAL             13 (jsonify + NULL)
+                LOAD_CONST               8 (False)
+                LOAD_CONST              15 ('Некорректное имя файла')
+                LOAD_CONST              10 (('success', 'message'))
+                BUILD_CONST_KEY_MAP      2
+                CALL                     1
+                LOAD_CONST              11 (400)
+                BUILD_TUPLE              2
+                RETURN_VALUE
+
+ 431    L9:     LOAD_GLOBAL             33 (_enqueue_classification_task + NULL)
+                LOAD_FAST_LOAD_FAST     70 (input_path, filename)
+                LOAD_FAST                3 (context_days)
+                LOAD_CONST              16 (('input_path', 'output_filename', 'context_days'))
+                CALL_KW                  3
+                STORE_FAST               7 (task_id)
+
+ 432            LOAD_GLOBAL             13 (jsonify + NULL)
+                LOAD_CONST               1 (True)
+                LOAD_FAST                7 (task_id)
+                LOAD_CONST              17 (('success', 'task_id'))
+                BUILD_CONST_KEY_MAP      2
+                CALL                     1
+                RETURN_VALUE
+
+  --   L10:     PUSH_EXC_INFO
+
+ 418            LOAD_GLOBAL             18 (Exception)
+                CHECK_EXC_MATCH
+                POP_JUMP_IF_FALSE       19 (to L12)
+                POP_TOP
+
+ 419            LOAD_GLOBAL             13 (jsonify + NULL)
+                LOAD_CONST               8 (False)
+                LOAD_CONST              12 ('Некорректный путь к папке')
+                LOAD_CONST              10 (('success', 'message'))
+                BUILD_CONST_KEY_MAP      2
+                CALL                     1
+                LOAD_CONST              11 (400)
+                BUILD_TUPLE              2
+                SWAP                     2
+       L11:     POP_EXCEPT
+                RETURN_VALUE
+
+ 418   L12:     RERAISE                  0
+
+  --   L13:     COPY                     3
+                POP_EXCEPT
+                RERAISE                  1
+ExceptionTable:
+  L4 to L5 -> L10 [0]
+  L10 to L11 -> L13 [1] lasti
+  L12 to L13 -> L13 [1] lasti

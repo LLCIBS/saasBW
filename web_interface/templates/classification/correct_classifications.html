@@ -1,0 +1,297 @@
+﻿{% extends "base.html" %}
+
+{% block title %}Подтвержденные классификации - Система разбора звонков{% endblock %}
+
+{% block content %}
+{% include 'partials/sidebar.html' %}
+<main class="col-md-9 col-lg-10 main-content">
+    <div class="p-4">
+        {% include 'classification/_nav.html' %}
+<div class="container-fluid mt-4">
+    <div class="row">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h2>
+                    <i class="fas fa-check-circle text-success me-2"></i>
+                    Подтвержденные правильные классификации
+                </h2>
+                <div>
+                    <button class="btn btn-outline-primary" onclick="refreshData()">
+                        <i class="fas fa-sync-alt me-1"></i> Обновить
+                    </button>
+                    <a href="{{ url_for('classification.learning_analytics_page') }}" class="btn btn-outline-info">
+                        <i class="fas fa-chart-line me-1"></i> Аналитика
+                    </a>
+                </div>
+            </div>
+
+            <!-- Информационная панель -->
+            <div class="alert alert-info">
+                <i class="fas fa-info-circle me-2"></i>
+                Здесь отображаются все классификации, которые вы подтвердили как правильные.
+                Эти данные используются системой для улучшения точности классификации.
+            </div>
+
+            <!-- Фильтры -->
+            <div class="card mb-4">
+                <div class="card-body">
+                    <div class="row g-3">
+                        <div class="col-md-3">
+                            <label class="form-label">Категория</label>
+                            <select class="form-select" id="filterCategory" onchange="applyFilters()">
+                                <option value="">Все категории</option>
+                                {% for code, name in categories.items() %}
+                                <option value="{{ code }}">{{ name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Уверенность (мин)</label>
+                            <input type="number" class="form-control" id="filterConfidence" 
+                                   min="1" max="10" value="1" onchange="applyFilters()">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Лимит</label>
+                            <select class="form-select" id="filterLimit" onchange="applyFilters()">
+                                <option value="20">20</option>
+                                <option value="50" selected>50</option>
+                                <option value="100">100</option>
+                                <option value="200">200</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3 d-flex align-items-end">
+                            <button class="btn btn-secondary w-100" onclick="resetFilters()">
+                                <i class="fas fa-times me-1"></i> Сбросить
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Статистика -->
+            <div class="row mb-4" id="statsContainer">
+                <div class="col-md-4">
+                    <div class="card text-center">
+                        <div class="card-body">
+                            <h5 class="card-title text-muted">Всего подтверждений</h5>
+                            <h2 class="text-primary" id="totalCount">-</h2>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card text-center">
+                        <div class="card-body">
+                            <h5 class="card-title text-muted">Средняя уверенность</h5>
+                            <h2 class="text-success" id="avgConfidence">-</h2>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card text-center">
+                        <div class="card-body">
+                            <h5 class="card-title text-muted">Уникальных категорий</h5>
+                            <h2 class="text-info" id="uniqueCategories">-</h2>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Таблица подтверждений -->
+            <div class="card">
+                <div class="card-body">
+                    <div id="loadingSpinner" class="text-center py-5">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Загрузка...</span>
+                        </div>
+                    </div>
+                    <div id="dataContainer" style="display: none;">
+                        <div class="table-responsive">
+                            <table class="table table-hover">
+                                <thead>
+                                    <tr>
+                                        <th>ID</th>
+                                        <th>Дата/Время</th>
+                                        <th>Телефон</th>
+                                        <th>Категория</th>
+                                        <th>Уверенность</th>
+                                        <th>Подтвердил</th>
+                                        <th>Комментарий</th>
+                                        <th>Обоснование ИИ</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="confirmationsTableBody">
+                                </tbody>
+                            </table>
+                        </div>
+                        <div id="noDataMessage" class="alert alert-warning" style="display: none;">
+                            <i class="fas fa-exclamation-triangle me-2"></i>
+                            Нет подтверждений, соответствующих выбранным фильтрам.
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+    </div>
+</main>
+    </div>
+</main>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let currentData = [];
+
+function refreshData() {
+    const category = document.getElementById('filterCategory').value;
+    const confidence = document.getElementById('filterConfidence').value;
+    const limit = document.getElementById('filterLimit').value;
+    
+    document.getElementById('loadingSpinner').style.display = 'block';
+    document.getElementById('dataContainer').style.display = 'none';
+    
+    let url = `/classification/api/correct-classifications?limit=${limit}`;
+    if (category) {
+        // Фильтрация на клиенте, так как API не поддерживает фильтры
+    }
+    
+    fetch(url)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                currentData = data.data;
+                applyFilters();
+                updateStats(currentData);
+            } else {
+                showAlert('error', data.message || 'Ошибка загрузки данных');
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            showAlert('error', 'Ошибка при загрузке данных');
+        })
+        .finally(() => {
+            document.getElementById('loadingSpinner').style.display = 'none';
+            document.getElementById('dataContainer').style.display = 'block';
+        });
+}
+
+function applyFilters() {
+    const category = document.getElementById('filterCategory').value;
+    const confidence = parseInt(document.getElementById('filterConfidence').value) || 1;
+    
+    let filtered = currentData;
+    
+    if (category) {
+        filtered = filtered.filter(item => item.category === category);
+    }
+    
+    filtered = filtered.filter(item => item.confidence_level >= confidence);
+    
+    displayData(filtered);
+}
+
+function resetFilters() {
+    document.getElementById('filterCategory').value = '';
+    document.getElementById('filterConfidence').value = '1';
+    document.getElementById('filterLimit').value = '50';
+    applyFilters();
+}
+
+function displayData(data) {
+    const tbody = document.getElementById('confirmationsTableBody');
+    const noData = document.getElementById('noDataMessage');
+    
+    if (data.length === 0) {
+        tbody.innerHTML = '';
+        noData.style.display = 'block';
+        return;
+    }
+    
+    noData.style.display = 'none';
+    tbody.innerHTML = data.map(item => `
+        <tr>
+            <td>${item.id}</td>
+            <td>
+                <strong>${item.call_date}</strong><br>
+                <small class="text-muted">${item.call_time}</small>
+            </td>
+            <td>${item.phone_number}</td>
+            <td>
+                <span class="badge bg-primary">${item.category_name || item.category}</span>
+            </td>
+            <td>
+                <div class="d-flex align-items-center">
+                    <div class="progress flex-grow-1 me-2" style="height: 20px;">
+                        <div class="progress-bar ${getConfidenceColor(item.confidence_level)}" 
+                             role="progressbar" 
+                             style="width: ${item.confidence_level * 10}%">
+                            ${item.confidence_level}/10
+                        </div>
+                    </div>
+                </div>
+            </td>
+            <td>
+                ${item.confirmed_by || 'Пользователь'}<br>
+                <small class="text-muted">${formatDate(item.confirmed_at)}</small>
+            </td>
+            <td>
+                ${item.comment ? `<span class="text-muted">${item.comment}</span>` : '<em class="text-muted">Нет</em>'}
+            </td>
+            <td>
+                <small class="text-muted">${item.reasoning || 'Нет'}</small>
+            </td>
+        </tr>
+    `).join('');
+}
+
+function updateStats(data) {
+    document.getElementById('totalCount').textContent = data.length;
+    
+    if (data.length > 0) {
+        const avgConf = (data.reduce((sum, item) => sum + item.confidence_level, 0) / data.length).toFixed(1);
+        document.getElementById('avgConfidence').textContent = `${avgConf}/10`;
+        
+        const uniqueCats = new Set(data.map(item => item.category)).size;
+        document.getElementById('uniqueCategories').textContent = uniqueCats;
+    } else {
+        document.getElementById('avgConfidence').textContent = '-';
+        document.getElementById('uniqueCategories').textContent = '0';
+    }
+}
+
+function getConfidenceColor(level) {
+    if (level >= 9) return 'bg-success';
+    if (level >= 7) return 'bg-info';
+    if (level >= 5) return 'bg-warning';
+    return 'bg-danger';
+}
+
+function formatDate(dateString) {
+    if (!dateString) return '';
+    const date = new Date(dateString);
+    return date.toLocaleString('ru-RU');
+}
+
+function showAlert(type, message) {
+    const alertClass = type === 'error' ? 'alert-danger' : 'alert-success';
+    const alert = document.createElement('div');
+    alert.className = `alert ${alertClass} alert-dismissible fade show`;
+    alert.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    document.querySelector('.container-fluid').insertBefore(alert, document.querySelector('.container-fluid').firstChild);
+    
+    setTimeout(() => alert.remove(), 5000);
+}
+
+// Загружаем данные при загрузке страницы
+document.addEventListener('DOMContentLoaded', function() {
+    refreshData();
+});
+</script>
+{% endblock %}
+
+

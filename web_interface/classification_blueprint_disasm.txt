@@ -1,0 +1,533 @@
+  --            MAKE_CELL                1 (task_id)
+                MAKE_CELL               22 (rules)
+
+ 139            RESUME                   0
+
+ 155            NOP
+
+ 156    L1:     LOAD_GLOBAL              1 (ClassificationRulesManager + NULL)
+                LOAD_FAST                3 (rules_db_path)
+                LOAD_CONST               1 (('db_path',))
+                CALL_KW                  1
+                STORE_DEREF             22 (rules)
+
+ 157            LOAD_GLOBAL              3 (Path + NULL)
+                LOAD_FAST                5 (uploads_dir)
+                CALL                     1
+                LOAD_FAST                7 (output_filename)
+                BINARY_OP               11 (/)
+                STORE_FAST              14 (output_path)
+
+ 159            LOAD_GLOBAL              4 (_tasks_lock)
+                BEFORE_WITH
+        L2:     POP_TOP
+
+ 160            LOAD_GLOBAL              6 (_classification_tasks)
+                LOAD_ATTR                9 (get + NULL|self)
+                LOAD_DEREF               1 (task_id)
+                CALL                     1
+                STORE_FAST              15 (task)
+
+ 161            LOAD_FAST               15 (task)
+                TO_BOOL
+                POP_JUMP_IF_TRUE        10 (to L5)
+
+ 162            NOP
+
+ 159    L3:     LOAD_CONST               0 (None)
+                LOAD_CONST               0 (None)
+                LOAD_CONST               0 (None)
+                CALL                     2
+                POP_TOP
+        L4:     RETURN_CONST             0 (None)
+
+ 163    L5:     LOAD_CONST               2 ('running')
+                LOAD_FAST               15 (task)
+                LOAD_CONST               3 ('status')
+                STORE_SUBSCR
+
+ 164            LOAD_CONST               4 ('Подготовка к обработке...')
+                LOAD_FAST               15 (task)
+                LOAD_CONST               5 ('message')
+                STORE_SUBSCR
+
+ 165            LOAD_GLOBAL             10 (time)
+                LOAD_ATTR               10 (time)
+                PUSH_NULL
+                CALL                     0
+                LOAD_FAST               15 (task)
+                LOAD_CONST               6 ('started_at')
+                STORE_SUBSCR
+
+ 159    L6:     LOAD_CONST               0 (None)
+                LOAD_CONST               0 (None)
+                LOAD_CONST               0 (None)
+                CALL                     2
+                POP_TOP
+
+ 167    L7:     LOAD_DEREF              22 (rules)
+                LOAD_ATTR               13 (update_classification_task + NULL|self)
+                LOAD_DEREF               1 (task_id)
+                LOAD_CONST               2 ('running')
+                LOAD_CONST               7 (('status',))
+                CALL_KW                  2
+                POP_TOP
+
+ 169            LOAD_FAST               22 (rules)
+                LOAD_FAST                1 (task_id)
+                BUILD_TUPLE              2
+                LOAD_CONST               8 (<code object progress_callback at 0x000001609D027710, file "web_interface/classification_blueprint.py", line 169>)
+                MAKE_FUNCTION
+                SET_FUNCTION_ATTRIBUTE   8 (closure)
+                STORE_FAST              16 (progress_callback)
+
+ 184            LOAD_GLOBAL             15 (CallClassificationEngine + NULL)
+
+ 185            LOAD_FAST               11 (llm_api_key)
+
+ 186            LOAD_FAST               12 (llm_base_url)
+
+ 187            LOAD_FAST               13 (llm_model)
+
+ 188            LOAD_FAST                4 (training_db_path)
+
+ 189            LOAD_FAST                3 (rules_db_path)
+
+ 190            LOAD_FAST                9 (station_names)
+                COPY                     1
+                TO_BOOL
+                POP_JUMP_IF_TRUE         2 (to L8)
+                POP_TOP
+                BUILD_MAP                0
+
+ 191    L8:     LOAD_FAST               10 (station_mapping)
+                COPY                     1
+                TO_BOOL
+                POP_JUMP_IF_TRUE         2 (to L9)
+                POP_TOP
+                BUILD_MAP                0
+
+ 184    L9:     LOAD_CONST               9 (('api_key', 'base_url', 'model', 'training_db_path', 'rules_db_path', 'station_names', 'station_mapping'))
+                CALL_KW                  7
+                STORE_FAST              17 (engine)
+
+ 193            LOAD_FAST               17 (engine)
+                LOAD_ATTR               17 (process_folder + NULL|self)
+
+ 194            LOAD_FAST                6 (input_folder)
+
+ 195            LOAD_GLOBAL             19 (str + NULL)
+                LOAD_FAST               14 (output_path)
+                CALL                     1
+
+ 196            LOAD_FAST                8 (context_days)
+
+ 197            LOAD_FAST               16 (progress_callback)
+
+ 193            LOAD_CONST              10 (('input_folder', 'output_file', 'context_days', 'progress_callback'))
+                CALL_KW                  4
+                UNPACK_SEQUENCE          3
+                POP_TOP
+                STORE_FAST              18 (_)
+                STORE_FAST              19 (total_calls)
+
+ 200            LOAD_GLOBAL              4 (_tasks_lock)
+                BEFORE_WITH
+       L10:     POP_TOP
+
+ 201            LOAD_GLOBAL              6 (_classification_tasks)
+                LOAD_ATTR                9 (get + NULL|self)
+                LOAD_DEREF               1 (task_id)
+                BUILD_MAP                0
+                CALL                     2
+                STORE_FAST              15 (task)
+
+ 202            LOAD_GLOBAL             21 (int + NULL)
+                LOAD_GLOBAL             10 (time)
+                LOAD_ATTR               10 (time)
+                PUSH_NULL
+                CALL                     0
+                LOAD_FAST               15 (task)
+                LOAD_ATTR                9 (get + NULL|self)
+                LOAD_CONST               6 ('started_at')
+                LOAD_GLOBAL             10 (time)
+                LOAD_ATTR               10 (time)
+                PUSH_NULL
+                CALL                     0
+                CALL                     2
+                BINARY_OP               10 (-)
+                CALL                     1
+                STORE_FAST              20 (duration)
+
+ 203            LOAD_GLOBAL              6 (_classification_tasks)
+                LOAD_DEREF               1 (task_id)
+                BINARY_SUBSCR
+                LOAD_ATTR               23 (update + NULL|self)
+
+ 205            LOAD_CONST              11 ('completed')
+
+ 206            LOAD_CONST              12 (100)
+
+ 207            LOAD_GLOBAL             21 (int + NULL)
+                LOAD_FAST               19 (total_calls)
+                CALL                     1
+
+ 208            LOAD_GLOBAL             21 (int + NULL)
+                LOAD_FAST               19 (total_calls)
+                CALL                     1
+
+ 209            LOAD_CONST              13 ('Готово. Обработано ')
+                LOAD_FAST               19 (total_calls)
+                FORMAT_SIMPLE
+                LOAD_CONST              14 (' звонков.')
+                BUILD_STRING             3
+
+ 210            LOAD_FAST               20 (duration)
+                LOAD_CONST              15 (60)
+                BINARY_OP                2 (//)
+                FORMAT_SIMPLE
+                LOAD_CONST              16 ('м ')
+                LOAD_FAST               20 (duration)
+                LOAD_CONST              15 (60)
+                BINARY_OP                6 (%)
+                FORMAT_SIMPLE
+                LOAD_CONST              17 ('с')
+                BUILD_STRING             4
+
+ 211            LOAD_CONST              18 ('/classification/download/')
+                LOAD_FAST                7 (output_filename)
+                FORMAT_SIMPLE
+                BUILD_STRING             2
+
+ 204            LOAD_CONST              19 (('status', 'progress', 'processed_files', 'total_files', 'message', 'duration', 'download_url'))
+                BUILD_CONST_KEY_MAP      7
+
+ 203            CALL                     1
+                POP_TOP
+
+ 200   L11:     LOAD_CONST               0 (None)
+                LOAD_CONST               0 (None)
+                LOAD_CONST               0 (None)
+                CALL                     2
+                POP_TOP
+
+ 215   L12:     LOAD_DEREF              22 (rules)
+                LOAD_ATTR               13 (update_classification_task + NULL|self)
+
+ 216            LOAD_DEREF               1 (task_id)
+
+ 217            LOAD_CONST              11 ('completed')
+
+ 218            LOAD_GLOBAL             24 (datetime)
+                LOAD_ATTR               26 (now)
+                PUSH_NULL
+                CALL                     0
+                LOAD_ATTR               29 (isoformat + NULL|self)
+                CALL                     0
+
+ 219            LOAD_GLOBAL              6 (_classification_tasks)
+                LOAD_ATTR                9 (get + NULL|self)
+                LOAD_DEREF               1 (task_id)
+                BUILD_MAP                0
+                CALL                     2
+                LOAD_ATTR                9 (get + NULL|self)
+                LOAD_CONST              20 ('duration')
+                LOAD_CONST              21 ('')
+                CALL                     2
+
+ 220            LOAD_GLOBAL             21 (int + NULL)
+                LOAD_FAST               19 (total_calls)
+                CALL                     1
+
+ 221            LOAD_GLOBAL             21 (int + NULL)
+                LOAD_FAST               19 (total_calls)
+                CALL                     1
+
+ 215            LOAD_CONST              22 (('status', 'end_time', 'duration', 'processed_files', 'total_files'))
+                CALL_KW                  6
+                POP_TOP
+       L13:     RETURN_CONST             0 (None)
+
+ 159   L14:     PUSH_EXC_INFO
+                WITH_EXCEPT_START
+                TO_BOOL
+                POP_JUMP_IF_TRUE         1 (to L15)
+                RERAISE                  2
+       L15:     POP_TOP
+       L16:     POP_EXCEPT
+                POP_TOP
+                POP_TOP
+                EXTENDED_ARG             1
+                JUMP_BACKWARD_NO_INTERRUPT 384 (to L7)
+
+  --   L17:     COPY                     3
+                POP_EXCEPT
+                RERAISE                  1
+
+ 200   L18:     PUSH_EXC_INFO
+                WITH_EXCEPT_START
+                TO_BOOL
+                POP_JUMP_IF_TRUE         1 (to L19)
+                RERAISE                  2
+       L19:     POP_TOP
+       L20:     POP_EXCEPT
+                POP_TOP
+                POP_TOP
+                JUMP_BACKWARD_NO_INTERRUPT 140 (to L12)
+
+  --   L21:     COPY                     3
+                POP_EXCEPT
+                RERAISE                  1
+       L22:     PUSH_EXC_INFO
+
+ 223            LOAD_GLOBAL             30 (Exception)
+                CHECK_EXC_MATCH
+                POP_JUMP_IF_FALSE      217 (to L40)
+                STORE_FAST              21 (exc)
+
+ 224   L23:     LOAD_GLOBAL              4 (_tasks_lock)
+                BEFORE_WITH
+       L24:     POP_TOP
+
+ 225            LOAD_DEREF               1 (task_id)
+                LOAD_GLOBAL              6 (_classification_tasks)
+                CONTAINS_OP              0
+                POP_JUMP_IF_FALSE       30 (to L25)
+
+ 226            LOAD_GLOBAL              6 (_classification_tasks)
+                LOAD_DEREF               1 (task_id)
+                BINARY_SUBSCR
+                LOAD_ATTR               23 (update + NULL|self)
+                LOAD_CONST              23 ('error')
+                LOAD_CONST              24 ('Ошибка: ')
+                LOAD_FAST               21 (exc)
+                FORMAT_SIMPLE
+                BUILD_STRING             2
+                LOAD_CONST              25 (('status', 'message'))
+                BUILD_CONST_KEY_MAP      2
+                CALL                     1
+                POP_TOP
+
+ 224   L25:     LOAD_CONST               0 (None)
+                LOAD_CONST               0 (None)
+                LOAD_CONST               0 (None)
+                CALL                     2
+                POP_TOP
+                JUMP_FORWARD            17 (to L30)
+       L26:     PUSH_EXC_INFO
+                WITH_EXCEPT_START
+                TO_BOOL
+                POP_JUMP_IF_TRUE         1 (to L27)
+                RERAISE                  2
+       L27:     POP_TOP
+       L28:     POP_EXCEPT
+                POP_TOP
+                POP_TOP
+                JUMP_FORWARD             3 (to L30)
+
+  --   L29:     COPY                     3
+                POP_EXCEPT
+                RERAISE                  1
+
+ 227   L30:     LOAD_DEREF              22 (rules)
+                LOAD_ATTR               13 (update_classification_task + NULL|self)
+
+ 228            LOAD_DEREF               1 (task_id)
+
+ 229            LOAD_CONST              23 ('error')
+
+ 230            LOAD_GLOBAL             24 (datetime)
+                LOAD_ATTR               26 (now)
+                PUSH_NULL
+                CALL                     0
+                LOAD_ATTR               29 (isoformat + NULL|self)
+                CALL                     0
+
+ 231            LOAD_GLOBAL             19 (str + NULL)
+                LOAD_FAST               21 (exc)
+                CALL                     1
+
+ 227            LOAD_CONST              26 (('status', 'end_time', 'error_message'))
+                CALL_KW                  4
+                POP_TOP
+
+ 233            LOAD_FAST                0 (flask_app)
+                LOAD_ATTR               33 (app_context + NULL|self)
+                CALL                     0
+                BEFORE_WITH
+       L31:     POP_TOP
+
+ 234            LOAD_FAST                0 (flask_app)
+                LOAD_ATTR               34 (logger)
+                LOAD_ATTR               37 (exception + NULL|self)
+                LOAD_CONST              27 ('Classification task failed: %s')
+                LOAD_DEREF               1 (task_id)
+                CALL                     2
+                POP_TOP
+
+ 233   L32:     LOAD_CONST               0 (None)
+                LOAD_CONST               0 (None)
+                LOAD_CONST               0 (None)
+                CALL                     2
+                POP_TOP
+       L33:     POP_EXCEPT
+                LOAD_CONST               0 (None)
+                STORE_FAST              21 (exc)
+                DELETE_FAST             21 (exc)
+                RETURN_CONST             0 (None)
+       L34:     PUSH_EXC_INFO
+                WITH_EXCEPT_START
+                TO_BOOL
+                POP_JUMP_IF_TRUE         1 (to L35)
+                RERAISE                  2
+       L35:     POP_TOP
+       L36:     POP_EXCEPT
+                POP_TOP
+                POP_TOP
+       L37:     POP_EXCEPT
+                LOAD_CONST               0 (None)
+                STORE_FAST              21 (exc)
+                DELETE_FAST             21 (exc)
+                RETURN_CONST             0 (None)
+
+  --   L38:     COPY                     3
+                POP_EXCEPT
+                RERAISE                  1
+       L39:     LOAD_CONST               0 (None)
+                STORE_FAST              21 (exc)
+                DELETE_FAST             21 (exc)
+                RERAISE                  1
+
+ 223   L40:     RERAISE                  0
+
+  --   L41:     COPY                     3
+                POP_EXCEPT
+                RERAISE                  1
+ExceptionTable:
+  L1 to L2 -> L22 [0]
+  L2 to L3 -> L14 [1] lasti
+  L3 to L4 -> L22 [0]
+  L5 to L6 -> L14 [1] lasti
+  L6 to L10 -> L22 [0]
+  L10 to L11 -> L18 [1] lasti
+  L11 to L13 -> L22 [0]
+  L14 to L16 -> L17 [3] lasti
+  L16 to L18 -> L22 [0]
+  L18 to L20 -> L21 [3] lasti
+  L20 to L22 -> L22 [0]
+  L22 to L23 -> L41 [1] lasti
+  L23 to L24 -> L39 [1] lasti
+  L24 to L25 -> L26 [2] lasti
+  L25 to L26 -> L39 [1] lasti
+  L26 to L28 -> L29 [4] lasti
+  L28 to L31 -> L39 [1] lasti
+  L31 to L32 -> L34 [2] lasti
+  L32 to L33 -> L39 [1] lasti
+  L34 to L36 -> L38 [4] lasti
+  L36 to L37 -> L39 [1] lasti
+  L38 to L39 -> L39 [1] lasti
+  L39 to L41 -> L41 [1] lasti
+
+Disassembly of <code object progress_callback at 0x000001609D027710, file "web_interface/classification_blueprint.py", line 169>:
+  --            COPY_FREE_VARS           2
+
+ 169            RESUME                   0
+
+ 170            LOAD_FAST                1 (total)
+                TO_BOOL
+                POP_JUMP_IF_FALSE       16 (to L1)
+                LOAD_GLOBAL              1 (int + NULL)
+                LOAD_FAST_LOAD_FAST      1 (processed, total)
+                BINARY_OP               11 (/)
+                LOAD_CONST               1 (100)
+                BINARY_OP                5 (*)
+                CALL                     1
+                JUMP_FORWARD             1 (to L2)
+        L1:     LOAD_CONST               2 (0)
+        L2:     STORE_FAST               3 (progress)
+
+ 171            LOAD_GLOBAL              2 (_tasks_lock)
+                BEFORE_WITH
+        L3:     POP_TOP
+
+ 172            LOAD_DEREF               5 (task_id)
+                LOAD_GLOBAL              4 (_classification_tasks)
+                CONTAINS_OP              0
+                POP_JUMP_IF_FALSE       73 (to L5)
+
+ 173            LOAD_GLOBAL              4 (_classification_tasks)
+                LOAD_DEREF               5 (task_id)
+                BINARY_SUBSCR
+                LOAD_ATTR                7 (update + NULL|self)
+
+ 175            LOAD_FAST                3 (progress)
+
+ 176            LOAD_GLOBAL              1 (int + NULL)
+                LOAD_FAST                0 (processed)
+                CALL                     1
+
+ 177            LOAD_GLOBAL              1 (int + NULL)
+                LOAD_FAST                1 (total)
+                CALL                     1
+
+ 178            LOAD_GLOBAL              9 (str + NULL)
+                LOAD_FAST                2 (current_file)
+                COPY                     1
+                TO_BOOL
+                POP_JUMP_IF_TRUE         2 (to L4)
+                POP_TOP
+                LOAD_CONST               3 ('')
+        L4:     CALL                     1
+
+ 179            LOAD_CONST               4 ('Обработка ')
+                LOAD_FAST                0 (processed)
+                FORMAT_SIMPLE
+                LOAD_CONST               5 ('/')
+                LOAD_FAST                1 (total)
+                FORMAT_SIMPLE
+                LOAD_CONST               6 (' файлов...')
+                BUILD_STRING             5
+
+ 174            LOAD_CONST               7 (('progress', 'processed_files', 'total_files', 'current_file', 'message'))
+                BUILD_CONST_KEY_MAP      5
+
+ 173            CALL                     1
+                POP_TOP
+
+ 171    L5:     LOAD_CONST               0 (None)
+                LOAD_CONST               0 (None)
+                LOAD_CONST               0 (None)
+                CALL                     2
+                POP_TOP
+
+ 182    L6:     LOAD_DEREF               4 (rules)
+                LOAD_ATTR               11 (update_classification_task + NULL|self)
+                LOAD_DEREF               5 (task_id)
+                LOAD_GLOBAL              1 (int + NULL)
+                LOAD_FAST                0 (processed)
+                CALL                     1
+                LOAD_GLOBAL              1 (int + NULL)
+                LOAD_FAST                1 (total)
+                CALL                     1
+                LOAD_CONST               8 (('processed_files', 'total_files'))
+                CALL_KW                  3
+                POP_TOP
+                RETURN_CONST             0 (None)
+
+ 171    L7:     PUSH_EXC_INFO
+                WITH_EXCEPT_START
+                TO_BOOL
+                POP_JUMP_IF_TRUE         1 (to L8)
+                RERAISE                  2
+        L8:     POP_TOP
+        L9:     POP_EXCEPT
+                POP_TOP
+                POP_TOP
+                JUMP_BACKWARD_NO_INTERRUPT 50 (to L6)
+
+  --   L10:     COPY                     3
+                POP_EXCEPT
+                RERAISE                  1
+ExceptionTable:
+  L3 to L5 -> L7 [1] lasti
+  L7 to L9 -> L10 [3] lasti

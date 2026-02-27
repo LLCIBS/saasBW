@@ -1,0 +1,593 @@
+﻿{% extends "base.html" %}
+
+{% block title %}Разбор звонков - Система разбора звонков{% endblock %}
+
+{% block content %}
+{% include 'partials/sidebar.html' %}
+<main class="col-md-9 col-lg-10 main-content">
+    <div class="p-4">
+        {% include 'classification/_nav.html' %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2">
+        <i class="fas fa-search me-2"></i>
+        Разбор звонков
+    </h1>
+</div>
+
+<!-- Фильтры -->
+<div class="card mb-4">
+    <div class="card-header">
+        <h5 class="card-title mb-0">
+            <i class="fas fa-filter me-2"></i>
+            Фильтры
+        </h5>
+    </div>
+    <div class="card-body">
+        <form method="GET" class="row g-3">
+            <div class="col-md-3">
+                <label for="category" class="form-label">Категория</label>
+                <select class="form-select" id="category" name="category">
+                    <option value="">Все категории</option>
+                    {% for num, name in categories.items() %}
+                        <option value="{{ num }}" {{ 'selected' if filters.category == num }}>
+                            {{ num }}. {{ name }}
+                        </option>
+                    {% endfor %}
+                </select>
+            </div>
+            
+            <div class="col-md-3">
+                <label for="station" class="form-label">Станция</label>
+                <select class="form-select" id="station" name="station">
+                    <option value="">Все станции</option>
+                    {% for station in stations %}
+                        <option value="{{ station }}" {{ 'selected' if filters.station == station }}>
+                            {{ station }}
+                        </option>
+                    {% endfor %}
+                </select>
+            </div>
+            
+            <div class="col-md-2">
+                <label for="date_from" class="form-label">Дата с</label>
+                <input type="date" class="form-control" id="date_from" name="date_from" value="{{ filters.date_from }}">
+            </div>
+            
+            <div class="col-md-2">
+                <label for="date_to" class="form-label">Дата по</label>
+                <input type="date" class="form-control" id="date_to" name="date_to" value="{{ filters.date_to }}">
+            </div>
+            
+            <div class="col-md-2 d-flex align-items-end">
+                <button type="submit" class="btn btn-primary btn-custom me-2">
+                    <i class="fas fa-search me-1"></i>
+                    Применить
+                </button>
+                <a href="{{ url_for('classification.review_page') }}" class="btn btn-outline-secondary btn-custom">
+                    <i class="fas fa-times me-1"></i>
+                    Сбросить
+                </a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Таблица звонков -->
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="card-title mb-0">
+            <i class="fas fa-list me-2"></i>
+            Список звонков
+            {% if pagination %}
+                <small class="text-muted">({{ pagination.total }} звонков)</small>
+            {% endif %}
+        </h5>
+    </div>
+    <div class="card-body p-0">
+        {% if calls %}
+            <div class="table-responsive">
+                <table class="table table-hover mb-0">
+                    <thead class="table-dark">
+                        <tr>
+                            <th class="sortable" data-sort="date" style="cursor: pointer;">
+                                Дата/Время
+                                <i class="fas fa-sort ms-1"></i>
+                            </th>
+                            <th class="sortable" data-sort="phone" style="cursor: pointer;">
+                                Телефон
+                                <i class="fas fa-sort ms-1"></i>
+                            </th>
+                            <th class="sortable" data-sort="station" style="cursor: pointer;">
+                                Станция
+                                <i class="fas fa-sort ms-1"></i>
+                            </th>
+                            <th class="sortable" data-sort="call_type" style="cursor: pointer;">
+                                Тип звонка
+                                <i class="fas fa-sort ms-1"></i>
+                            </th>
+                            <th class="sortable" data-sort="category" style="cursor: pointer;">
+                                Категория
+                                <i class="fas fa-sort ms-1"></i>
+                            </th>
+                            <th class="sortable" data-sort="group" style="cursor: pointer;">
+                                Группа
+                                <i class="fas fa-sort ms-1"></i>
+                            </th>
+                            <th>Обоснование</th>
+                            <th>Файл</th>
+                            <th>Автокоррекция</th>
+                            <th>Действия</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for call in calls %}
+                        <tr>
+                            <td>
+                                <div class="fw-bold">{{ call.Дата }}</div>
+                                <small class="text-muted">{{ call.Время }}</small>
+                            </td>
+                            <td>
+                                <span class="font-monospace">{{ call['Номер телефона'] }}</span>
+                            </td>
+                            <td>
+                                <span class="badge bg-secondary">{{ call.Станция }}</span>
+                            </td>
+                            <td>
+                                {% if call.get('Тип звонка') == 'Входящий' %}
+                                    <span class="badge bg-success">
+                                        <i class="fas fa-phone-alt me-1"></i>Входящий
+                                    </span>
+                                {% elif call.get('Тип звонка') == 'Исходящий' %}
+                                    <span class="badge bg-primary">
+                                        <i class="fas fa-phone me-1"></i>Исходящий
+                                    </span>
+                                {% else %}
+                                    <span class="badge bg-secondary">
+                                        <i class="fas fa-question me-1"></i>{{ call.get('Тип звонка', 'Не определен') }}
+                                    </span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <div class="fw-bold">{{ call.Результат }}. {{ call.category_name }}</div>
+                            </td>
+                            <td>
+                                {% if call.group == 'Не целевые' %}
+                                    <span class="category-badge category-not-target">{{ call.group }}</span>
+                                {% elif call.group == 'Целевые' %}
+                                    <span class="category-badge category-target">{{ call.group }}</span>
+                                {% else %}
+                                    <span class="category-badge category-reference">{{ call.group }}</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <div class="text-truncate" style="max-width: 200px;" title="{{ call.Обоснование }}">
+                                    {{ call.Обоснование }}
+                                </div>
+                            </td>
+                            <td>
+                                {% if call.get('Файл_источник') %}
+                                    <small class="text-muted">
+                                        <i class="fas fa-file me-1"></i>
+                                        {{ call.Файл_источник }}
+                                    </small>
+                                {% else %}
+                                    <span class="text-muted">—</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if call.get('Автокоррекция') %}
+                                    <div class="text-truncate" style="max-width: 200px;" title="{{ call.Автокоррекция }}">
+                                        <span class="badge bg-warning text-dark">
+                                            <i class="fas fa-robot me-1"></i>
+                                            {{ call.Автокоррекция }}
+                                        </span>
+                                    </div>
+                                {% else %}
+                                    <span class="text-muted">—</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <div class="btn-group btn-group-sm">
+                                    <a href="{{ url_for('classification.call_detail_page', call_id=loop.index0 + (pagination.page - 1) * pagination.per_page, 
+                                                       category=filters.category, station=filters.station, 
+                                                       date_from=filters.date_from, date_to=filters.date_to, 
+                                                       page=pagination.page, sort=filters.sort, order=filters.order) }}" 
+                                       class="btn btn-outline-primary" title="Подробно">
+                                        <i class="fas fa-eye"></i>
+                                    </a>
+                                    <button class="btn btn-outline-success" 
+                                            onclick="reclassifyCall({{ loop.index0 + (pagination.page - 1) * pagination.per_page }})" 
+                                            title="Повторная классификация">
+                                        <i class="fas fa-redo"></i>
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            
+            <!-- Пагинация -->
+            {% if pagination and pagination.pages > 1 %}
+                <div class="card-footer">
+                    <nav aria-label="Навигация по страницам">
+                        <ul class="pagination justify-content-center mb-0">
+                            {% if pagination.has_prev %}
+                                <li class="page-item">
+                                    <a class="page-link" href="{{ url_for('classification.review_page', page=pagination.page-1, **filters) }}">
+                                        <i class="fas fa-chevron-left"></i>
+                                    </a>
+                                </li>
+                            {% endif %}
+                            
+                            {% for page_num in range(1, pagination.pages + 1) %}
+                                {% if page_num == pagination.page %}
+                                    <li class="page-item active">
+                                        <span class="page-link">{{ page_num }}</span>
+                                    </li>
+                                {% elif page_num <= 3 or page_num > pagination.pages - 3 or (page_num >= pagination.page - 1 and page_num <= pagination.page + 1) %}
+                                    <li class="page-item">
+                                        <a class="page-link" href="{{ url_for('classification.review_page', page=page_num, **filters) }}">
+                                            {{ page_num }}
+                                        </a>
+                                    </li>
+                                {% elif page_num == 4 or page_num == pagination.pages - 3 %}
+                                    <li class="page-item disabled">
+                                        <span class="page-link">...</span>
+                                    </li>
+                                {% endif %}
+                            {% endfor %}
+                            
+                            {% if pagination.has_next %}
+                                <li class="page-item">
+                                    <a class="page-link" href="{{ url_for('classification.review_page', page=pagination.page+1, **filters) }}">
+                                        <i class="fas fa-chevron-right"></i>
+                                    </a>
+                                </li>
+                            {% endif %}
+                        </ul>
+                    </nav>
+                </div>
+            {% endif %}
+        {% else %}
+            <div class="text-center py-5">
+                <i class="fas fa-search fa-3x text-muted mb-3"></i>
+                <h5 class="text-muted">Звонки не найдены</h5>
+                <p class="text-muted">Попробуйте изменить параметры фильтрации или загрузить файл с результатами классификации.</p>
+                <a href="{{ url_for('classification.classify_page') }}" class="btn btn-primary btn-custom">
+                    <i class="fas fa-upload me-2"></i>
+                    Загрузить файл
+                </a>
+            </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Модальное окно для результата повторной классификации -->
+<div class="modal fade" id="reclassifyModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="fas fa-redo me-2"></i>
+                    Результат повторной классификации
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div id="reclassifyContent">
+                    <!-- Контент будет загружен динамически -->
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                <button type="button" class="btn btn-primary" id="saveReclassificationBtn" onclick="saveReclassification()">
+                    <i class="fas fa-save me-1"></i>
+                    Сохранить изменения
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+    </div>
+</main>
+    </div>
+</main>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Подсветка активных фильтров
+document.addEventListener('DOMContentLoaded', function() {
+    const filters = {{ filters|tojson }};
+    
+    // Если есть активные фильтры, подсвечиваем карточку фильтров
+    const hasActiveFilters = Object.values(filters).some(value => value !== '');
+    if (hasActiveFilters) {
+        document.querySelector('.card').classList.add('border-primary');
+    }
+});
+
+// Глобальные переменные для хранения данных повторной классификации
+let currentReclassificationData = null;
+let currentCallId = null;
+
+// Функция повторной классификации
+function reclassifyCall(callId) {
+    currentCallId = callId;
+    
+    // Показываем индикатор загрузки
+    const modal = new bootstrap.Modal(document.getElementById('reclassifyModal'));
+    const content = document.getElementById('reclassifyContent');
+    const saveBtn = document.getElementById('saveReclassificationBtn');
+    
+    // Скрываем кнопку сохранения пока идет загрузка
+    saveBtn.style.display = 'none';
+    
+    content.innerHTML = `
+        <div class="text-center py-4">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Загрузка...</span>
+            </div>
+            <p class="mt-3 text-muted">Выполняется повторная классификация...</p>
+        </div>
+    `;
+    
+    modal.show();
+    
+    // Отправляем запрос на повторную классификацию
+    fetch('/classification/api/reclassify-call', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            call_id: callId
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            currentReclassificationData = data.result;
+            displayReclassificationResult(data.result);
+            saveBtn.style.display = 'inline-block';
+        } else {
+            content.innerHTML = `
+                <div class="alert alert-danger">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    Ошибка: ${data.message}
+                </div>
+            `;
+            saveBtn.style.display = 'none';
+        }
+    })
+    .catch(error => {
+        content.innerHTML = `
+            <div class="alert alert-danger">
+                <i class="fas fa-exclamation-triangle me-2"></i>
+                Ошибка сети: ${error.message}
+            </div>
+        `;
+        saveBtn.style.display = 'none';
+    });
+}
+
+// Функция сохранения изменений повторной классификации
+function saveReclassification() {
+    if (!currentReclassificationData || currentCallId === null) {
+        showAlert('error', 'Нет данных для сохранения');
+        return;
+    }
+    
+    const saveBtn = document.getElementById('saveReclassificationBtn');
+    const originalText = saveBtn.innerHTML;
+    
+    // Показываем индикатор загрузки на кнопке
+    saveBtn.disabled = true;
+    saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Сохранение...';
+    
+    // Отправляем запрос на сохранение
+    fetch('/classification/api/save-reclassification', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            call_id: currentCallId,
+            new_category: currentReclassificationData.category_num,
+            new_reasoning: currentReclassificationData.reasoning,
+            new_main_group: currentReclassificationData.main_group,
+            auto_correction: currentReclassificationData.auto_correction || ''
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showAlert('success', 'Изменения успешно сохранены!');
+            // Закрываем модальное окно
+            const modal = bootstrap.Modal.getInstance(document.getElementById('reclassifyModal'));
+            modal.hide();
+            // Перезагружаем страницу для отображения изменений
+            setTimeout(() => {
+                window.location.reload();
+            }, 1000);
+        } else {
+            showAlert('error', `Ошибка сохранения: ${data.message}`);
+        }
+    })
+    .catch(error => {
+        showAlert('error', `Ошибка сети: ${error.message}`);
+    })
+    .finally(() => {
+        // Восстанавливаем кнопку
+        saveBtn.disabled = false;
+        saveBtn.innerHTML = originalText;
+    });
+}
+
+// Функция отображения результата повторной классификации
+function displayReclassificationResult(result) {
+    const content = document.getElementById('reclassifyContent');
+    
+    const oldResult = result.old_result;
+    const newResult = result;
+    
+    const isChanged = oldResult.category_num !== newResult.category_num;
+    const changeClass = isChanged ? 'text-warning' : 'text-success';
+    const changeIcon = isChanged ? 'fa-exchange-alt' : 'fa-check';
+    
+    content.innerHTML = `
+        <div class="row">
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header bg-secondary text-white">
+                        <h6 class="mb-0">
+                            <i class="fas fa-history me-2"></i>
+                            Предыдущий результат
+                        </h6>
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-2">
+                            <strong>Категория:</strong>
+                            <span class="badge bg-secondary ms-2">${oldResult.category_num}. ${oldResult.category_name}</span>
+                        </div>
+                        <div class="mb-2">
+                            <strong>Обоснование:</strong>
+                            <p class="mt-1 mb-0">${oldResult.reasoning || '—'}</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header bg-primary text-white">
+                        <h6 class="mb-0">
+                            <i class="fas ${changeIcon} me-2"></i>
+                            Новый результат
+                            ${isChanged ? '<span class="badge bg-warning text-dark ms-2">ИЗМЕНЕНО</span>' : '<span class="badge bg-success ms-2">БЕЗ ИЗМЕНЕНИЙ</span>'}
+                        </h6>
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-2">
+                            <strong>Категория:</strong>
+                            <span class="badge bg-primary ms-2">${newResult.category_num}. ${newResult.category_name}</span>
+                        </div>
+                        <div class="mb-2">
+                            <strong>Группа:</strong>
+                            <span class="badge bg-info ms-2">${newResult.main_group}</span>
+                        </div>
+                        <div class="mb-2">
+                            <strong>Обоснование:</strong>
+                            <p class="mt-1 mb-0">${newResult.reasoning}</p>
+                        </div>
+                        ${newResult.auto_correction ? `
+                            <div class="mb-2">
+                                <strong>Автокоррекция:</strong>
+                                <div class="alert alert-warning mt-1 mb-0">
+                                    <i class="fas fa-robot me-1"></i>
+                                    ${newResult.auto_correction}
+                                </div>
+                            </div>
+                        ` : ''}
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        ${isChanged ? `
+            <div class="alert alert-info mt-3">
+                <i class="fas fa-info-circle me-2"></i>
+                <strong>Изменение обнаружено!</strong> Категория звонка изменилась с "${oldResult.category_name}" на "${newResult.category_name}".
+                Это может быть связано с обновленными правилами классификации или промптами.
+            </div>
+        ` : `
+            <div class="alert alert-success mt-3">
+                <i class="fas fa-check-circle me-2"></i>
+                <strong>Результат не изменился.</strong> Классификация остается прежней, что указывает на стабильность правил.
+            </div>
+        `}
+        
+        <div class="alert alert-info mt-3">
+            <i class="fas fa-info-circle me-2"></i>
+            <strong>Готово к сохранению:</strong> ${isChanged ? 'Нажмите "Сохранить изменения" для применения новой классификации к файлу результатов.' : 'Результат не изменился, но вы все равно можете сохранить текущее состояние.'}
+        </div>
+    `;
+}
+
+// Функция для показа уведомлений
+function showAlert(type, message) {
+    const alertClass = type === 'success' ? 'alert-success' : 'alert-danger';
+    const icon = type === 'success' ? 'fa-check-circle' : 'fa-exclamation-triangle';
+    
+    const alertHtml = `
+        <div class="alert ${alertClass} alert-dismissible fade show" role="alert">
+            <i class="fas ${icon} me-2"></i>
+            ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    `;
+    
+    const container = document.querySelector('.container-fluid');
+    container.insertAdjacentHTML('afterbegin', alertHtml);
+    
+    // Автоматически скрываем через 5 секунд
+    setTimeout(() => {
+        const alert = container.querySelector('.alert');
+        if (alert) {
+            bootstrap.Alert.getOrCreateInstance(alert).close();
+        }
+    }, 5000);
+}
+
+// Функция сортировки таблицы
+function sortTable(column) {
+    const urlParams = new URLSearchParams(window.location.search);
+    const currentSort = urlParams.get('sort');
+    const currentOrder = urlParams.get('order');
+    
+    // Определяем направление сортировки
+    let newOrder = 'asc';
+    if (currentSort === column && currentOrder === 'asc') {
+        newOrder = 'desc';
+    }
+    
+    // Обновляем параметры URL
+    urlParams.set('sort', column);
+    urlParams.set('order', newOrder);
+    
+    // Переходим на новую страницу с параметрами сортировки
+    window.location.href = `${window.location.pathname}?${urlParams.toString()}`;
+}
+
+// Инициализация сортировки
+document.addEventListener('DOMContentLoaded', function() {
+    // Добавляем обработчики кликов для сортируемых столбцов
+    document.querySelectorAll('.sortable').forEach(header => {
+        header.addEventListener('click', function() {
+            const column = this.getAttribute('data-sort');
+            sortTable(column);
+        });
+    });
+    
+    // Обновляем иконки сортировки на основе текущих параметров
+    const urlParams = new URLSearchParams(window.location.search);
+    const currentSort = urlParams.get('sort');
+    const currentOrder = urlParams.get('order');
+    
+    if (currentSort) {
+        const header = document.querySelector(`[data-sort="${currentSort}"]`);
+        if (header) {
+            const icon = header.querySelector('i');
+            if (currentOrder === 'asc') {
+                icon.className = 'fas fa-sort-up ms-1';
+            } else {
+                icon.className = 'fas fa-sort-down ms-1';
+            }
+        }
+    }
+});
+</script>
+{% endblock %}
+

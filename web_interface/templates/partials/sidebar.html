@@ -60,6 +60,13 @@
                 </a>
             </li>
             <li class="nav-item">
+                <a class="nav-link {{ 'active' if active_page and active_page.startswith('classification_') else '' }}"
+                   href="/classification" title="Классификация звонков">
+                    <i class="fas fa-tags"></i>
+                    <span>Классификация</span>
+                </a>
+            </li>
+            <li class="nav-item">
                 <a class="nav-link {{ 'active' if active_page == 'transfers' else '' }}" href="/transfers" title="Переводы вызовов">
                     <i class="fas fa-phone-volume"></i>
                     <span>Переводы</span>

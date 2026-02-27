@@ -1,0 +1,738 @@
+﻿{% extends "base.html" %}
+
+{% block title %}Детали звонка - Система разбора звонков{% endblock %}
+
+{% block content %}
+{% include 'partials/sidebar.html' %}
+<main class="col-md-9 col-lg-10 main-content">
+    <div class="p-4">
+        {% include 'classification/_nav.html' %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2">
+        <i class="fas fa-phone me-2"></i>
+        Детали звонка
+    </h1>
+    <div class="btn-toolbar mb-2 mb-md-0">
+        <div class="btn-group me-2">
+            <a href="{{ url_for('classification.review_page', category=request.args.get('category', ''), 
+                               station=request.args.get('station', ''), 
+                               date_from=request.args.get('date_from', ''), 
+                               date_to=request.args.get('date_to', ''), 
+                               page=request.args.get('page', 1)) }}" 
+               class="btn btn-outline-secondary btn-custom">
+                <i class="fas fa-arrow-left me-1"></i>
+                Назад к списку
+            </a>
+            <button class="btn btn-outline-success btn-custom" onclick="reclassifyCall({{ call.call_id }})">
+                <i class="fas fa-redo me-1"></i>
+                Повторная классификация
+            </button>
+            <button class="btn btn-outline-success btn-custom" 
+                    onclick="markAsCorrect({{ call.call_id }})"
+                    id="markCorrectBtn">
+                <i class="fas fa-check-circle me-1"></i>
+                Классификация верна ✓
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Основная информация о звонке -->
+<div class="row mb-4">
+    <div class="col-lg-8">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-info-circle me-2"></i>
+                    Информация о звонке
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <table class="table table-borderless">
+                            <tr>
+                                <td><strong>Дата:</strong></td>
+                                <td>{{ call.Дата }}</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Время:</strong></td>
+                                <td>{{ call.Время }}</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Телефон:</strong></td>
+                                <td><span class="font-monospace">{{ call['Номер телефона'] }}</span></td>
+                            </tr>
+                            <tr>
+                                <td><strong>Станция:</strong></td>
+                                <td><span class="badge bg-secondary">{{ call.Станция }}</span></td>
+                            </tr>
+                        </table>
+                    </div>
+                    <div class="col-md-6">
+                        <table class="table table-borderless">
+                            <tr>
+                                <td><strong>Категория:</strong></td>
+                                <td>
+                                    <div class="fw-bold">{{ call.Результат }}. {{ call.category_name }}</div>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td><strong>Группа:</strong></td>
+                                <td>
+                                    {% if call.group == 'Не целевые' %}
+                                        <span class="category-badge category-not-target">{{ call.group }}</span>
+                                    {% elif call.group == 'Целевые' %}
+                                        <span class="category-badge category-target">{{ call.group }}</span>
+                                    {% else %}
+                                        <span class="category-badge category-reference">{{ call.group }}</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            <tr>
+                                <td><strong>Статус записи:</strong></td>
+                                <td>
+                                    {% if call['Записан/Не записан'] == 'Записан' %}
+                                        <span class="badge bg-success">{{ call['Записан/Не записан'] }}</span>
+                                    {% else %}
+                                        <span class="badge bg-secondary">{{ call['Записан/Не записан'] }}</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            <tr>
+                                <td><strong>Файл:</strong></td>
+                                <td><code>{{ call.Файл }}</code></td>
+                            </tr>
+                        </table>
+                    </div>
+                </div>
+                
+                <hr>
+                
+                <h6><i class="fas fa-comment me-2"></i>Обоснование ИИ:</h6>
+                <div class="alert alert-light">
+                    {{ call.Обоснование }}
+                </div>
+                
+                {% if call.get('Автокоррекция') %}
+                <h6><i class="fas fa-robot me-2"></i>Автоматическая корректировка:</h6>
+                <div class="alert alert-warning">
+                    <i class="fas fa-info-circle me-2"></i>
+                    {{ call.Автокоррекция }}
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    
+    <!-- История клиента -->
+    <div class="col-lg-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-history me-2"></i>
+                    История клиента
+                </h5>
+            </div>
+            <div class="card-body">
+                {% if client_history|length > 0 %}
+                    <div class="timeline">
+                        {% for hist_call in client_history %}
+                            <div class="history-item {% if loop.last %}border-0{% endif %}">
+                                <div class="d-flex justify-content-between">
+                                    <strong>{{ hist_call.date }} {{ hist_call.time }}</strong>
+                                    <span class="badge bg-info">{{ hist_call.station }}</span>
+                                </div>
+                                <div class="text-primary fw-bold">{{ hist_call.category }}</div>
+                                <small class="text-muted">{{ hist_call.reasoning }}</small>
+                                {% if hist_call.get('file_source') %}
+                                    <div class="mt-1">
+                                        <small class="text-muted">
+                                            <i class="fas fa-file me-1"></i>
+                                            {{ hist_call.file_source }}
+                                        </small>
+                                    </div>
+                                {% endif %}
+                            </div>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <div class="text-center text-muted">
+                        <i class="fas fa-user-plus fa-2x mb-2"></i>
+                        <p>Первый звонок клиента</p>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Транскрипция -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-file-alt me-2"></i>
+                    Транскрипция звонка
+                </h5>
+            </div>
+            <div class="card-body">
+                {% if transcription and transcription != "Файл транскрипции не найден" and transcription != "Ошибка чтения файла" %}
+                    <div class="transcription-text">
+                        {{ transcription }}
+                    </div>
+                {% else %}
+                    <div class="alert alert-warning">
+                        <i class="fas fa-exclamation-triangle me-2"></i>
+                        {{ transcription or "Транскрипция недоступна" }}
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Форма корректировки -->
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-edit me-2"></i>
+                    Корректировка классификации
+                </h5>
+            </div>
+            <div class="card-body correction-form">
+                <form id="correctionForm">
+                    <div class="row">
+                        <div class="col-md-4">
+                            <label for="newCategory" class="form-label">Правильная категория</label>
+                            <select class="form-select" id="newCategory" name="new_category" required>
+                                <option value="">Выберите категорию</option>
+                                {% for num, name in categories.items() %}
+                                    <option value="{{ num }}" {{ 'selected' if num == call.Результат|string }}>
+                                        {{ num }}. {{ name }}
+                                    </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-8">
+                            <label for="newReasoning" class="form-label">Правильное обоснование</label>
+                            <textarea class="form-control" id="newReasoning" name="new_reasoning" rows="2" 
+                                    placeholder="Объясните, почему эта категория правильная..." required></textarea>
+                        </div>
+                    </div>
+                    
+                    <div class="row mt-3">
+                        <div class="col-12">
+                            <label for="operatorComment" class="form-label">Комментарий оператора (необязательно)</label>
+                            <textarea class="form-control" id="operatorComment" name="operator_comment" rows="2"
+                                    placeholder="Дополнительные пояснения или контекст..."></textarea>
+                        </div>
+                    </div>
+                    
+                    <div class="row mt-3">
+                        <div class="col-12">
+                            <button type="submit" class="btn btn-success btn-custom me-2">
+                                <i class="fas fa-save me-1"></i>
+                                Сохранить корректировку
+                            </button>
+                            <button type="button" class="btn btn-outline-secondary btn-custom" onclick="resetForm()">
+                                <i class="fas fa-undo me-1"></i>
+                                Сбросить
+                            </button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно подтверждения -->
+<div class="modal fade" id="confirmModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Подтверждение корректировки</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>Вы уверены, что хотите изменить классификацию этого звонка?</p>
+                <div class="alert alert-info">
+                    <strong>Было:</strong> <span id="oldCategory"></span><br>
+                    <strong>Станет:</strong> <span id="newCategoryText"></span>
+                </div>
+                <p><small class="text-muted">Эта информация будет добавлена в базу обучающих примеров для улучшения работы ИИ.</small></p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                <button type="button" class="btn btn-success" onclick="submitCorrection()">Подтвердить</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно для результата повторной классификации -->
+<div class="modal fade" id="reclassifyModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="fas fa-redo me-2"></i>
+                    Результат повторной классификации
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div id="reclassifyContent">
+                    <!-- Контент будет загружен динамически -->
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                <button type="button" class="btn btn-primary" id="saveReclassificationBtn" onclick="saveReclassification()">
+                    <i class="fas fa-save me-1"></i>
+                    Сохранить изменения
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно для подтверждения правильности -->
+<div class="modal fade" id="markCorrectModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-success text-white">
+                <h5 class="modal-title">
+                    <i class="fas fa-check-circle me-2"></i>
+                    Подтверждение правильности
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>Вы уверены, что классификация <strong>{{ call.category_name }}</strong> правильная?</p>
+                
+                <div class="mb-3">
+                    <label for="confidenceLevel" class="form-label">
+                        Уверенность: <span id="confidenceValue" class="badge bg-info">5</span> из 10
+                    </label>
+                    <input type="range" class="form-range" id="confidenceLevel" 
+                           min="1" max="10" value="5"
+                           oninput="document.getElementById('confidenceValue').textContent = this.value">
+                    <div class="d-flex justify-content-between">
+                        <small class="text-muted">Не уверен</small>
+                        <small class="text-muted">Полностью уверен</small>
+                    </div>
+                </div>
+                
+                <div class="mb-3">
+                    <label for="correctComment" class="form-label">Комментарий (необязательно):</label>
+                    <textarea class="form-control" id="correctComment" rows="3"
+                              placeholder="Добавьте комментарий, если хотите..."></textarea>
+                </div>
+                
+                <div class="alert alert-info">
+                    <i class="fas fa-info-circle me-2"></i>
+                    <small>Ваше подтверждение поможет системе улучшить классификацию в будущем.</small>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                <button type="button" class="btn btn-success" onclick="confirmMarkAsCorrect({{ call.call_id }})">
+                    <i class="fas fa-check me-1"></i>
+                    Подтвердить
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+    </div>
+</main>
+    </div>
+</main>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let correctionData = {};
+
+document.getElementById('correctionForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    const newCategory = document.getElementById('newCategory').value;
+    const newReasoning = document.getElementById('newReasoning').value;
+    const operatorComment = document.getElementById('operatorComment').value;
+    
+    if (!newCategory || !newReasoning) {
+        alert('Пожалуйста, заполните обязательные поля');
+        return;
+    }
+    
+    // Подготавливаем данные для отправки
+    correctionData = {
+        call_id: {{ call.call_id }},
+        new_category: newCategory,
+        new_reasoning: newReasoning,
+        operator_comment: operatorComment,
+        category: '{{ request.args.get('category', '') }}',
+        station: '{{ request.args.get('station', '') }}',
+        date_from: '{{ request.args.get('date_from', '') }}',
+        date_to: '{{ request.args.get('date_to', '') }}',
+        sort: '{{ request.args.get('sort', '') }}',
+        order: '{{ request.args.get('order', 'asc') }}'
+    };
+    
+    // Обновляем модальное окно
+    const categories = {{ categories|tojson }};
+    document.getElementById('oldCategory').textContent = '{{ call.Результат }}. {{ call.category_name }}';
+    document.getElementById('newCategoryText').textContent = newCategory + '. ' + categories[newCategory];
+    
+    // Показываем модальное окно
+    new bootstrap.Modal(document.getElementById('confirmModal')).show();
+});
+
+function submitCorrection() {
+    fetch('/classification/classification/api/save-reclassification', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(correctionData)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Закрываем модальное окно
+            bootstrap.Modal.getInstance(document.getElementById('confirmModal')).hide();
+            
+            // Показываем успешное сообщение
+            showAlert('success', 'Корректировка успешно сохранена!');
+            
+            // Сбрасываем форму
+            resetForm();
+            
+            // Можно обновить страницу или показать обновленные данные
+            setTimeout(() => {
+                location.reload();
+            }, 2000);
+        } else {
+            showAlert('error', 'Ошибка: ' + data.message);
+        }
+    })
+    .catch(error => {
+        console.error('Ошибка:', error);
+        showAlert('error', 'Произошла ошибка при сохранении');
+    });
+}
+
+function resetForm() {
+    document.getElementById('correctionForm').reset();
+    document.getElementById('newCategory').value = '{{ call.Результат }}';
+}
+
+function showAlert(type, message) {
+    const alertClass = type === 'success' ? 'alert-success' : 'alert-danger';
+    const alertHtml = `
+        <div class="alert ${alertClass} alert-dismissible fade show" role="alert">
+            ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    `;
+    
+    // Вставляем alert в начало контента
+    const content = document.querySelector('.main-content .p-4') || document.body;
+    content.insertAdjacentHTML('afterbegin', alertHtml);
+}
+
+// Инициализация - устанавливаем текущую категорию по умолчанию
+document.addEventListener('DOMContentLoaded', function() {
+    document.getElementById('newCategory').value = '{{ call.Результат }}';
+});
+
+// Глобальные переменные для хранения данных повторной классификации
+let currentReclassificationData = null;
+let currentCallId = null;
+
+// Функция повторной классификации
+function reclassifyCall(callId) {
+    currentCallId = callId;
+    
+    // Показываем индикатор загрузки
+    const modal = new bootstrap.Modal(document.getElementById('reclassifyModal'));
+    const content = document.getElementById('reclassifyContent');
+    const saveBtn = document.getElementById('saveReclassificationBtn');
+    
+    // Скрываем кнопку сохранения пока идет загрузка
+    saveBtn.style.display = 'none';
+    
+    content.innerHTML = `
+        <div class="text-center py-4">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Загрузка...</span>
+            </div>
+            <p class="mt-3 text-muted">Выполняется повторная классификация...</p>
+        </div>
+    `;
+    
+    modal.show();
+    
+    // Отправляем запрос на повторную классификацию
+    fetch('/classification/api/reclassify-call', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            call_id: callId,
+            category: '{{ request.args.get('category', '') }}',
+            station: '{{ request.args.get('station', '') }}',
+            date_from: '{{ request.args.get('date_from', '') }}',
+            date_to: '{{ request.args.get('date_to', '') }}',
+            sort: '{{ request.args.get('sort', '') }}',
+            order: '{{ request.args.get('order', 'asc') }}'
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            currentReclassificationData = data.result;
+            displayReclassificationResult(data.result);
+            saveBtn.style.display = 'inline-block';
+        } else {
+            content.innerHTML = `
+                <div class="alert alert-danger">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    Ошибка: ${data.message}
+                </div>
+            `;
+            saveBtn.style.display = 'none';
+        }
+    })
+    .catch(error => {
+        content.innerHTML = `
+            <div class="alert alert-danger">
+                <i class="fas fa-exclamation-triangle me-2"></i>
+                Ошибка сети: ${error.message}
+            </div>
+        `;
+        saveBtn.style.display = 'none';
+    });
+}
+
+// Функция сохранения изменений повторной классификации
+function saveReclassification() {
+    if (!currentReclassificationData || currentCallId === null) {
+        showAlert('error', 'Нет данных для сохранения');
+        return;
+    }
+    
+    const saveBtn = document.getElementById('saveReclassificationBtn');
+    const originalText = saveBtn.innerHTML;
+    
+    // Показываем индикатор загрузки на кнопке
+    saveBtn.disabled = true;
+    saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Сохранение...';
+    
+    // Отправляем запрос на сохранение
+    fetch('/classification/api/save-reclassification', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            call_id: currentCallId,
+            new_category: currentReclassificationData.category_num,
+            new_reasoning: currentReclassificationData.reasoning,
+            new_main_group: currentReclassificationData.main_group,
+            auto_correction: currentReclassificationData.auto_correction || '',
+            category: '{{ request.args.get('category', '') }}',
+            station: '{{ request.args.get('station', '') }}',
+            date_from: '{{ request.args.get('date_from', '') }}',
+            date_to: '{{ request.args.get('date_to', '') }}',
+            sort: '{{ request.args.get('sort', '') }}',
+            order: '{{ request.args.get('order', 'asc') }}'
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showAlert('success', 'Изменения успешно сохранены!');
+            // Закрываем модальное окно
+            const modal = bootstrap.Modal.getInstance(document.getElementById('reclassifyModal'));
+            modal.hide();
+            // Перезагружаем страницу для отображения изменений
+            setTimeout(() => {
+                window.location.reload();
+            }, 1000);
+        } else {
+            showAlert('error', `Ошибка сохранения: ${data.message}`);
+        }
+    })
+    .catch(error => {
+        showAlert('error', `Ошибка сети: ${error.message}`);
+    })
+    .finally(() => {
+        // Восстанавливаем кнопку
+        saveBtn.disabled = false;
+        saveBtn.innerHTML = originalText;
+    });
+}
+
+// Функция отображения результата повторной классификации
+function displayReclassificationResult(result) {
+    const content = document.getElementById('reclassifyContent');
+    
+    const oldResult = result.old_result;
+    const newResult = result;
+    
+    const isChanged = oldResult.category_num !== newResult.category_num;
+    const changeClass = isChanged ? 'text-warning' : 'text-success';
+    const changeIcon = isChanged ? 'fa-exchange-alt' : 'fa-check';
+    
+    content.innerHTML = `
+        <div class="row">
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header bg-secondary text-white">
+                        <h6 class="mb-0">
+                            <i class="fas fa-history me-2"></i>
+                            Предыдущий результат
+                        </h6>
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-2">
+                            <strong>Категория:</strong>
+                            <span class="badge bg-secondary ms-2">${oldResult.category_num}. ${oldResult.category_name}</span>
+                        </div>
+                        <div class="mb-2">
+                            <strong>Обоснование:</strong>
+                            <p class="mt-1 mb-0">${oldResult.reasoning || '—'}</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header bg-primary text-white">
+                        <h6 class="mb-0">
+                            <i class="fas ${changeIcon} me-2"></i>
+                            Новый результат
+                            ${isChanged ? '<span class="badge bg-warning text-dark ms-2">ИЗМЕНЕНО</span>' : '<span class="badge bg-success ms-2">БЕЗ ИЗМЕНЕНИЙ</span>'}
+                        </h6>
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-2">
+                            <strong>Категория:</strong>
+                            <span class="badge bg-primary ms-2">${newResult.category_num}. ${newResult.category_name}</span>
+                        </div>
+                        <div class="mb-2">
+                            <strong>Группа:</strong>
+                            <span class="badge bg-info ms-2">${newResult.main_group}</span>
+                        </div>
+                        <div class="mb-2">
+                            <strong>Обоснование:</strong>
+                            <p class="mt-1 mb-0">${newResult.reasoning}</p>
+                        </div>
+                        ${newResult.auto_correction ? `
+                            <div class="mb-2">
+                                <strong>Автокоррекция:</strong>
+                                <div class="alert alert-warning mt-1 mb-0">
+                                    <i class="fas fa-robot me-1"></i>
+                                    ${newResult.auto_correction}
+                                </div>
+                            </div>
+                        ` : ''}
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        ${isChanged ? `
+            <div class="alert alert-info mt-3">
+                <i class="fas fa-info-circle me-2"></i>
+                <strong>Изменение обнаружено!</strong> Категория звонка изменилась с "${oldResult.category_name}" на "${newResult.category_name}".
+                Это может быть связано с обновленными правилами классификации или промптами.
+            </div>
+        ` : `
+            <div class="alert alert-success mt-3">
+                <i class="fas fa-check-circle me-2"></i>
+                <strong>Результат не изменился.</strong> Классификация остается прежней, что указывает на стабильность правил.
+            </div>
+        `}
+        
+        <div class="alert alert-info mt-3">
+            <i class="fas fa-info-circle me-2"></i>
+            <strong>Готово к сохранению:</strong> ${isChanged ? 'Нажмите "Сохранить изменения" для применения новой классификации к файлу результатов.' : 'Результат не изменился, но вы все равно можете сохранить текущее состояние.'}
+        </div>
+    `;
+}
+
+// Функция для открытия модального окна подтверждения правильности
+function markAsCorrect(callId) {
+    const modal = new bootstrap.Modal(document.getElementById('markCorrectModal'));
+    modal.show();
+}
+
+// Функция подтверждения правильности классификации
+function confirmMarkAsCorrect(callId) {
+    const confidence = parseInt(document.getElementById('confidenceLevel').value);
+    const comment = document.getElementById('correctComment').value;
+    
+    const params = new URLSearchParams(window.location.search);
+    
+    const confirmBtn = event.target;
+    const originalText = confirmBtn.innerHTML;
+    confirmBtn.disabled = true;
+    confirmBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Сохранение...';
+    
+    fetch('/classification/api/mark-as-correct', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            call_id: callId,
+            category: params.get('category') || '',
+            station: params.get('station') || '',
+            date_from: params.get('date_from') || '',
+            date_to: params.get('date_to') || '',
+            confidence: confidence,
+            comment: comment
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Закрываем модальное окно
+            const modal = bootstrap.Modal.getInstance(document.getElementById('markCorrectModal'));
+            modal.hide();
+            
+            // Меняем кнопку на "отмечено"
+            const btn = document.getElementById('markCorrectBtn');
+            btn.classList.remove('btn-outline-success');
+            btn.classList.add('btn-success');
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-check-circle me-1"></i> Отмечено как правильная ✓';
+            
+            // Показываем уведомление
+            showAlert('success', data.message || 'Классификация отмечена как правильная! Спасибо за обратную связь.');
+        } else {
+            showAlert('error', data.message || 'Ошибка при сохранении');
+            confirmBtn.disabled = false;
+            confirmBtn.innerHTML = originalText;
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showAlert('error', 'Ошибка соединения с сервером');
+        confirmBtn.disabled = false;
+        confirmBtn.innerHTML = originalText;
+    });
+}
+</script>
+{% endblock %}
+

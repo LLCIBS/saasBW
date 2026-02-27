@@ -1,0 +1,436 @@
+ 237            RESUME                   0
+
+ 238            LOAD_GLOBAL              0 (current_user)
+                LOAD_ATTR                2 (id)
+                FORMAT_SIMPLE
+                LOAD_CONST               1 ('_')
+                LOAD_GLOBAL              5 (int + NULL)
+                LOAD_GLOBAL              6 (time)
+                LOAD_ATTR                6 (time)
+                PUSH_NULL
+                CALL                     0
+                LOAD_CONST               2 (1000)
+                BINARY_OP                5 (*)
+                CALL                     1
+                FORMAT_SIMPLE
+                BUILD_STRING             3
+                STORE_FAST               3 (task_id)
+
+ 239            LOAD_GLOBAL              9 (str + NULL)
+                LOAD_GLOBAL             11 (_rules_db_path + NULL)
+                CALL                     0
+                CALL                     1
+                STORE_FAST               4 (rules_db_path)
+
+ 240            LOAD_GLOBAL              9 (str + NULL)
+                LOAD_GLOBAL             13 (_training_db_path + NULL)
+                CALL                     0
+                CALL                     1
+                STORE_FAST               5 (training_db_path)
+
+ 241            LOAD_GLOBAL              9 (str + NULL)
+                LOAD_GLOBAL             15 (_uploads_dir + NULL)
+                CALL                     0
+                CALL                     1
+                STORE_FAST               6 (uploads_dir)
+
+ 242            LOAD_GLOBAL             17 (ClassificationRulesManager + NULL)
+                LOAD_FAST                4 (rules_db_path)
+                LOAD_CONST               3 (('db_path',))
+                CALL_KW                  1
+                STORE_FAST               7 (rules)
+
+ 243            LOAD_FAST                7 (rules)
+                LOAD_ATTR               19 (add_classification_task + NULL|self)
+
+ 244            LOAD_FAST                3 (task_id)
+
+ 245            LOAD_GLOBAL              9 (str + NULL)
+                LOAD_FAST                0 (input_path)
+                CALL                     1
+
+ 246            LOAD_FAST                1 (output_filename)
+
+ 247            LOAD_FAST                2 (context_days)
+
+ 248            LOAD_GLOBAL              0 (current_user)
+                LOAD_ATTR               20 (username)
+
+ 243            LOAD_CONST               4 (('task_id', 'input_folder', 'output_file', 'context_days', 'operator_name'))
+                CALL_KW                  5
+                POP_TOP
+
+ 251            LOAD_GLOBAL             22 (_tasks_lock)
+                BEFORE_WITH
+        L1:     POP_TOP
+
+ 253            LOAD_FAST                3 (task_id)
+
+ 254            LOAD_GLOBAL              0 (current_user)
+                LOAD_ATTR                2 (id)
+
+ 255            LOAD_CONST               5 ('queued')
+
+ 256            LOAD_CONST               6 (0)
+
+ 257            LOAD_CONST               6 (0)
+
+ 258            LOAD_CONST               6 (0)
+
+ 259            LOAD_CONST               7 ('')
+
+ 260            LOAD_CONST               8 ('Задача поставлена в очередь')
+
+ 261            LOAD_CONST               0 (None)
+
+ 262            LOAD_GLOBAL              6 (time)
+                LOAD_ATTR                6 (time)
+                PUSH_NULL
+                CALL                     0
+
+ 252            LOAD_CONST               9 (('task_id', 'user_id', 'status', 'progress', 'processed_files', 'total_files', 'current_file', 'message', 'download_url', 'created_at'))
+                BUILD_CONST_KEY_MAP     10
+                LOAD_GLOBAL             24 (_classification_tasks)
+                LOAD_FAST                3 (task_id)
+                STORE_SUBSCR
+
+ 251    L2:     LOAD_CONST               0 (None)
+                LOAD_CONST               0 (None)
+                LOAD_CONST               0 (None)
+                CALL                     2
+                POP_TOP
+
+ 265    L3:     LOAD_GLOBAL             26 (UserStation)
+                LOAD_ATTR               28 (query)
+                LOAD_ATTR               31 (filter_by + NULL|self)
+                LOAD_GLOBAL              0 (current_user)
+                LOAD_ATTR                2 (id)
+                LOAD_CONST              10 (('user_id',))
+                CALL_KW                  1
+                LOAD_ATTR               33 (order_by + NULL|self)
+                LOAD_GLOBAL             26 (UserStation)
+                LOAD_ATTR                2 (id)
+                LOAD_ATTR               35 (asc + NULL|self)
+                CALL                     0
+                CALL                     1
+                LOAD_ATTR               37 (all + NULL|self)
+                CALL                     0
+                STORE_FAST               8 (stations_rows)
+
+ 266            LOAD_GLOBAL             38 (UserStationMapping)
+                LOAD_ATTR               28 (query)
+                LOAD_ATTR               31 (filter_by + NULL|self)
+                LOAD_GLOBAL              0 (current_user)
+                LOAD_ATTR                2 (id)
+                LOAD_CONST              10 (('user_id',))
+                CALL_KW                  1
+                LOAD_ATTR               37 (all + NULL|self)
+                CALL                     0
+                STORE_FAST               9 (mapping_rows)
+
+ 267            LOAD_FAST                8 (stations_rows)
+                GET_ITER
+                LOAD_FAST_AND_CLEAR     10 (row)
+                SWAP                     2
+        L4:     BUILD_MAP                0
+                SWAP                     2
+        L5:     FOR_ITER                81 (to L10)
+                STORE_FAST_LOAD_FAST   170 (row, row)
+                LOAD_ATTR               40 (code)
+                TO_BOOL
+        L6:     POP_JUMP_IF_TRUE         2 (to L7)
+                JUMP_BACKWARD           21 (to L5)
+        L7:     LOAD_FAST               10 (row)
+                LOAD_ATTR               42 (name)
+                TO_BOOL
+        L8:     POP_JUMP_IF_TRUE         2 (to L9)
+                JUMP_BACKWARD           40 (to L5)
+        L9:     LOAD_GLOBAL              9 (str + NULL)
+                LOAD_FAST               10 (row)
+                LOAD_ATTR               40 (code)
+                CALL                     1
+                LOAD_GLOBAL              9 (str + NULL)
+                LOAD_FAST               10 (row)
+                LOAD_ATTR               42 (name)
+                CALL                     1
+                MAP_ADD                  2
+                JUMP_BACKWARD           83 (to L5)
+       L10:     END_FOR
+                POP_TOP
+       L11:     STORE_FAST              11 (station_names)
+                STORE_FAST              10 (row)
+
+ 268            BUILD_MAP                0
+                STORE_FAST              12 (station_mapping)
+
+ 269            LOAD_FAST                9 (mapping_rows)
+                GET_ITER
+       L12:     FOR_ITER               154 (to L18)
+                STORE_FAST              10 (row)
+
+ 270            LOAD_GLOBAL              9 (str + NULL)
+                LOAD_FAST               10 (row)
+                LOAD_ATTR               44 (main_station_code)
+                COPY                     1
+                TO_BOOL
+                POP_JUMP_IF_TRUE         2 (to L13)
+                POP_TOP
+                LOAD_CONST               7 ('')
+       L13:     CALL                     1
+                LOAD_ATTR               47 (strip + NULL|self)
+                CALL                     0
+                STORE_FAST              13 (main_code)
+
+ 271            LOAD_GLOBAL              9 (str + NULL)
+                LOAD_FAST               10 (row)
+                LOAD_ATTR               48 (sub_station_code)
+                COPY                     1
+                TO_BOOL
+                POP_JUMP_IF_TRUE         2 (to L14)
+                POP_TOP
+                LOAD_CONST               7 ('')
+       L14:     CALL                     1
+                LOAD_ATTR               47 (strip + NULL|self)
+                CALL                     0
+                STORE_FAST              14 (sub_code)
+
+ 272            LOAD_FAST               13 (main_code)
+                TO_BOOL
+                POP_JUMP_IF_FALSE        7 (to L15)
+                LOAD_FAST               14 (sub_code)
+                TO_BOOL
+                POP_JUMP_IF_TRUE         2 (to L16)
+
+ 273   L15:     JUMP_BACKWARD          107 (to L12)
+
+ 274   L16:     LOAD_FAST               12 (station_mapping)
+                LOAD_ATTR               51 (setdefault + NULL|self)
+                LOAD_FAST               13 (main_code)
+                BUILD_LIST               0
+                CALL                     2
+                POP_TOP
+
+ 275            LOAD_FAST_LOAD_FAST    236 (sub_code, station_mapping)
+                LOAD_FAST               13 (main_code)
+                BINARY_SUBSCR
+                CONTAINS_OP              1
+                POP_JUMP_IF_TRUE         2 (to L17)
+                JUMP_BACKWARD          135 (to L12)
+
+ 276   L17:     LOAD_FAST_LOAD_FAST    205 (station_mapping, main_code)
+                BINARY_SUBSCR
+                LOAD_ATTR               53 (append + NULL|self)
+                LOAD_FAST               14 (sub_code)
+                CALL                     1
+                POP_TOP
+                JUMP_BACKWARD          156 (to L12)
+
+ 269   L18:     END_FOR
+                POP_TOP
+
+ 278            LOAD_GLOBAL             54 (UserConfig)
+                LOAD_ATTR               28 (query)
+                LOAD_ATTR               31 (filter_by + NULL|self)
+                LOAD_GLOBAL              0 (current_user)
+                LOAD_ATTR                2 (id)
+                LOAD_CONST              10 (('user_id',))
+                CALL_KW                  1
+                LOAD_ATTR               57 (first + NULL|self)
+                CALL                     0
+                STORE_FAST              15 (cfg)
+
+ 279            LOAD_GLOBAL             59 (getattr + NULL)
+                LOAD_FAST               15 (cfg)
+                LOAD_CONST              11 ('thebai_api_key')
+                LOAD_CONST               0 (None)
+                CALL                     3
+                COPY                     1
+                TO_BOOL
+                POP_JUMP_IF_TRUE         2 (to L19)
+                POP_TOP
+                LOAD_CONST               7 ('')
+       L19:     LOAD_ATTR               47 (strip + NULL|self)
+                CALL                     0
+                STORE_FAST              16 (llm_api_key)
+
+ 280            LOAD_FAST               16 (llm_api_key)
+                TO_BOOL
+                POP_JUMP_IF_TRUE        55 (to L20)
+
+ 281            LOAD_GLOBAL              9 (str + NULL)
+                LOAD_GLOBAL             60 (current_app)
+                LOAD_ATTR               62 (config)
+                LOAD_ATTR               65 (get + NULL|self)
+                LOAD_CONST              12 ('THEBAI_API_KEY')
+                LOAD_CONST               7 ('')
+                CALL                     2
+                CALL                     1
+                LOAD_ATTR               47 (strip + NULL|self)
+                CALL                     0
+                STORE_FAST              16 (llm_api_key)
+
+ 283   L20:     LOAD_GLOBAL             59 (getattr + NULL)
+                LOAD_FAST               15 (cfg)
+                LOAD_CONST              13 ('thebai_url')
+                LOAD_CONST               0 (None)
+                CALL                     3
+                COPY                     1
+                TO_BOOL
+                POP_JUMP_IF_TRUE         2 (to L21)
+                POP_TOP
+                LOAD_CONST               7 ('')
+       L21:     LOAD_ATTR               47 (strip + NULL|self)
+                CALL                     0
+                STORE_FAST              17 (llm_base_url_raw)
+
+ 284            LOAD_FAST               17 (llm_base_url_raw)
+                TO_BOOL
+                POP_JUMP_IF_TRUE        55 (to L22)
+
+ 285            LOAD_GLOBAL              9 (str + NULL)
+                LOAD_GLOBAL             60 (current_app)
+                LOAD_ATTR               62 (config)
+                LOAD_ATTR               65 (get + NULL|self)
+                LOAD_CONST              14 ('THEBAI_URL')
+                LOAD_CONST               7 ('')
+                CALL                     2
+                CALL                     1
+                LOAD_ATTR               47 (strip + NULL|self)
+                CALL                     0
+                STORE_FAST              17 (llm_base_url_raw)
+
+ 286   L22:     LOAD_GLOBAL             67 (_normalize_llm_base_url + NULL)
+                LOAD_FAST               17 (llm_base_url_raw)
+                CALL                     1
+                STORE_FAST              18 (llm_base_url)
+
+ 288            LOAD_GLOBAL             59 (getattr + NULL)
+                LOAD_FAST               15 (cfg)
+                LOAD_CONST              15 ('thebai_model')
+                LOAD_CONST               0 (None)
+                CALL                     3
+                COPY                     1
+                TO_BOOL
+                POP_JUMP_IF_TRUE         2 (to L23)
+                POP_TOP
+                LOAD_CONST               7 ('')
+       L23:     LOAD_ATTR               47 (strip + NULL|self)
+                CALL                     0
+                STORE_FAST              19 (llm_model)
+
+ 289            LOAD_FAST               19 (llm_model)
+                TO_BOOL
+                POP_JUMP_IF_TRUE        55 (to L24)
+
+ 290            LOAD_GLOBAL              9 (str + NULL)
+                LOAD_GLOBAL             60 (current_app)
+                LOAD_ATTR               62 (config)
+                LOAD_ATTR               65 (get + NULL|self)
+                LOAD_CONST              16 ('THEBAI_MODEL')
+                LOAD_CONST               7 ('')
+                CALL                     2
+                CALL                     1
+                LOAD_ATTR               47 (strip + NULL|self)
+                CALL                     0
+                STORE_FAST              19 (llm_model)
+
+ 291   L24:     LOAD_FAST               19 (llm_model)
+                TO_BOOL
+                POP_JUMP_IF_TRUE         2 (to L25)
+
+ 292            LOAD_CONST              17 ('deepseek-chat')
+                STORE_FAST              19 (llm_model)
+
+ 296   L25:     LOAD_FAST               16 (llm_api_key)
+                TO_BOOL
+                POP_JUMP_IF_TRUE         2 (to L26)
+
+ 297            LOAD_CONST              18 ('local')
+                STORE_FAST              16 (llm_api_key)
+
+ 299   L26:     LOAD_GLOBAL             60 (current_app)
+                LOAD_ATTR               68 (_get_current_object)
+                PUSH_NULL
+                CALL                     0
+                STORE_FAST              20 (app_obj)
+
+ 300            LOAD_GLOBAL             70 (threading)
+                LOAD_ATTR               72 (Thread)
+                PUSH_NULL
+
+ 301            LOAD_GLOBAL             74 (_run_classification_task)
+
+ 303            LOAD_FAST               20 (app_obj)
+
+ 304            LOAD_FAST                3 (task_id)
+
+ 305            LOAD_GLOBAL              0 (current_user)
+                LOAD_ATTR                2 (id)
+
+ 306            LOAD_FAST                4 (rules_db_path)
+
+ 307            LOAD_FAST                5 (training_db_path)
+
+ 308            LOAD_FAST                6 (uploads_dir)
+
+ 309            LOAD_GLOBAL              9 (str + NULL)
+                LOAD_FAST                0 (input_path)
+                CALL                     1
+
+ 310            LOAD_FAST                1 (output_filename)
+
+ 311            LOAD_FAST                2 (context_days)
+
+ 312            LOAD_FAST               11 (station_names)
+
+ 313            LOAD_FAST               12 (station_mapping)
+
+ 314            LOAD_FAST               16 (llm_api_key)
+
+ 315            LOAD_FAST               18 (llm_base_url)
+
+ 316            LOAD_FAST               19 (llm_model)
+
+ 302            BUILD_TUPLE             14
+
+ 318            LOAD_CONST              19 (True)
+
+ 300            LOAD_CONST              20 (('target', 'args', 'daemon'))
+                CALL_KW                  3
+                STORE_FAST              21 (thread)
+
+ 320            LOAD_FAST               21 (thread)
+                LOAD_ATTR               77 (start + NULL|self)
+                CALL                     0
+                POP_TOP
+
+ 321            LOAD_FAST                3 (task_id)
+                RETURN_VALUE
+
+ 251   L27:     PUSH_EXC_INFO
+                WITH_EXCEPT_START
+                TO_BOOL
+                POP_JUMP_IF_TRUE         1 (to L28)
+                RERAISE                  2
+       L28:     POP_TOP
+       L29:     POP_EXCEPT
+                POP_TOP
+                POP_TOP
+                EXTENDED_ARG             3
+                JUMP_BACKWARD_NO_INTERRUPT 909 (to L3)
+
+  --   L30:     COPY                     3
+                POP_EXCEPT
+                RERAISE                  1
+       L31:     SWAP                     2
+                POP_TOP
+
+ 267            SWAP                     2
+                STORE_FAST              10 (row)
+                RERAISE                  0
+ExceptionTable:
+  L1 to L2 -> L27 [1] lasti
+  L4 to L6 -> L31 [2]
+  L7 to L8 -> L31 [2]
+  L9 to L11 -> L31 [2]
+  L27 to L29 -> L30 [3] lasti

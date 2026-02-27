@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+{% block title %}Запуск классификации{% endblock %}
+{% block content %}
+{% include 'partials/sidebar.html' %}
+<main class="col-md-9 col-lg-10 main-content">
+    <div class="p-4">
+        <h1 class="h3 mb-3">Запуск классификации</h1>
+        {% include 'classification/_nav.html' %}
+
+        <div class="card mb-4">
+            <div class="card-body">
+                <form id="runForm" class="row g-3">
+                    <div class="col-md-12">
+                        <label class="form-label">Папка transcript</label>
+                        <select class="form-select" id="inputFolder" required>
+                            <option value="">Выберите папку</option>
+                            {% for folder in folders %}
+                                <option value="{{ folder.path }}">
+                                    {% if folder.date %}{{ folder.date }}{% else %}{{ folder.name }}{% endif %}
+                                    ({{ folder.files_count }} файлов)
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Контекст, дней</label>
+                        <input class="form-control" id="contextDays" type="number" min="0" max="90" value="7">
+                    </div>
+                    <div class="col-md-8">
+                        <label class="form-label">Имя файла результата</label>
+                        <input class="form-control" id="outputFile" value="call_classification_results.xlsx">
+                    </div>
+                    <div class="col-12">
+                        <button class="btn btn-success" type="submit" id="runBtn">Запустить</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <div class="card" id="progressCard" style="display:none;">
+            <div class="card-body">
+                <div class="progress mb-2">
+                    <div class="progress-bar" id="bar" style="width:0%"></div>
+                </div>
+                <div class="d-flex justify-content-between">
+                    <span id="statusText">Ожидание...</span>
+                    <span id="statusPct">0%</span>
+                </div>
+                <div class="mt-2 small text-muted" id="statusFile"></div>
+                <a class="btn btn-primary btn-sm mt-3" id="downloadBtn" style="display:none;">Скачать</a>
+            </div>
+        </div>
+    </div>
+</main>
+{% endblock %}
+{% block extra_js %}
+<script>
+let taskId = null;
+let pollTimer = null;
+
+function ensureXlsx(name) {
+    const value = (name || '').trim();
+    if (!value) return '';
+    return value.toLowerCase().endsWith('.xlsx') ? value : `${value}.xlsx`;
+}
+
+async function pollStatus() {
+    if (!taskId) return;
+    const res = await fetch(`/classification/api/status/${taskId}`);
+    const data = await res.json();
+    if (!data.success) return;
+
+    const progress = Number(data.progress || 0);
+    document.getElementById('bar').style.width = `${progress}%`;
+    document.getElementById('statusPct').textContent = `${progress}%`;
+    document.getElementById('statusText').textContent = data.message || data.status || '...';
+    document.getElementById('statusFile').textContent = data.current_file || '';
+
+    if (data.status === 'completed' || data.status === 'error') {
+        clearInterval(pollTimer);
+        pollTimer = null;
+        document.getElementById('runBtn').disabled = false;
+    }
+    if (data.download_url) {
+        const btn = document.getElementById('downloadBtn');
+        btn.style.display = 'inline-block';
+        btn.href = data.download_url;
+    }
+}
+
+document.getElementById('runForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const inputFolder = document.getElementById('inputFolder').value;
+    const outputFile = ensureXlsx(document.getElementById('outputFile').value);
+    const contextDays = Number(document.getElementById('contextDays').value || 7);
+
+    document.getElementById('runBtn').disabled = true;
+    document.getElementById('progressCard').style.display = 'block';
+    document.getElementById('downloadBtn').style.display = 'none';
+
+    const res = await fetch('/classification/api/start', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({input_folder: inputFolder, output_file: outputFile, context_days: contextDays})
+    });
+    const data = await res.json();
+    if (!data.success) {
+        document.getElementById('runBtn').disabled = false;
+        document.getElementById('statusText').textContent = data.message || 'Ошибка запуска';
+        return;
+    }
+    taskId = data.task_id;
+    if (pollTimer) clearInterval(pollTimer);
+    pollTimer = setInterval(pollStatus, 2000);
+    pollStatus();
+});
+</script>
+{% endblock %}

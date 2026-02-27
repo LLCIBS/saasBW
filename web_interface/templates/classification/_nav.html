@@ -1,0 +1,16 @@
+<div class="mb-4">
+    <div class="btn-group flex-wrap" role="group" aria-label="Classification navigation">
+        <a class="btn btn-outline-primary {{ 'active' if active_page == 'classification_dashboard' else '' }}"
+           href="{{ url_for('classification.dashboard') }}">Дашборд</a>
+        <a class="btn btn-outline-primary {{ 'active' if active_page == 'classification_classify' else '' }}"
+           href="{{ url_for('classification.classify_page') }}">Запуск</a>
+        <a class="btn btn-outline-primary {{ 'active' if active_page == 'classification_review' else '' }}"
+           href="{{ url_for('classification.review_page') }}">Разбор</a>
+        <a class="btn btn-outline-primary {{ 'active' if active_page == 'classification_rules' else '' }}"
+           href="{{ url_for('classification.rules_page') }}">Правила</a>
+        <a class="btn btn-outline-primary {{ 'active' if active_page == 'classification_schedules' else '' }}"
+           href="{{ url_for('classification.schedules_page') }}">Расписания</a>
+        <a class="btn btn-outline-primary {{ 'active' if active_page == 'classification_learning' else '' }}"
+           href="{{ url_for('classification.learning_analytics_page') }}">Обучение</a>
+    </div>
+</div>

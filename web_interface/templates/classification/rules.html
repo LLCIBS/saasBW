@@ -1,0 +1,823 @@
+﻿{% extends "base.html" %}
+
+{% block title %}Правила классификации - Система разбора звонков{% endblock %}
+
+{% block content %}
+{% include 'partials/sidebar.html' %}
+<main class="col-md-9 col-lg-10 main-content">
+    <div class="p-4">
+        {% include 'classification/_nav.html' %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2">
+        <i class="fas fa-cogs me-2"></i>
+        Управление правилами классификации
+    </h1>
+</div>
+
+<!-- Инструкция -->
+<div class="alert alert-info mb-4">
+    <h5><i class="fas fa-info-circle me-2"></i>Как работают правила</h5>
+    <ul class="mb-0">
+        <li><strong>Системные промпты</strong> - основной текст инструкции для ИИ</li>
+        <li><strong>Правила классификации</strong> - детальные правила для каждой категории</li>
+        <li><strong>Критические правила</strong> - особо важные правила, которые нельзя нарушать</li>
+        <li><strong>Изменения применяются</strong> автоматически при следующей классификации</li>
+    </ul>
+</div>
+
+<!-- Вкладки -->
+<ul class="nav nav-tabs" id="rulesTabs" role="tablist">
+    <li class="nav-item" role="presentation">
+        <button class="nav-link active" id="prompts-tab" data-bs-toggle="tab" data-bs-target="#prompts" type="button" role="tab">
+            <i class="fas fa-file-alt me-1"></i>
+            Системные промпты
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="classification-tab" data-bs-toggle="tab" data-bs-target="#classification" type="button" role="tab">
+            <i class="fas fa-list-ul me-1"></i>
+            Правила классификации
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="critical-tab" data-bs-toggle="tab" data-bs-target="#critical" type="button" role="tab">
+            <i class="fas fa-exclamation-triangle me-1"></i>
+            Критические правила
+        </button>
+    </li>
+</ul>
+
+<div class="tab-content" id="rulesTabContent">
+    <!-- Системные промпты -->
+    <div class="tab-pane fade show active" id="prompts" role="tabpanel">
+        <div class="card mt-3">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-file-alt me-2"></i>
+                    Системные промпты
+                </h5>
+                <button class="btn btn-success btn-sm" onclick="showAddPromptModal()">
+                    <i class="fas fa-plus me-1"></i>
+                    Добавить промпт
+                </button>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead class="table-dark">
+                            <tr>
+                                <th>Название</th>
+                                <th>Описание</th>
+                                <th>Статус</th>
+                                <th>Обновлен</th>
+                                <th>Действия</th>
+                            </tr>
+                        </thead>
+                        <tbody id="promptsTableBody">
+                            {% for prompt in system_prompts %}
+                            <tr data-prompt-id="{{ prompt.id }}">
+                                <td>
+                                    <strong>{{ prompt.name }}</strong>
+                                    {% if prompt.is_active %}
+                                        <span class="badge bg-success ms-2">Активен</span>
+                                    {% endif %}
+                                </td>
+                                <td>{{ prompt.description or '—' }}</td>
+                                <td>
+                                    {% if prompt.is_active %}
+                                        <span class="badge bg-success">Активен</span>
+                                    {% else %}
+                                        <span class="badge bg-secondary">Неактивен</span>
+                                    {% endif %}
+                                </td>
+                                <td>{{ prompt.updated_at[:16] }}</td>
+                                <td>
+                                    <div class="btn-group btn-group-sm">
+                                        <button class="btn btn-outline-primary" onclick="editPrompt({{ prompt.id }})" title="Редактировать">
+                                            <i class="fas fa-edit"></i>
+                                        </button>
+                                        {% if not prompt.is_active %}
+                                        <button class="btn btn-outline-success" onclick="togglePrompt({{ prompt.id }})" title="Активировать">
+                                            <i class="fas fa-play"></i>
+                                        </button>
+                                        {% else %}
+                                        <button class="btn btn-outline-warning" onclick="togglePrompt({{ prompt.id }})" title="Деактивировать">
+                                            <i class="fas fa-pause"></i>
+                                        </button>
+                                        {% endif %}
+                                        <button class="btn btn-outline-info" onclick="previewPrompt({{ prompt.id }})" title="Превью">
+                                            <i class="fas fa-eye"></i>
+                                        </button>
+                                        <button class="btn btn-outline-danger" onclick="deletePrompt({{ prompt.id }})" title="Удалить">
+                                            <i class="fas fa-trash"></i>
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Правила классификации -->
+    <div class="tab-pane fade" id="classification" role="tabpanel">
+        <div class="card mt-3">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-list-ul me-2"></i>
+                    Правила классификации
+                </h5>
+                <button class="btn btn-success btn-sm" onclick="showAddRuleModal()">
+                    <i class="fas fa-plus me-1"></i>
+                    Добавить правило
+                </button>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead class="table-dark">
+                            <tr>
+                                <th>Категория</th>
+                                <th>Правило</th>
+                                <th>Приоритет</th>
+                                <th>Статус</th>
+                                <th>Действия</th>
+                            </tr>
+                        </thead>
+                        <tbody id="classificationRulesTableBody">
+                            {% for rule in classification_rules %}
+                            <tr data-rule-id="{{ rule.id }}">
+                                <td>
+                                    <strong>{{ rule.category_id }}. {{ rule.category_name }}</strong>
+                                </td>
+                                <td>
+                                    <div class="text-truncate" style="max-width: 300px;" title="{{ rule.rule_text }}">
+                                        {{ rule.rule_text }}
+                                    </div>
+                                </td>
+                                <td>
+                                    <span class="badge bg-info">{{ rule.priority }}</span>
+                                </td>
+                                <td>
+                                    {% if rule.is_active %}
+                                        <span class="badge bg-success">Активно</span>
+                                    {% else %}
+                                        <span class="badge bg-secondary">Неактивно</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <div class="btn-group btn-group-sm">
+                                        <button class="btn btn-outline-primary" onclick="editRule({{ rule.id }})" title="Редактировать">
+                                            <i class="fas fa-edit"></i>
+                                        </button>
+                                        <button class="btn btn-outline-{% if rule.is_active %}warning{% else %}success{% endif %}" 
+                                                onclick="toggleRule({{ rule.id }})" 
+                                                title="{% if rule.is_active %}Деактивировать{% else %}Активировать{% endif %}">
+                                            <i class="fas fa-{% if rule.is_active %}pause{% else %}play{% endif %}"></i>
+                                        </button>
+                                        <button class="btn btn-outline-danger" onclick="deleteRule({{ rule.id }})" title="Удалить">
+                                            <i class="fas fa-trash"></i>
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Критические правила -->
+    <div class="tab-pane fade" id="critical" role="tabpanel">
+        <div class="card mt-3">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    Критические правила
+                </h5>
+                <button class="btn btn-success btn-sm" onclick="showAddCriticalRuleModal()">
+                    <i class="fas fa-plus me-1"></i>
+                    Добавить правило
+                </button>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead class="table-dark">
+                            <tr>
+                                <th>Название</th>
+                                <th>Правило</th>
+                                <th>Описание</th>
+                                <th>Статус</th>
+                                <th>Действия</th>
+                            </tr>
+                        </thead>
+                        <tbody id="criticalRulesTableBody">
+                            {% for rule in critical_rules %}
+                            <tr data-critical-rule-id="{{ rule.id }}">
+                                <td><strong>{{ rule.name }}</strong></td>
+                                <td>
+                                    <div class="text-truncate" style="max-width: 300px;" title="{{ rule.rule_text }}">
+                                        {{ rule.rule_text }}
+                                    </div>
+                                </td>
+                                <td>{{ rule.description or '—' }}</td>
+                                <td>
+                                    {% if rule.is_active %}
+                                        <span class="badge bg-success">Активно</span>
+                                    {% else %}
+                                        <span class="badge bg-secondary">Неактивно</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <div class="btn-group btn-group-sm">
+                                        <button class="btn btn-outline-primary" onclick="editCriticalRule({{ rule.id }})" title="Редактировать">
+                                            <i class="fas fa-edit"></i>
+                                        </button>
+                                        <button class="btn btn-outline-{% if rule.is_active %}warning{% else %}success{% endif %}" 
+                                                onclick="toggleCriticalRule({{ rule.id }})" 
+                                                title="{% if rule.is_active %}Деактивировать{% else %}Активировать{% endif %}">
+                                            <i class="fas fa-{% if rule.is_active %}pause{% else %}play{% endif %}"></i>
+                                        </button>
+                                        <button class="btn btn-outline-danger" onclick="deleteCriticalRule({{ rule.id }})" title="Удалить">
+                                            <i class="fas fa-trash"></i>
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно для добавления/редактирования промпта -->
+<div class="modal fade" id="promptModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="promptModalTitle">Добавить системный промпт</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="promptForm">
+                    <input type="hidden" id="promptId" name="prompt_id">
+                    
+                    <div class="mb-3">
+                        <label for="promptName" class="form-label">Название промпта *</label>
+                        <input type="text" class="form-control" id="promptName" name="name" required>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="promptDescription" class="form-label">Описание</label>
+                        <input type="text" class="form-control" id="promptDescription" name="description">
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="promptContent" class="form-label">Содержимое промпта *</label>
+                        <textarea class="form-control" id="promptContent" name="content" rows="15" required></textarea>
+                        <div class="form-text">
+                            Используйте плейсхолдеры: {CALL_HISTORY}, {TRAINING_EXAMPLES}, {CATEGORY_RULES}, {CRITICAL_RULES}
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <button type="button" class="btn btn-outline-info" onclick="previewGeneratedPrompt()">
+                            <i class="fas fa-eye me-1"></i>
+                            Превью сгенерированного промпта
+                        </button>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                <button type="button" class="btn btn-primary" onclick="savePrompt()">Сохранить</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно для добавления/редактирования правила -->
+<div class="modal fade" id="ruleModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="ruleModalTitle">Добавить правило классификации</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="ruleForm">
+                    <input type="hidden" id="ruleId" name="rule_id">
+                    
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="ruleCategoryId" class="form-label">ID категории *</label>
+                                <select class="form-select" id="ruleCategoryId" name="category_id" required>
+                                    <option value="">Выберите категорию</option>
+                                    {% for id, name in categories.items() %}
+                                    <option value="{{ id }}">{{ id }}. {{ name }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="ruleCategoryName" class="form-label">Название категории *</label>
+                                <input type="text" class="form-control" id="ruleCategoryName" name="category_name" required>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="ruleText" class="form-label">Текст правила *</label>
+                        <textarea class="form-control" id="ruleText" name="rule_text" rows="4" required></textarea>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="rulePriority" class="form-label">Приоритет</label>
+                                <input type="number" class="form-control" id="rulePriority" name="priority" value="0">
+                                <div class="form-text">Чем выше число, тем выше приоритет</div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="ruleExamples" class="form-label">Примеры</label>
+                                <textarea class="form-control" id="ruleExamples" name="examples" rows="3"></textarea>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="ruleConditions" class="form-label">Условия</label>
+                        <textarea class="form-control" id="ruleConditions" name="conditions" rows="2"></textarea>
+                        <div class="form-text">Дополнительные условия применения правила</div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                <button type="button" class="btn btn-primary" onclick="saveRule()">Сохранить</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно для добавления/редактирования критического правила -->
+<div class="modal fade" id="criticalRuleModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="criticalRuleModalTitle">Добавить критическое правило</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="criticalRuleForm">
+                    <input type="hidden" id="criticalRuleId" name="critical_rule_id">
+                    
+                    <div class="mb-3">
+                        <label for="criticalRuleName" class="form-label">Название правила *</label>
+                        <input type="text" class="form-control" id="criticalRuleName" name="name" required>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="criticalRuleText" class="form-label">Текст правила *</label>
+                        <textarea class="form-control" id="criticalRuleText" name="rule_text" rows="4" required></textarea>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="criticalRuleDescription" class="form-label">Описание</label>
+                        <textarea class="form-control" id="criticalRuleDescription" name="description" rows="2"></textarea>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                <button type="button" class="btn btn-primary" onclick="saveCriticalRule()">Сохранить</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно для превью промпта -->
+<div class="modal fade" id="previewModal" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Превью системного промпта</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <pre id="previewContent" style="white-space: pre-wrap; font-size: 12px; max-height: 500px; overflow-y: auto;"></pre>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Закрыть</button>
+            </div>
+        </div>
+    </div>
+</div>
+    </div>
+</main>
+    </div>
+</main>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Переменные для хранения данных
+let currentEditingPrompt = null;
+let currentEditingRule = null;
+let currentEditingCriticalRule = null;
+
+// Функции для работы с промптами
+function showAddPromptModal() {
+    currentEditingPrompt = null;
+    document.getElementById('promptModalTitle').textContent = 'Добавить системный промпт';
+    document.getElementById('promptForm').reset();
+    document.getElementById('promptId').value = '';
+    
+    // Устанавливаем стандартный шаблон
+    document.getElementById('promptContent').value = `Ты - опытный аналитик автосервиса с глубоким пониманием бизнес-процессов. Проанализируй транскрипцию звонка и определи его тип с учетом контекста предыдущих звонков клиента.
+
+Ответь строго в формате: НОМЕР|ОБОСНОВАНИЕ
+Где НОМЕР - цифра от 1 до 14, а ОБОСНОВАНИЕ - детальное объяснение выбора с учетом контекста.
+
+КОНТЕКСТ КЛИЕНТА:
+{CALL_HISTORY}
+
+ОБУЧАЮЩИЕ ПРИМЕРЫ (изучи их для улучшения точности):
+{TRAINING_EXAMPLES}
+
+ПРАВИЛА КЛАССИФИКАЦИИ (учитывай контекст предыдущих звонков):
+{CATEGORY_RULES}
+
+КРИТИЧЕСКИ ВАЖНЫЕ ПРАВИЛА:
+{CRITICAL_RULES}
+
+Сначала определи, целевой ли звонок (иномарка 2007+ г.в., автомобиль целиком), затем уточни категорию с учетом КОНТЕКСТА и ОБУЧАЮЩИХ ПРИМЕРОВ.`;
+    
+    new bootstrap.Modal(document.getElementById('promptModal')).show();
+}
+
+function editPrompt(promptId) {
+    currentEditingPrompt = promptId;
+    document.getElementById('promptModalTitle').textContent = 'Редактировать системный промпт';
+    
+    // Загружаем данные промпта
+    fetch(`/classification/api/system-prompts`)
+        .then(response => response.json())
+        .then(data => {
+            const prompt = data.prompts.find(p => p.id === promptId);
+            if (prompt) {
+                document.getElementById('promptId').value = prompt.id;
+                document.getElementById('promptName').value = prompt.name;
+                document.getElementById('promptDescription').value = prompt.description || '';
+                document.getElementById('promptContent').value = prompt.content;
+                
+                new bootstrap.Modal(document.getElementById('promptModal')).show();
+            }
+        });
+}
+
+function savePrompt() {
+    const formData = {
+        name: document.getElementById('promptName').value,
+        content: document.getElementById('promptContent').value,
+        description: document.getElementById('promptDescription').value
+    };
+    
+    if (!formData.name || !formData.content) {
+        alert('Заполните обязательные поля');
+        return;
+    }
+    
+    const url = currentEditingPrompt 
+        ? `/classification/api/system-prompts/${currentEditingPrompt}`
+        : '/classification/api/system-prompts';
+    
+    const method = currentEditingPrompt ? 'PUT' : 'POST';
+    
+    fetch(url, {
+        method: method,
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(formData)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showAlert('success', data.message);
+            bootstrap.Modal.getInstance(document.getElementById('promptModal')).hide();
+            location.reload();
+        } else {
+            showAlert('error', data.message);
+        }
+    });
+}
+
+function togglePrompt(promptId) {
+    fetch(`/classification/api/system-prompts/${promptId}/toggle`, {
+        method: 'POST'
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showAlert('success', data.message);
+            location.reload();
+        } else {
+            showAlert('error', data.message);
+        }
+    });
+}
+
+function deletePrompt(promptId) {
+    if (confirm('Вы уверены, что хотите удалить этот промпт?')) {
+        fetch(`/classification/api/system-prompts/${promptId}`, {
+            method: 'DELETE'
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                showAlert('success', data.message);
+                location.reload();
+            } else {
+                showAlert('error', data.message);
+            }
+        });
+    }
+}
+
+function previewPrompt(promptId) {
+    fetch(`/classification/api/system-prompts`)
+        .then(response => response.json())
+        .then(data => {
+            const prompt = data.prompts.find(p => p.id === promptId);
+            if (prompt) {
+                document.getElementById('previewContent').textContent = prompt.content;
+                new bootstrap.Modal(document.getElementById('previewModal')).show();
+            }
+        });
+}
+
+function previewGeneratedPrompt() {
+    fetch('/classification/api/generate-prompt-preview')
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                document.getElementById('previewContent').textContent = data.preview;
+                new bootstrap.Modal(document.getElementById('previewModal')).show();
+            } else {
+                showAlert('error', data.message);
+            }
+        });
+}
+
+// Функции для работы с правилами классификации
+function showAddRuleModal() {
+    currentEditingRule = null;
+    document.getElementById('ruleModalTitle').textContent = 'Добавить правило классификации';
+    document.getElementById('ruleForm').reset();
+    document.getElementById('ruleId').value = '';
+    new bootstrap.Modal(document.getElementById('ruleModal')).show();
+}
+
+function editRule(ruleId) {
+    currentEditingRule = ruleId;
+    document.getElementById('ruleModalTitle').textContent = 'Редактировать правило классификации';
+    
+    // Загружаем данные правила
+    fetch(`/classification/api/classification-rules`)
+        .then(response => response.json())
+        .then(data => {
+            const rule = data.rules.find(r => r.id === ruleId);
+            if (rule) {
+                document.getElementById('ruleId').value = rule.id;
+                document.getElementById('ruleCategoryId').value = rule.category_id;
+                document.getElementById('ruleCategoryName').value = rule.category_name;
+                document.getElementById('ruleText').value = rule.rule_text;
+                document.getElementById('rulePriority').value = rule.priority;
+                document.getElementById('ruleExamples').value = rule.examples || '';
+                document.getElementById('ruleConditions').value = rule.conditions || '';
+                
+                new bootstrap.Modal(document.getElementById('ruleModal')).show();
+            }
+        });
+}
+
+function saveRule() {
+    const formData = {
+        category_id: document.getElementById('ruleCategoryId').value,
+        category_name: document.getElementById('ruleCategoryName').value,
+        rule_text: document.getElementById('ruleText').value,
+        priority: parseInt(document.getElementById('rulePriority').value) || 0,
+        examples: document.getElementById('ruleExamples').value,
+        conditions: document.getElementById('ruleConditions').value
+    };
+    
+    if (!formData.category_id || !formData.category_name || !formData.rule_text) {
+        alert('Заполните обязательные поля');
+        return;
+    }
+    
+    const url = currentEditingRule 
+        ? `/classification/api/classification-rules/${currentEditingRule}`
+        : '/classification/api/classification-rules';
+    
+    const method = currentEditingRule ? 'PUT' : 'POST';
+    
+    fetch(url, {
+        method: method,
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(formData)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showAlert('success', data.message);
+            bootstrap.Modal.getInstance(document.getElementById('ruleModal')).hide();
+            location.reload();
+        } else {
+            showAlert('error', data.message);
+        }
+    });
+}
+
+function toggleRule(ruleId) {
+    fetch(`/classification/api/classification-rules/${ruleId}/toggle`, {
+        method: 'POST'
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showAlert('success', data.message);
+            location.reload();
+        } else {
+            showAlert('error', data.message);
+        }
+    });
+}
+
+function deleteRule(ruleId) {
+    if (confirm('Вы уверены, что хотите удалить это правило?')) {
+        fetch(`/classification/api/classification-rules/${ruleId}`, {
+            method: 'DELETE'
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                showAlert('success', data.message);
+                location.reload();
+            } else {
+                showAlert('error', data.message);
+            }
+        });
+    }
+}
+
+// Функции для работы с критическими правилами
+function showAddCriticalRuleModal() {
+    currentEditingCriticalRule = null;
+    document.getElementById('criticalRuleModalTitle').textContent = 'Добавить критическое правило';
+    document.getElementById('criticalRuleForm').reset();
+    document.getElementById('criticalRuleId').value = '';
+    new bootstrap.Modal(document.getElementById('criticalRuleModal')).show();
+}
+
+function editCriticalRule(ruleId) {
+    currentEditingCriticalRule = ruleId;
+    document.getElementById('criticalRuleModalTitle').textContent = 'Редактировать критическое правило';
+    
+    // Загружаем данные правила
+    fetch(`/classification/api/critical-rules`)
+        .then(response => response.json())
+        .then(data => {
+            const rule = data.rules.find(r => r.id === ruleId);
+            if (rule) {
+                document.getElementById('criticalRuleId').value = rule.id;
+                document.getElementById('criticalRuleName').value = rule.name;
+                document.getElementById('criticalRuleText').value = rule.rule_text;
+                document.getElementById('criticalRuleDescription').value = rule.description || '';
+                
+                new bootstrap.Modal(document.getElementById('criticalRuleModal')).show();
+            }
+        });
+}
+
+function saveCriticalRule() {
+    const formData = {
+        name: document.getElementById('criticalRuleName').value,
+        rule_text: document.getElementById('criticalRuleText').value,
+        description: document.getElementById('criticalRuleDescription').value
+    };
+    
+    if (!formData.name || !formData.rule_text) {
+        alert('Заполните обязательные поля');
+        return;
+    }
+    
+    const url = currentEditingCriticalRule 
+        ? `/classification/api/critical-rules/${currentEditingCriticalRule}`
+        : '/classification/api/critical-rules';
+    
+    const method = currentEditingCriticalRule ? 'PUT' : 'POST';
+    
+    fetch(url, {
+        method: method,
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(formData)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showAlert('success', data.message);
+            bootstrap.Modal.getInstance(document.getElementById('criticalRuleModal')).hide();
+            location.reload();
+        } else {
+            showAlert('error', data.message);
+        }
+    });
+}
+
+function toggleCriticalRule(ruleId) {
+    fetch(`/classification/api/critical-rules/${ruleId}/toggle`, {
+        method: 'POST'
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showAlert('success', data.message);
+            location.reload();
+        } else {
+            showAlert('error', data.message);
+        }
+    });
+}
+
+function deleteCriticalRule(ruleId) {
+    if (confirm('Вы уверены, что хотите удалить это критическое правило?')) {
+        fetch(`/classification/api/critical-rules/${ruleId}`, {
+            method: 'DELETE'
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                showAlert('success', data.message);
+                location.reload();
+            } else {
+                showAlert('error', data.message);
+            }
+        });
+    }
+}
+
+// Автозаполнение названия категории при выборе ID
+document.getElementById('ruleCategoryId').addEventListener('change', function() {
+    const categoryId = this.value;
+    const categoryName = this.options[this.selectedIndex].text;
+    if (categoryName && categoryName !== 'Выберите категорию') {
+        document.getElementById('ruleCategoryName').value = categoryName.substring(3); // Убираем "1. "
+    }
+});
+
+// Функция для показа уведомлений
+function showAlert(type, message) {
+    const alertClass = type === 'success' ? 'alert-success' : 'alert-danger';
+    const icon = type === 'success' ? 'fa-check-circle' : 'fa-exclamation-triangle';
+    
+    const alertHtml = `
+        <div class="alert ${alertClass} alert-dismissible fade show" role="alert">
+            <i class="fas ${icon} me-2"></i>
+            ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    `;
+    
+    const container = document.querySelector('.container-fluid');
+    container.insertAdjacentHTML('afterbegin', alertHtml);
+    
+    // Автоматически скрываем через 5 секунд
+    setTimeout(() => {
+        const alert = container.querySelector('.alert');
+        if (alert) {
+            bootstrap.Alert.getOrCreateInstance(alert).close();
+        }
+    }, 5000);
+}
+</script>
+{% endblock %}
+

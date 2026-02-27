@@ -67,6 +67,7 @@ from database.models import (
 )
 from auth import login_manager
 from auth.routes import auth_bp
+from web_interface.classification_blueprint import classification_bp, start_classification_scheduler
 try:
     from call_analyzer.service_manager import request_reload
 except ImportError:
@@ -1115,6 +1116,7 @@ except Exception as e:
 db.init_app(app)
 login_manager.init_app(app)
 app.register_blueprint(auth_bp)
+app.register_blueprint(classification_bp)
 
 AUTH_EXEMPT_ENDPOINTS = {'static', 'api_rostelecom_webhook'}
 
@@ -1172,6 +1174,11 @@ def initialize_app():
             app.logger.info("Планировщик отчетов инициализирован")
         except Exception as e:
             app.logger.error(f"Ошибка инициализации планировщика отчетов: {e}", exc_info=True)
+        try:
+            start_classification_scheduler(app)
+            app.logger.info("Планировщик классификации инициализирован")
+        except Exception as e:
+            app.logger.error(f"Ошибка инициализации планировщика классификации: {e}", exc_info=True)
     except Exception as e:
         app.logger.error(f"Ошибка автоматической синхронизации: {e}")
 

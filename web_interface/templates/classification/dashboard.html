@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}Классификация звонков{% endblock %}
+{% block content %}
+{% include 'partials/sidebar.html' %}
+<main class="col-md-9 col-lg-10 main-content">
+    <div class="p-4">
+        <h1 class="h3 mb-3">Классификация звонков</h1>
+        {% include 'classification/_nav.html' %}
+
+        <div class="row g-3 mb-4">
+            <div class="col-md-4">
+                <div class="card"><div class="card-body">
+                    <div class="text-muted">Всего звонков</div>
+                    <div class="h3 mb-0">{{ stats.total_calls or 0 }}</div>
+                </div></div>
+            </div>
+            <div class="col-md-4">
+                <div class="card"><div class="card-body">
+                    <div class="text-muted">Целевые</div>
+                    <div class="h3 mb-0">{{ stats.target_calls or 0 }}</div>
+                </div></div>
+            </div>
+            <div class="col-md-4">
+                <div class="card"><div class="card-body">
+                    <div class="text-muted">Записи (BOOK)</div>
+                    <div class="h3 mb-0">{{ stats.recorded_calls or 0 }}</div>
+                </div></div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span>История запусков</span>
+                <small class="text-muted">Последний файл: {{ stats.latest_file or 'нет' }}</small>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-sm table-hover mb-0">
+                        <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Папка</th>
+                            <th>Статус</th>
+                            <th>Файлов</th>
+                            <th>Старт</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        {% for item in history %}
+                            <tr>
+                                <td>{{ item.task_id }}</td>
+                                <td>{{ item.input_folder }}</td>
+                                <td>{{ item.status }}</td>
+                                <td>{{ item.processed_files }}/{{ item.total_files }}</td>
+                                <td>{{ item.start_time }}</td>
+                            </tr>
+                        {% else %}
+                            <tr><td colspan="5" class="text-center text-muted py-4">Запусков пока нет</td></tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</main>
+{% endblock %}
