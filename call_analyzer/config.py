@@ -115,6 +115,9 @@ FILENAME_PATTERNS = {
     # Формат rostelecom-* (коннектор АТС Ростелеком)
     'rostelecom_pattern': r'^rostelecom-(incoming|outbound|internal)-(\d+)_(\w+)_(\d{8})-(\d{6})(?:-\w+)?\.(mp3|wav)$',
     
+    # Формат: телефон_станция_дата-время[-суффикс] (напр. 79673923233_201_20260313-151817-LbWWbypolYXY.mp3)
+    'phone_station_compact': r'^(\d+)_(\d+)_(\d{8})-(\d{6})(?:-[\w.]+)?(?:\.(mp3|wav))?$',
+    
     # Новый формат: вход_EkbFocusMal128801_с_79536098664_на_73432260822_от_2025_10_20
     'direction_pattern': r'^вход_([a-zA-Z\-]+)(\d+)_с_(\d+)_на_(\d+)_от_(\d{4})_(\d{1,2})_(\d{1,2})(?:\.\w+)?$',
     
@@ -154,6 +157,11 @@ FILENAME_FORMATS = {
         'pattern': 'вход_[station_name][station_code]_с_[from_phone]_на_[to_phone]_от_[YYYY]_[MM]_[DD]',
         'description': 'Звонок с указанием направления: название станции, код станции, номера телефонов, дата',
         'example': 'вход_EkbFocusMal128801_с_79536098664_на_73432260822_от_2025_10_20'
+    },
+    'phone_station_compact': {
+        'pattern': '[телефон]_[станция]_[YYYYMMDD]-[HHMMSS][-суффикс][.mp3|.wav]',
+        'description': 'Компактный формат: телефон, станция, дата-время, опционально суффикс (session id)',
+        'example': '79673923233_201_20260313-151817-LbWWbypolYXY.mp3'
     }
 }
 ALLOWED_STATIONS = None

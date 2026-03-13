@@ -297,6 +297,20 @@ def parse_filename(file_name: str):
         except Exception:
             pass
 
+    # Формат: телефон_станция_дата-время[-суффикс] (напр. 79673923233_201_20260313-151817-LbWWbypolYXY.mp3)
+    m = re.match(config.FILENAME_PATTERNS.get('phone_station_compact', ''), file_name, re.IGNORECASE)
+    if m:
+        try:
+            phone_number = m.group(1)
+            station_code = m.group(2)
+            yyyymmdd = m.group(3)
+            hhmmss = m.group(4)
+            call_time = datetime.datetime.strptime(f"{yyyymmdd}{hhmmss}", "%Y%m%d%H%M%S")
+            phone_number = normalize_phone_number(phone_number)
+            return phone_number, station_code, call_time
+        except Exception:
+            pass
+
     # Поддержка формата out-* (исходящие FTP):
     # out-<phone>-<station>-<YYYYMMDD>-<HHMMSS>-...
     m = re.match(config.FILENAME_PATTERNS['out_pattern'], file_name, re.IGNORECASE)
@@ -405,8 +419,11 @@ def is_valid_call_filename(filename: str) -> bool:
     ):
         return True
 
+    # Формат телефон_станция_дата-время[-суффикс]
+    if re.match(config.FILENAME_PATTERNS.get('phone_station_compact', ''), filename, re.IGNORECASE):
+        return True
+
     # Проверяем новый формат без префикса: [phone/station]_[station/phone]_[date]_...
-    # Используем паттерн из конфигурации
     if re.match(config.FILENAME_PATTERNS['fs_pattern'], filename, re.IGNORECASE):
         return True
 
@@ -463,6 +480,10 @@ def get_call_format(file_name: str):
     # 2. Проверяем новый формат с направлением
     if re.match(config.FILENAME_PATTERNS['direction_pattern'], file_name, re.IGNORECASE):
         return 'direction_format'
+
+    # 3. Формат телефон_станция_дата-время (телефон первым — входящий)
+    if re.match(config.FILENAME_PATTERNS.get('phone_station_compact', ''), file_name, re.IGNORECASE):
+        return 'incoming'
     
     parts = file_name.split("_")
     if len(parts) < 3:

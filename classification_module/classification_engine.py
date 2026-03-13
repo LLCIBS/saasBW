@@ -360,6 +360,8 @@ class CallClassificationEngine:
 
         # 2. Стандартные шаблоны для известных форматов файлов
         patterns = [
+            # Компактный формат: телефон_станция_YYYYMMDD-HHMMSS[-суффикс] (напр. 79673923233_201_20260313-151817-LbWWbypolYXY)
+            r'(\d{10,11})_(\d{3,5})_(\d{8})-(\d{6})(?:-[\w.]+)?',
             # Новый формат без префикса fs_, варианты:
             # 1) Исходящие: телефон_станция_дата-время
             #    09278612779_401_2025-12-12-14-20-02.txt
@@ -416,17 +418,29 @@ class CallClassificationEngine:
                 date_str = match.group(3)
                 time_str = match.group(4)
                 
-                try:
-                    date_obj = datetime.strptime(date_str, '%Y-%m-%d')
-                    call_date = date_obj.strftime('%d.%m.%Y')
-                except:
-                    call_date = date_str
-                
-                try:
-                    time_obj = datetime.strptime(time_str, '%H-%M-%S')
-                    call_time = time_obj.strftime('%H:%M')
-                except:
-                    call_time = time_str
+                # Компактный формат: YYYYMMDD и HHMMSS (без дефисов)
+                if len(date_str) == 8 and len(time_str) == 6 and date_str.isdigit() and time_str.isdigit():
+                    try:
+                        date_obj = datetime.strptime(date_str, '%Y%m%d')
+                        call_date = date_obj.strftime('%d.%m.%Y')
+                    except Exception:
+                        call_date = date_str
+                    try:
+                        time_obj = datetime.strptime(time_str, '%H%M%S')
+                        call_time = time_obj.strftime('%H:%M')
+                    except Exception:
+                        call_time = time_str
+                else:
+                    try:
+                        date_obj = datetime.strptime(date_str, '%Y-%m-%d')
+                        call_date = date_obj.strftime('%d.%m.%Y')
+                    except Exception:
+                        call_date = date_str
+                    try:
+                        time_obj = datetime.strptime(time_str, '%H-%M-%S')
+                        call_time = time_obj.strftime('%H:%M')
+                    except Exception:
+                        call_time = time_str
                 
                 break
         
