@@ -222,7 +222,7 @@ def main():
         # start_ftp_sync() защищен от дубликатов - если поток уже запущен, просто вернется
         try:
             from call_analyzer.ftp_sync_manager import start_all_active_ftp_syncs
-            logger.info("[MAIN] ?????? FTP ?????????????...")
+            logger.info("[MAIN] Запуск FTP синхронизаций...")
             profile_user_id = getattr(profile_config, "PROFILE_USER_ID", None)
             try:
                 ftp_user_id = int(profile_user_id) if profile_user_id else None
@@ -230,7 +230,13 @@ def main():
                 ftp_user_id = None
             start_all_active_ftp_syncs(user_id=ftp_user_id)
         except Exception as e:
-            logger.error(f"[MAIN] ?????? ??????? FTP ?????????????: {e}")
+            logger.error(f"[MAIN] Ошибка запуска FTP синхронизаций: {e}")
+        try:
+            from call_analyzer.rostelecom_sync_manager import start_all_active_rostelecom_syncs
+            logger.info("[MAIN] Запуск Ростелеком синхронизаций (без webhook)...")
+            start_all_active_rostelecom_syncs(user_id=ftp_user_id)
+        except Exception as e:
+            logger.error(f"[MAIN] Ошибка запуска Ростелеком синхронизаций: {e}")
 
 
         # 3. Основной цикл

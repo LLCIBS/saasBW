@@ -34,6 +34,14 @@ def main():
                         """))
                         conn.commit()
                     print("✓ Поле allowed_directions добавлено в rostelecom_ats_connections")
+                if 'sync_interval_minutes' not in rcols:
+                    with db.engine.connect() as conn:
+                        conn.execute(text("""
+                            ALTER TABLE rostelecom_ats_connections
+                            ADD COLUMN sync_interval_minutes INTEGER NOT NULL DEFAULT 60
+                        """))
+                        conn.commit()
+                    print("✓ Поле sync_interval_minutes добавлено в rostelecom_ats_connections")
             if 'user_config' in inspector.get_table_names():
                 cols = [c['name'] for c in inspector.get_columns('user_config')]
                 if 'rostelecom_ats_connection_id' not in cols:

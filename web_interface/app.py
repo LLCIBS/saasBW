@@ -4831,6 +4831,7 @@ def api_rostelecom_connections():
             'pin_to_station': c.pin_to_station or {},
             'allowed_directions': c.allowed_directions if c.allowed_directions else ['incoming', 'outbound', 'internal'],
             'start_from': c.start_from.isoformat() + 'Z' if c.start_from else None,
+            'sync_interval_minutes': getattr(c, 'sync_interval_minutes', 60) or 60,
             'last_sync': c.last_sync.isoformat() + 'Z' if c.last_sync else None,
             'last_webhook_at': c.last_webhook_at.isoformat() + 'Z' if c.last_webhook_at else None,
             'last_error': c.last_error,
@@ -4855,6 +4856,9 @@ def api_rostelecom_create():
         if allowed is not None:
             allowed = list(allowed) if isinstance(allowed, list) and len(allowed) > 0 else None
         start_from = _parse_datetime_field(data.get('start_from'))
+        sync_interval = int(data.get('sync_interval_minutes', 60))
+        if sync_interval < 0:
+            sync_interval = 0
         conn = RostelecomAtsConnection(
             user_id=current_user.id,
             name=data.get('name', 'Ростелеком'),
@@ -4865,9 +4869,16 @@ def api_rostelecom_create():
             pin_to_station=data.get('pin_to_station') or {},
             allowed_directions=allowed,
             start_from=start_from,
+            sync_interval_minutes=sync_interval,
         )
         db.session.add(conn)
         db.session.commit()
+        try:
+            from call_analyzer.rostelecom_sync_manager import start_rostelecom_sync
+            if conn.is_active and conn.sync_interval_minutes and conn.sync_interval_minutes > 0:
+                start_rostelecom_sync(conn.id, user_id=current_user.id)
+        except Exception:
+            pass
         return jsonify({'success': True, 'id': conn.id, 'message': 'Подключение создано'})
     except Exception as e:
         db.session.rollback()
@@ -4901,7 +4912,18 @@ def api_rostelecom_update(conn_id):
             conn.allowed_directions = val if isinstance(val, list) else None
         if 'start_from' in data:
             conn.start_from = _parse_datetime_field(data.get('start_from'))
+        if 'sync_interval_minutes' in data:
+            v = data['sync_interval_minutes']
+            conn.sync_interval_minutes = max(0, int(v)) if v is not None else 60
         db.session.commit()
+        try:
+            from call_analyzer.rostelecom_sync_manager import start_rostelecom_sync, stop_rostelecom_sync
+            if conn.is_active and getattr(conn, 'sync_interval_minutes', 60) and conn.sync_interval_minutes > 0:
+                start_rostelecom_sync(conn_id, user_id=current_user.id)
+            else:
+                stop_rostelecom_sync(conn_id, user_id=current_user.id)
+        except Exception:
+            pass
         return jsonify({'success': True, 'message': 'Обновлено'})
     except Exception as e:
         db.session.rollback()

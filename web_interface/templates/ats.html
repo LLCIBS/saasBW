@@ -15,7 +15,6 @@
 .ats-operator-card .btn { width: 100%; }
 .rostelecom-panel { background: var(--bg-primary); border-radius: var(--radius-xl); padding: 1.5rem; margin-top: 1.5rem; border: 1px solid var(--border-light); box-shadow: var(--shadow-sm); }
 .rostelecom-conn-card { background: var(--bg-secondary); border-radius: var(--radius-md); padding: 1rem; margin-bottom: 1rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem; }
-.rostelecom-webhook-url { font-family: monospace; font-size: 0.875rem; background: var(--bg-tertiary); padding: 0.5rem 0.75rem; border-radius: var(--radius-sm); word-break: break-all; }
 @media (max-width: 576px) { .ats-operators-grid { grid-template-columns: 1fr; } }
 </style>
 {% endblock %}
@@ -60,14 +59,9 @@
 
         <div class="rostelecom-panel" id="rostelecomPanel" style="display: none;">
             <h5 class="mb-3"><i class="fas fa-plug me-2 text-primary"></i>Ростелеком — Интеграционный API</h5>
-            <div class="alert alert-info mb-4">
-                <strong>Инструкция:</strong> Подключите услугу «Интеграционный API» в <a href="https://numbers.cloudpbx.rt.ru" target="_blank" rel="noopener">ЛК Ростелеком</a>.
-                В настройках API укажите адрес внешней системы (webhook) — скопируйте URL ниже. Заполните уникальный код и ключ подписи из ЛК.
-            </div>
-            <div class="mb-4">
-                <label class="form-label fw-bold">Адрес webhook (укажите в ЛК Ростелеком):</label>
-                <div class="rostelecom-webhook-url" id="webhookUrl">{{ request.url_root.rstrip('/') }}api/ats/rostelecom/webhook</div>
-                <button type="button" class="btn btn-sm btn-outline-secondary mt-2" onclick="copyWebhookUrl()"><i class="fas fa-copy me-1"></i>Копировать</button>
+            <div class="alert alert-success mb-4">
+                <strong>Режим без webhook.</strong> Подключите услугу «Интеграционный API» в <a href="https://numbers.cloudpbx.rt.ru" target="_blank" rel="noopener">ЛК Ростелеком</a>.
+                Записи загружаются по расписанию (domain_call_history → download_call_history → get_record). Не нужно указывать адрес внешней системы — подходит, когда он уже занят CRM.
             </div>
             <div class="d-flex justify-content-between align-items-center mb-3">
                 <h6 class="mb-0">Подключения</h6>
@@ -128,6 +122,11 @@
                     <input type="datetime-local" class="form-control" id="rostelecomStartFrom" placeholder="Не задано">
                     <div class="form-text">Звонки до этой даты игнорируются. Оставьте пустым для приёма всех.</div>
                 </div>
+                <div class="mb-3">
+                    <label class="form-label">Интервал синхронизации (минут)</label>
+                    <input type="number" class="form-control" id="rostelecomSyncInterval" min="0" max="1440" value="60" placeholder="60">
+                    <div class="form-text">0 = только ручная синхронизация. Рекомендуется 60–120 мин.</div>
+                </div>
                 <div class="form-check mb-3">
                     <input class="form-check-input" type="checkbox" id="rostelecomActive" checked>
                     <label class="form-check-label" for="rostelecomActive">Активно</label>
@@ -144,20 +143,10 @@
 
 {% block extra_js %}
 <script>
-const webhookBase = window.location.origin + '/api/ats/rostelecom/webhook';
-document.getElementById('webhookUrl').textContent = webhookBase;
-
 function toggleRostelecomPanel() {
     const p = document.getElementById('rostelecomPanel');
     p.style.display = p.style.display === 'none' ? 'block' : 'none';
     if (p.style.display === 'block') loadRostelecomConnections();
-}
-
-function copyWebhookUrl() {
-    navigator.clipboard.writeText(webhookBase).then(() => {
-        if (typeof showToast === 'function') showToast('URL скопирован', 'success');
-        else alert('URL скопирован');
-    });
 }
 
 function loadRostelecomConnections() {
@@ -186,7 +175,7 @@ function loadRostelecomConnections() {
                         <div class="small">Направления: ${escapeHtml(dirStr)}</div>
                         <div class="small">С даты: ${escapeHtml(startFromStr)}</div>
                         <div class="small">Синхронизация: ${escapeHtml(lastSyncStr)}</div>
-                        ${c.last_webhook_at ? '<div class="small text-success">Webhook: ' + new Date(c.last_webhook_at).toLocaleString() + '</div>' : ''}
+                        <div class="small">Интервал: ${(c.sync_interval_minutes || 60)} мин</div>
                         ${c.last_error ? '<div class="small text-danger">Ошибка: ' + escapeHtml(c.last_error) + '</div>' : ''}
                     </div>
                     <div class="btn-group">
@@ -238,6 +227,7 @@ function showRostelecomModal(id) {
     document.getElementById('rostelecomClientId').value = '';
     document.getElementById('rostelecomSignKey').value = '';
     document.getElementById('rostelecomStartFrom').value = '';
+    document.getElementById('rostelecomSyncInterval').value = 60;
     document.getElementById('rostelecomActive').checked = true;
     setDirectionCheckboxes(null);
     if (id) {
@@ -247,6 +237,7 @@ function showRostelecomModal(id) {
                 document.getElementById('rostelecomName').value = c.name;
                 document.getElementById('rostelecomApiUrl').value = c.api_url || 'https://api.cloudpbx.rt.ru';
                 document.getElementById('rostelecomStartFrom').value = formatDatetimeLocal(c.start_from);
+                document.getElementById('rostelecomSyncInterval').value = c.sync_interval_minutes || 60;
                 setDirectionCheckboxes(c.allowed_directions);
             }
         });
@@ -262,6 +253,7 @@ function editRostelecomConnection(id) {
             document.getElementById('rostelecomName').value = c.name;
             document.getElementById('rostelecomApiUrl').value = c.api_url || 'https://api.cloudpbx.rt.ru';
             document.getElementById('rostelecomStartFrom').value = formatDatetimeLocal(c.start_from);
+            document.getElementById('rostelecomSyncInterval').value = c.sync_interval_minutes || 60;
             setDirectionCheckboxes(c.allowed_directions);
         }
     });
@@ -280,7 +272,8 @@ function saveRostelecomConnection() {
         sign_key: document.getElementById('rostelecomSignKey').value,
         is_active: document.getElementById('rostelecomActive').checked,
         allowed_directions: getDirectionCheckboxes(),
-        start_from: startFromVal ? new Date(startFromVal).toISOString() : null
+        start_from: startFromVal ? new Date(startFromVal).toISOString() : null,
+        sync_interval_minutes: parseInt(document.getElementById('rostelecomSyncInterval').value) || 60
     };
     if (!payload.api_url) { alert('Укажите адрес API'); return; }
     if (!id && (!payload.client_id || !payload.sign_key)) {
