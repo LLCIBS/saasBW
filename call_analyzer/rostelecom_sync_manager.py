@@ -281,7 +281,7 @@ def stop_rostelecom_sync(connection_id: int, user_id: Optional[int] = None):
 
 
 def start_all_active_rostelecom_syncs(user_id: Optional[int] = None):
-    """Запускает синхронизацию для всех активных подключений с source_type=rostelecom."""
+    """Запускает синхронизацию для всех активных подключений Ростелеком (галка «Активно» + интервал > 0)."""
     from config.settings import get_config
     from sqlalchemy import create_engine, text
 
@@ -293,15 +293,13 @@ def start_all_active_rostelecom_syncs(user_id: Optional[int] = None):
         uf = ""
         if user_id is not None:
             params["uid"] = user_id
-            uf = " AND uc.user_id = :uid"
+            uf = " AND r.user_id = :uid"
         sql = text(f"""
-            SELECT uc.user_id, uc.rostelecom_ats_connection_id as conn_id
-            FROM user_config uc
-            JOIN users u ON u.id = uc.user_id AND u.is_active = TRUE
-            JOIN rostelecom_ats_connections r ON r.id = uc.rostelecom_ats_connection_id
-                AND r.user_id = uc.user_id AND r.is_active = TRUE
-                AND (r.sync_interval_minutes IS NULL OR r.sync_interval_minutes > 0)
-            WHERE uc.source_type = 'rostelecom'{uf}
+            SELECT r.id as conn_id, r.user_id
+            FROM rostelecom_ats_connections r
+            JOIN users u ON u.id = r.user_id AND u.is_active = TRUE
+            WHERE r.is_active = TRUE
+              AND r.sync_interval_minutes > 0{uf}
         """)
         with engine.connect() as c:
             rows = c.execute(sql, params or {}).fetchall()
@@ -312,6 +310,7 @@ def start_all_active_rostelecom_syncs(user_id: Optional[int] = None):
             seen.add((row.user_id, row.conn_id))
             try:
                 start_rostelecom_sync(row.conn_id, user_id=row.user_id)
+                logger.info(f"Запущена автосинхронизация Ростелеком для подключения {row.conn_id} (user={row.user_id})")
             except Exception as e:
                 logger.error(f"Ошибка запуска Rostelecom sync {row.conn_id}: {e}")
     except Exception as e:
