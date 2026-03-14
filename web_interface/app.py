@@ -15,7 +15,7 @@ import re
 import importlib
 import importlib.util
 import requests
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from collections import OrderedDict
 from flask import Flask, render_template, request, jsonify, redirect, url_for, flash
@@ -4961,7 +4961,9 @@ def _sync_rostelecom_connection(conn_id: int):
                 if not conn:
                     return
                 from call_analyzer.rostelecom_connector import fetch_call_history
-                date_to = datetime.utcnow()
+                # API Ростелеком ожидает date_start/date_end по Москве (UTC+3)
+                MSK = timezone(timedelta(hours=3))
+                date_to = datetime.now(MSK).replace(tzinfo=None)
                 date_from = (conn.start_from or (date_to - timedelta(days=7)))
                 if date_from.tzinfo:
                     date_from = date_from.replace(tzinfo=None)

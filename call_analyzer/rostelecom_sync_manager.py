@@ -8,7 +8,7 @@
 import logging
 import threading
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -135,7 +135,9 @@ def sync_rostelecom_connection(connection_id: int, user_id: Optional[int] = None
         if not row.is_active:
             return
         uid = user_id or row.user_id
-        date_to = datetime.utcnow()
+        # API Ростелеком ожидает date_start/date_end по Москве (UTC+3)
+        MSK = timezone(timedelta(hours=3))
+        date_to = datetime.now(MSK).replace(tzinfo=None)
         date_from = row.start_from or (date_to - timedelta(days=7))
         if date_from.tzinfo:
             date_from = date_from.replace(tzinfo=None)
