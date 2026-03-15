@@ -15,6 +15,8 @@
 .ats-operator-card .btn { width: 100%; }
 .rostelecom-panel { background: var(--bg-primary); border-radius: var(--radius-xl); padding: 1.5rem; margin-top: 1.5rem; border: 1px solid var(--border-light); box-shadow: var(--shadow-sm); }
 .rostelecom-conn-card { background: var(--bg-secondary); border-radius: var(--radius-md); padding: 1rem; margin-bottom: 1rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem; }
+.stocrm-panel { background: var(--bg-primary); border-radius: var(--radius-xl); padding: 1.5rem; margin-top: 1.5rem; border: 1px solid var(--border-light); box-shadow: var(--shadow-sm); }
+.stocrm-conn-card { background: var(--bg-secondary); border-radius: var(--radius-md); padding: 1rem; margin-bottom: 1rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem; }
 @media (max-width: 576px) { .ats-operators-grid { grid-template-columns: 1fr; } }
 </style>
 {% endblock %}
@@ -34,6 +36,14 @@
                 <h3 class="ats-operator-name">Ростелеком</h3>
                 <p class="ats-operator-desc">Облачная АТС Ростелеком — Интеграционный API для получения записей звонков</p>
                 <button type="button" class="btn btn-primary btn-sm" onclick="toggleRostelecomPanel()">
+                    <i class="fas fa-cog me-1"></i>Настроить
+                </button>
+            </div>
+            <div class="ats-operator-card" id="stocrmCard">
+                <div class="ats-operator-logo d-flex align-items-center justify-content-center" style="font-size:2.5rem; font-weight:800; color:var(--primary); background:var(--bg-secondary); border-radius:50%;">S</div>
+                <h3 class="ats-operator-name">StoCRM</h3>
+                <p class="ats-operator-desc">CRM StoCRM — получение записей звонков через внешний API (get_filtered + get_record)</p>
+                <button type="button" class="btn btn-primary btn-sm" onclick="toggleStocrmPanel()">
                     <i class="fas fa-cog me-1"></i>Настроить
                 </button>
             </div>
@@ -69,6 +79,22 @@
             </div>
             <div id="rostelecomConnectionsList"></div>
             <div id="rostelecomEmpty" class="text-muted text-center py-4" style="display: none;">Нет подключений. Нажмите «Добавить».</div>
+        </div>
+
+        <div class="stocrm-panel" id="stocrmPanel" style="display: none;">
+            <h5 class="mb-3"><i class="fas fa-plug me-2 text-primary"></i>StoCRM — API записей звонков</h5>
+            <div class="alert alert-info mb-4">
+                <strong>Периодический опрос.</strong> Система запрашивает список звонков с записью
+                (<code>get_filtered</code>), затем для каждого скачивает аудио (<code>get_record</code>).
+                Для настройки найдите <strong>SID-ключ</strong> в разделе «Настройки → API ключи» в вашем StoCRM.
+                <a href="https://stocrm.ru/wiki/article/WIKI-A-627/" target="_blank" rel="noopener">Документация API</a>.
+            </div>
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h6 class="mb-0">Подключения</h6>
+                <button type="button" class="btn btn-primary btn-sm" onclick="showStocrmModal()"><i class="fas fa-plus me-1"></i>Добавить</button>
+            </div>
+            <div id="stocrmConnectionsList"></div>
+            <div id="stocrmEmpty" class="text-muted text-center py-4" style="display: none;">Нет подключений. Нажмите «Добавить».</div>
         </div>
     </div>
 </main>
@@ -135,6 +161,67 @@
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
                 <button type="button" class="btn btn-primary" onclick="saveRostelecomConnection()">Сохранить</button>
+            </div>
+        </div>
+    </div>
+</div>
+<div class="modal fade" id="stocrmModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Подключение StoCRM</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="stocrmConnId">
+                <div class="mb-3">
+                    <label class="form-label">Название</label>
+                    <input type="text" class="form-control" id="stocrmName" value="StoCRM" placeholder="StoCRM">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Поддомен <span class="text-danger">*</span></label>
+                    <div class="input-group">
+                        <input type="text" class="form-control" id="stocrmDomain" placeholder="mycompany">
+                        <span class="input-group-text">.stocrm.ru</span>
+                    </div>
+                    <div class="form-text">Только поддомен без .stocrm.ru. Например: <code>mycompany</code></div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">SID — API-ключ <span class="text-danger">*</span></label>
+                    <input type="password" class="form-control" id="stocrmSid" placeholder="Из раздела «Настройки → API ключи» в StoCRM (при редактировании оставьте пустым, чтобы не менять)">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Направления звонков</label>
+                    <div class="d-flex flex-wrap gap-3">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="stocrmDirIn" value="IN">
+                            <label class="form-check-label" for="stocrmDirIn">Входящие (IN)</label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="stocrmDirOut" value="OUT">
+                            <label class="form-check-label" for="stocrmDirOut">Исходящие (OUT)</label>
+                        </div>
+                    </div>
+                    <div class="form-text">Если ничего не выбрано — все направления.</div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Собирать звонки с даты</label>
+                    <input type="datetime-local" class="form-control" id="stocrmStartFrom">
+                    <div class="form-text">Звонки до этой даты игнорируются. Пусто = последние 7 дней.</div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Интервал синхронизации (минут)</label>
+                    <input type="number" class="form-control" id="stocrmSyncInterval" min="0" max="1440" value="60">
+                    <div class="form-text">0 = только ручная синхронизация. Рекомендуется 60–120 мин.</div>
+                </div>
+                <div class="form-check mb-3">
+                    <input class="form-check-input" type="checkbox" id="stocrmActive" checked>
+                    <label class="form-check-label" for="stocrmActive">Активно</label>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                <button type="button" class="btn btn-primary" onclick="saveStocrmConnection()">Сохранить</button>
             </div>
         </div>
     </div>
@@ -338,6 +425,172 @@ function deleteRostelecomConnection(id, name) {
         .then(r => r.json())
         .then(data => {
             if (data.success) { loadRostelecomConnections(); if (typeof showToast === 'function') showToast('Удалено', 'success'); }
+        });
+}
+
+// ===================== StoCRM =====================
+
+function toggleStocrmPanel() {
+    const p = document.getElementById('stocrmPanel');
+    p.style.display = p.style.display === 'none' ? 'block' : 'none';
+    if (p.style.display === 'block') loadStocrmConnections();
+}
+
+function loadStocrmConnections() {
+    fetch('/api/ats/stocrm/connections')
+        .then(r => r.json())
+        .then(data => {
+            const list = document.getElementById('stocrmConnectionsList');
+            const empty = document.getElementById('stocrmEmpty');
+            list.innerHTML = '';
+            if (!Array.isArray(data) || !data.length) {
+                empty.style.display = 'block';
+                return;
+            }
+            empty.style.display = 'none';
+            data.forEach(c => {
+                const card = document.createElement('div');
+                card.className = 'stocrm-conn-card';
+                const dirLabels = { IN: 'Входящие', OUT: 'Исходящие' };
+                const dirStr = (c.allowed_directions && c.allowed_directions.length) ? c.allowed_directions.map(d => dirLabels[d] || d).join(', ') : 'Все';
+                const startFromStr = c.start_from ? new Date(c.start_from).toLocaleString('ru-RU') : 'Последние 7 дней';
+                const lastSyncStr = c.last_sync ? new Date(c.last_sync).toLocaleString('ru-RU') : '—';
+                card.innerHTML = `
+                    <div>
+                        <strong>${escapeHtml(c.name)}</strong> ${c.is_active ? '<span class="badge bg-success ms-1">Активно</span>' : '<span class="badge bg-secondary ms-1">Неактивно</span>'}
+                        <div class="small text-muted">${escapeHtml(c.domain)}.stocrm.ru</div>
+                        <div class="small">Направления: ${escapeHtml(dirStr)}</div>
+                        <div class="small">С даты: ${escapeHtml(startFromStr)}</div>
+                        <div class="small">Последняя синхр.: ${escapeHtml(lastSyncStr)}</div>
+                        <div class="small">Интервал: ${(c.sync_interval_minutes || 60)} мин</div>
+                        ${c.last_error ? '<div class="small text-danger">Ошибка: ' + escapeHtml(c.last_error) + '</div>' : ''}
+                    </div>
+                    <div class="btn-group">
+                        <button class="btn btn-sm btn-success" onclick="syncStocrmConnection(${c.id})" title="Синхронизировать"><i class="fas fa-sync me-1"></i>Синхр.</button>
+                        <button class="btn btn-sm btn-outline-primary" onclick="testStocrmConnection(${c.id})" title="Проверить подключение"><i class="fas fa-vial me-1"></i>Проверить</button>
+                        <button class="btn btn-sm btn-outline-primary" onclick="editStocrmConnection(${c.id})"><i class="fas fa-edit"></i></button>
+                        <button class="btn btn-sm btn-outline-danger" onclick="deleteStocrmConnection(${c.id}, '${escapeHtml(c.name)}')"><i class="fas fa-trash"></i></button>
+                    </div>
+                `;
+                list.appendChild(card);
+            });
+        })
+        .catch(e => console.error(e));
+}
+
+function setStocrmDirCheckboxes(arr) {
+    document.getElementById('stocrmDirIn').checked = !arr || arr.length === 0 || arr.includes('IN');
+    document.getElementById('stocrmDirOut').checked = !arr || arr.length === 0 || arr.includes('OUT');
+}
+
+function getStocrmDirCheckboxes() {
+    const arr = [];
+    if (document.getElementById('stocrmDirIn').checked) arr.push('IN');
+    if (document.getElementById('stocrmDirOut').checked) arr.push('OUT');
+    return arr.length === 2 ? null : arr;
+}
+
+function showStocrmModal(id) {
+    document.getElementById('stocrmConnId').value = id || '';
+    document.getElementById('stocrmName').value = 'StoCRM';
+    document.getElementById('stocrmDomain').value = '';
+    document.getElementById('stocrmSid').value = '';
+    document.getElementById('stocrmStartFrom').value = '';
+    document.getElementById('stocrmSyncInterval').value = 60;
+    document.getElementById('stocrmActive').checked = true;
+    setStocrmDirCheckboxes(null);
+    new bootstrap.Modal(document.getElementById('stocrmModal')).show();
+}
+
+function editStocrmConnection(id) {
+    fetch('/api/ats/stocrm/connections').then(r => r.json()).then(list => {
+        const c = list.find(x => x.id === parseInt(id));
+        if (c) {
+            document.getElementById('stocrmConnId').value = c.id;
+            document.getElementById('stocrmName').value = c.name;
+            document.getElementById('stocrmDomain').value = c.domain;
+            document.getElementById('stocrmSid').value = '';
+            document.getElementById('stocrmStartFrom').value = formatDatetimeLocal(c.start_from);
+            document.getElementById('stocrmSyncInterval').value = c.sync_interval_minutes || 60;
+            document.getElementById('stocrmActive').checked = c.is_active;
+            setStocrmDirCheckboxes(c.allowed_directions);
+            new bootstrap.Modal(document.getElementById('stocrmModal')).show();
+        }
+    });
+}
+
+function saveStocrmConnection() {
+    const id = document.getElementById('stocrmConnId').value;
+    const domain = document.getElementById('stocrmDomain').value.trim();
+    const sid = document.getElementById('stocrmSid').value.trim();
+    const startFromVal = document.getElementById('stocrmStartFrom').value;
+    if (!domain) { alert('Укажите поддомен'); return; }
+    if (!id && !sid) { alert('При создании укажите SID-ключ'); return; }
+    const payload = {
+        name: document.getElementById('stocrmName').value,
+        domain: domain,
+        is_active: document.getElementById('stocrmActive').checked,
+        allowed_directions: getStocrmDirCheckboxes(),
+        start_from: startFromVal ? new Date(startFromVal).toISOString() : null,
+        sync_interval_minutes: parseInt(document.getElementById('stocrmSyncInterval').value) || 60,
+    };
+    if (sid) payload.sid = sid;
+    const url = id ? `/api/ats/stocrm/connections/${id}` : '/api/ats/stocrm/connections';
+    const method = id ? 'PUT' : 'POST';
+    fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                bootstrap.Modal.getInstance(document.getElementById('stocrmModal')).hide();
+                loadStocrmConnections();
+                if (typeof showToast === 'function') showToast(data.message || 'Сохранено', 'success');
+            } else alert(data.message || 'Ошибка');
+        }).catch(e => alert('Ошибка: ' + e));
+}
+
+async function syncStocrmConnection(id) {
+    try {
+        if (typeof showToast === 'function') showToast('Запуск синхронизации StoCRM...', 'info');
+        const r = await fetch(`/api/ats/stocrm/connections/${id}/sync`, { method: 'POST' });
+        const data = await r.json();
+        if (data.success) {
+            if (typeof showToast === 'function') showToast(data.message || 'Синхронизация запущена', 'success');
+            else alert(data.message || 'Синхронизация запущена');
+            setTimeout(loadStocrmConnections, 3000);
+        } else {
+            if (typeof showToast === 'function') showToast(data.message || 'Ошибка', 'danger');
+            else alert(data.message || 'Ошибка');
+        }
+    } catch (e) {
+        if (typeof showToast === 'function') showToast('Ошибка: ' + e, 'danger');
+        else alert('Ошибка: ' + e);
+    }
+}
+
+async function testStocrmConnection(id) {
+    try {
+        if (typeof showToast === 'function') showToast('Проверка подключения StoCRM...', 'info');
+        const r = await fetch(`/api/ats/stocrm/connections/${id}/test`, { method: 'POST' });
+        const data = await r.json();
+        if (data.success) {
+            if (typeof showToast === 'function') showToast(data.message || 'Подключение успешно', 'success');
+            else alert(data.message || 'Подключение успешно');
+        } else {
+            if (typeof showToast === 'function') showToast(data.message || 'Ошибка подключения', 'danger');
+            else alert(data.message || 'Ошибка подключения');
+        }
+    } catch (e) {
+        if (typeof showToast === 'function') showToast('Ошибка проверки: ' + e, 'danger');
+        else alert('Ошибка проверки: ' + e);
+    }
+}
+
+function deleteStocrmConnection(id, name) {
+    if (!confirm('Удалить подключение «' + name + '»?')) return;
+    fetch(`/api/ats/stocrm/connections/${id}`, { method: 'DELETE' })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) { loadStocrmConnections(); if (typeof showToast === 'function') showToast('Удалено', 'success'); }
         });
 }
 </script>

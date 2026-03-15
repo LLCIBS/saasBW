@@ -51,6 +51,7 @@ from database.models import (
     UserProfileData,
     FtpConnection,
     RostelecomAtsConnection,
+    StocrmConnection,
     UserVocabulary,
     UserPrompt,
     UserScriptPrompt,
@@ -326,6 +327,7 @@ def get_user_config_data(user=None):
             'base_records_path': cfg.base_records_path,
             'ftp_connection_id': cfg.ftp_connection_id,
             'rostelecom_ats_connection_id': getattr(cfg, 'rostelecom_ats_connection_id', None),
+            'stocrm_connection_id': getattr(cfg, 'stocrm_connection_id', None),
             'script_prompt_file': cfg.script_prompt_file,
             'additional_vocab_file': cfg.additional_vocab_file,
         })
@@ -414,6 +416,7 @@ def save_user_config_data(config_data, user=None):
     cfg.base_records_path = paths.get('base_records_path')
     cfg.ftp_connection_id = paths.get('ftp_connection_id')
     cfg.rostelecom_ats_connection_id = paths.get('rostelecom_ats_connection_id')
+    cfg.stocrm_connection_id = paths.get('stocrm_connection_id')
     cfg.script_prompt_file = paths.get('script_prompt_file')
     cfg.additional_vocab_file = paths.get('additional_vocab_file')
 
@@ -5026,6 +5029,167 @@ def api_rostelecom_delete(conn_id):
     if not conn:
         return jsonify({'error': 'Not found'}), 404
     UserConfig.query.filter_by(rostelecom_ats_connection_id=conn_id).update({'rostelecom_ats_connection_id': None, 'source_type': 'local'})
+    db.session.delete(conn)
+    db.session.commit()
+    return jsonify({'success': True})
+
+
+@app.route('/api/ats/stocrm/connections', methods=['GET'])
+@login_required
+def api_stocrm_connections():
+    """Список подключений StoCRM для текущего пользователя"""
+    try:
+        conns = StocrmConnection.query.filter_by(user_id=current_user.id).all()
+        return jsonify([{
+            'id': c.id,
+            'name': c.name,
+            'domain': c.domain,
+            'is_active': c.is_active,
+            'allowed_directions': c.allowed_directions if c.allowed_directions else ['IN', 'OUT'],
+            'start_from': c.start_from.isoformat() + 'Z' if c.start_from else None,
+            'sync_interval_minutes': c.sync_interval_minutes or 60,
+            'last_sync': c.last_sync.isoformat() + 'Z' if c.last_sync else None,
+            'last_error': c.last_error,
+            'created_at': c.created_at.isoformat() + 'Z',
+            'updated_at': c.updated_at.isoformat() + 'Z',
+        } for c in conns])
+    except Exception as e:
+        app.logger.error(f"StoCRM connections: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/ats/stocrm/connections', methods=['POST'])
+@login_required
+def api_stocrm_create():
+    """Создание подключения StoCRM"""
+    try:
+        data = request.get_json()
+        for f in ['domain', 'sid']:
+            if not data.get(f):
+                return jsonify({'success': False, 'message': f'Поле {f} обязательно'}), 400
+        allowed = data.get('allowed_directions')
+        if isinstance(allowed, list) and len(allowed) > 0:
+            allowed = [d.upper() for d in allowed]
+        else:
+            allowed = None
+        start_from = _parse_datetime_field(data.get('start_from'))
+        sync_interval = max(0, int(data.get('sync_interval_minutes', 60)))
+        conn = StocrmConnection(
+            user_id=current_user.id,
+            name=data.get('name', 'StoCRM'),
+            domain=data['domain'].strip().lower(),
+            sid=data['sid'].strip(),
+            is_active=data.get('is_active', True),
+            allowed_directions=allowed,
+            start_from=start_from,
+            sync_interval_minutes=sync_interval,
+        )
+        db.session.add(conn)
+        db.session.commit()
+        try:
+            from call_analyzer.stocrm_sync_manager import start_stocrm_sync
+            if conn.is_active and conn.sync_interval_minutes and conn.sync_interval_minutes > 0:
+                start_stocrm_sync(conn.id, user_id=current_user.id)
+        except Exception:
+            pass
+        return jsonify({'success': True, 'id': conn.id, 'message': 'Подключение создано'})
+    except Exception as e:
+        db.session.rollback()
+        app.logger.error(f"StoCRM create: {e}")
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+
+@app.route('/api/ats/stocrm/connections/<int:conn_id>', methods=['PUT'])
+@login_required
+def api_stocrm_update(conn_id):
+    """Обновление подключения StoCRM"""
+    conn = StocrmConnection.query.filter_by(id=conn_id, user_id=current_user.id).first()
+    if not conn:
+        return jsonify({'error': 'Not found'}), 404
+    try:
+        data = request.get_json()
+        if 'name' in data:
+            conn.name = data['name']
+        if 'domain' in data and data['domain']:
+            conn.domain = data['domain'].strip().lower()
+        if 'sid' in data and data['sid']:
+            conn.sid = data['sid'].strip()
+        if 'is_active' in data:
+            conn.is_active = bool(data['is_active'])
+        if 'allowed_directions' in data:
+            val = data['allowed_directions']
+            conn.allowed_directions = [d.upper() for d in val] if isinstance(val, list) else None
+        if 'start_from' in data:
+            conn.start_from = _parse_datetime_field(data.get('start_from'))
+        if 'sync_interval_minutes' in data:
+            v = data['sync_interval_minutes']
+            conn.sync_interval_minutes = max(0, int(v)) if v is not None else 60
+        db.session.commit()
+        try:
+            from call_analyzer.stocrm_sync_manager import start_stocrm_sync, stop_stocrm_sync
+            if conn.is_active and conn.sync_interval_minutes and conn.sync_interval_minutes > 0:
+                start_stocrm_sync(conn_id, user_id=current_user.id)
+            else:
+                stop_stocrm_sync(conn_id, user_id=current_user.id)
+        except Exception:
+            pass
+        return jsonify({'success': True, 'message': 'Обновлено'})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+
+@app.route('/api/ats/stocrm/connections/<int:conn_id>/test', methods=['POST'])
+@login_required
+def api_stocrm_test(conn_id):
+    """Проверка подключения к StoCRM API"""
+    conn = StocrmConnection.query.filter_by(id=conn_id, user_id=current_user.id).first()
+    if not conn:
+        return jsonify({'success': False, 'message': 'Подключение не найдено'}), 404
+    try:
+        from call_analyzer.stocrm_connector import test_connection
+        success, message = test_connection(domain=conn.domain, sid=conn.sid)
+        if success:
+            return jsonify({'success': True, 'message': message})
+        return jsonify({'success': False, 'message': message}), 400
+    except Exception as e:
+        app.logger.error(f"StoCRM test {conn_id}: {e}")
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+
+@app.route('/api/ats/stocrm/connections/<int:conn_id>/sync', methods=['POST'])
+@login_required
+def api_stocrm_sync(conn_id):
+    """Запуск ручной синхронизации StoCRM"""
+    conn = StocrmConnection.query.filter_by(id=conn_id, user_id=current_user.id).first()
+    if not conn:
+        return jsonify({'success': False, 'message': 'Подключение не найдено'}), 404
+
+    user_id = current_user.id
+
+    def _run():
+        with app.app_context():
+            try:
+                from call_analyzer.stocrm_sync_manager import sync_stocrm_connection
+                sync_stocrm_connection(conn_id, user_id=user_id)
+            except Exception as e:
+                app.logger.error(f"StoCRM manual sync {conn_id}: {e}", exc_info=True)
+
+    threading.Thread(target=_run, daemon=True, name=f"StoCRM-manual-sync-{conn_id}").start()
+    return jsonify({'success': True, 'message': 'Синхронизация запущена'})
+
+
+@app.route('/api/ats/stocrm/connections/<int:conn_id>', methods=['DELETE'])
+@login_required
+def api_stocrm_delete(conn_id):
+    """Удаление подключения StoCRM"""
+    conn = StocrmConnection.query.filter_by(id=conn_id, user_id=current_user.id).first()
+    if not conn:
+        return jsonify({'error': 'Not found'}), 404
+    UserConfig.query.filter_by(stocrm_connection_id=conn_id).update({
+        'stocrm_connection_id': None,
+        'source_type': 'local',
+    })
     db.session.delete(conn)
     db.session.commit()
     return jsonify({'success': True})

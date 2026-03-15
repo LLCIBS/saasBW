@@ -297,6 +297,22 @@ def parse_filename(file_name: str):
         except Exception:
             pass
 
+    # Поддержка формата stocrm-* (коннектор CRM StoCRM)
+    # stocrm-{direction}-{phone}_{workstation_id}_{YYYYMMDD}-{HHMMSS}.mp3
+    m = re.match(config.FILENAME_PATTERNS.get('stocrm_pattern', ''), file_name, re.IGNORECASE)
+    if m:
+        try:
+            call_type = m.group(1)
+            phone_raw = m.group(2)
+            workstation_id = m.group(3)
+            yyyymmdd = m.group(4)
+            hhmmss = m.group(5)
+            call_time = datetime.datetime.strptime(f"{yyyymmdd}{hhmmss}", "%Y%m%d%H%M%S")
+            phone = normalize_phone_number(phone_raw)
+            return phone, workstation_id, call_time
+        except Exception:
+            pass
+
     # Формат: телефон_станция_дата-время[-суффикс] (напр. 79673923233_201_20260313-151817-LbWWbypolYXY.mp3)
     m = re.match(config.FILENAME_PATTERNS.get('phone_station_compact', ''), file_name, re.IGNORECASE)
     if m:
@@ -416,6 +432,7 @@ def is_valid_call_filename(filename: str) -> bool:
         or name_lower.startswith("вход_")
         or name_lower.startswith("out-")
         or name_lower.startswith("rostelecom-")
+        or name_lower.startswith("stocrm-")
     ):
         return True
 

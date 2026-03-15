@@ -115,6 +115,9 @@ FILENAME_PATTERNS = {
     # Формат rostelecom-* (коннектор АТС Ростелеком)
     'rostelecom_pattern': r'^rostelecom-(incoming|outbound|internal)-(\d+)_(\w+)_(\d{8})-(\d{6})(?:-\w+)?\.(mp3|wav)$',
     
+    # Формат stocrm-* (коннектор CRM StoCRM)
+    'stocrm_pattern': r'^stocrm-(incoming|outbound|internal)-(\d+)_(\w+)_(\d{8})-(\d{6})(?:-\w+)?\.(mp3|wav|ogg)$',
+    
     # Формат: телефон_станция_дата-время[-суффикс] (напр. 79673923233_201_20260313-151817-LbWWbypolYXY.mp3)
     'phone_station_compact': r'^(\d+)_(\d+)_(\d{8})-(\d{6})(?:-[\w.]+)?(?:\.(mp3|wav))?$',
     

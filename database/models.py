@@ -226,6 +226,39 @@ class RostelecomAtsConnection(db.Model):
         return f'<RostelecomAtsConnection {self.name} (user={self.user_id})>'
 
 
+class StocrmConnection(db.Model):
+    """Подключение к CRM StoCRM (API для получения записей звонков)"""
+    __tablename__ = 'stocrm_connections'
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
+    name = db.Column(db.String(200), nullable=False, default='StoCRM')
+    # Поддомен StoCRM (например "mycompany" → mycompany.stocrm.ru)
+    domain = db.Column(db.String(200), nullable=False)
+    # API-ключ (SID) из раздела «Настройки → API ключи» StoCRM
+    sid = db.Column(db.String(200), nullable=False)
+    is_active = db.Column(db.Boolean, default=True, nullable=False)
+    # Фильтр по направлению: ["IN", "OUT"]. Пусто/None = все направления
+    allowed_directions = db.Column(JSONB, nullable=True)
+    # Дата, с которой обрабатывать звонки. Пусто = последние 7 дней
+    start_from = db.Column(db.DateTime, nullable=True)
+    # Интервал синхронизации в минутах. 0 = только ручная синхронизация
+    sync_interval_minutes = db.Column(db.Integer, default=60, nullable=False)
+    last_sync = db.Column(db.DateTime, nullable=True)
+    last_error = db.Column(Text, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    __table_args__ = (
+        Index('idx_stocrm_user_active', 'user_id', 'is_active'),
+    )
+
+    user = db.relationship('User', backref=db.backref('stocrm_connections', lazy='dynamic'))
+
+    def __repr__(self):
+        return f'<StocrmConnection {self.name} domain={self.domain} (user={self.user_id})>'
+
+
 class SystemLog(db.Model):
     """�?�?�?��>? �?��?�'��?�?�<�: �>�?�?�?�?"""
     __tablename__ = 'system_logs'
@@ -356,11 +389,12 @@ class UserConfig(db.Model):
     business_profile = db.Column(db.String(50), default='autoservice', nullable=False)
     
     # Paths
-    source_type = db.Column(db.String(50), nullable=True)  # 'local', 'ftp' или 'rostelecom'
+    source_type = db.Column(db.String(50), nullable=True)  # 'local', 'ftp', 'rostelecom' или 'stocrm'
     prompts_file = db.Column(db.String(1000), nullable=True)
     base_records_path = db.Column(db.String(1000), nullable=True)
     ftp_connection_id = db.Column(db.Integer, db.ForeignKey('ftp_connections.id'), nullable=True)
     rostelecom_ats_connection_id = db.Column(db.Integer, db.ForeignKey('rostelecom_ats_connections.id'), nullable=True)
+    stocrm_connection_id = db.Column(db.Integer, db.ForeignKey('stocrm_connections.id'), nullable=True)
     script_prompt_file = db.Column(db.String(1000), nullable=True)
     additional_vocab_file = db.Column(db.String(1000), nullable=True)
     
@@ -401,6 +435,7 @@ class UserConfig(db.Model):
     user = db.relationship('User', backref=db.backref('config', uselist=False, cascade='all, delete-orphan'))
     ftp_connection = db.relationship('FtpConnection', foreign_keys=[ftp_connection_id])
     rostelecom_ats_connection = db.relationship('RostelecomAtsConnection', foreign_keys=[rostelecom_ats_connection_id])
+    stocrm_connection = db.relationship('StocrmConnection', foreign_keys=[stocrm_connection_id])
     
     def __repr__(self):
         return f'<UserConfig user_id={self.user_id}>'

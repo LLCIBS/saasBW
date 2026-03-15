@@ -237,6 +237,12 @@ def main():
             start_all_active_rostelecom_syncs(user_id=ftp_user_id)
         except Exception as e:
             logger.error(f"[MAIN] Ошибка запуска Ростелеком синхронизаций: {e}")
+        try:
+            from call_analyzer.stocrm_sync_manager import start_all_active_stocrm_syncs
+            logger.info("[MAIN] Запуск StoCRM синхронизаций...")
+            start_all_active_stocrm_syncs(user_id=ftp_user_id)
+        except Exception as e:
+            logger.error(f"[MAIN] Ошибка запуска StoCRM синхронизаций: {e}")
 
 
         # 3. Основной цикл
