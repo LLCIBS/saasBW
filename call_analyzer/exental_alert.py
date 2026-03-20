@@ -789,24 +789,63 @@ def send_exental_results(station_code: str, caption: str, overall_text: str, mp3
     if not max_list and (getattr(config, 'MAX_ALERT_CHAT_ID', '') or '').strip():
         max_list = [str((getattr(config, 'MAX_ALERT_CHAT_ID', '') or '').strip())]
 
+    # Лимит подписи к аудио как у Telegram sendAudio (1024); в MAX поле текста ~4000 — без досылки
+    # длинный чек-лист на аудио обрезался и не повторялся отдельным сообщением (в ТГ при ошибке/длине уходит текстом).
+    TELEGRAM_AUDIO_CAPTION_LIMIT = 1024
+
     for mid in max_list:
         if not getattr(config, 'MAX_NOTIFICATIONS_ENABLED', True):
             continue
         if not ensure_max_ready("exental MAX"):
             continue
         try:
-            from common.max_messenger import send_audio_file_to_max, send_max_text
+            from common.max_messenger import (
+                send_audio_file_to_max,
+                send_excel_report_to_max,
+                send_max_text,
+                send_max_text_chunked,
+            )
         except ImportError as ie:
             logger.warning("[exental_alert] MAX недоступен: %s", ie)
             continue
         token = getattr(config, 'MAX_ACCESS_TOKEN', '')
+        if len(caption) > TELEGRAM_AUDIO_CAPTION_LIMIT:
+            # Не дублируем начало чек-листа на аудио и в тексте — как в ТГ при длинной подписи
+            caption_for_audio = (
+                "<b>Запись звонка</b> — полный разбор чек-листа отдельным сообщением ниже."
+            )
+        else:
+            caption_for_audio = caption
         audio_ok = False
         if mp3_path_obj.exists() and mp3_path_obj.is_file():
-            audio_ok = send_audio_file_to_max(token, str(mid), str(mp3_path_obj), caption)
-        if not audio_ok:
-            send_max_text(token, str(mid), caption, text_format="html")
+            audio_ok = send_audio_file_to_max(
+                token, str(mid), str(mp3_path_obj), caption_for_audio
+            )
+        try:
+            if len(caption) > TELEGRAM_AUDIO_CAPTION_LIMIT:
+                send_max_text_chunked(token, str(mid), caption, text_format="html")
+            elif not audio_ok:
+                send_max_text_chunked(token, str(mid), caption, text_format="html")
+        except Exception as te:
+            logger.error("[exental_alert] MAX текст чек-листа: %s", te)
         if overall_text:
-            send_max_text(token, str(mid), f"<b>Общий вывод</b>: {overall_text}", text_format="html")
+            send_max_text(
+                token,
+                str(mid),
+                f"<b>Общий вывод</b>: {overall_text}",
+                text_format="html",
+            )
+        ap = Path(analysis_path) if analysis_path else None
+        if ap and ap.is_file():
+            try:
+                send_excel_report_to_max(
+                    token,
+                    str(mid),
+                    str(ap),
+                    "<b>Полный текст разбора чек-листа</b>",
+                )
+            except Exception as fe:
+                logger.warning("[exental_alert] MAX файл анализа: %s", fe)
 
 def send_telegram_audio(chat_id: str, audio_path: str, caption: str):
     """

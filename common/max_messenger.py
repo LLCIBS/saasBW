@@ -159,6 +159,38 @@ def send_max_text(access_token: str, chat_id_raw: str, text: str, *, text_format
     )
 
 
+def send_max_text_chunked(
+    access_token: str,
+    chat_id_raw: str,
+    text: str,
+    *,
+    text_format: str = "html",
+    max_chunk: int = 3800,
+) -> None:
+    """
+    Длинный текст несколькими сообщениями (лимит поля text в MAX ~4000 символов).
+    Старается резать по переводу строки в хвосте чанка, чтобы реже рвать разметку.
+    """
+    t = text or ""
+    if not t.strip():
+        return
+    if len(t) <= max_chunk:
+        send_max_text(access_token, chat_id_raw, t, text_format=text_format)
+        return
+    i = 0
+    n = len(t)
+    while i < n:
+        end = min(i + max_chunk, n)
+        if end < n:
+            nl = t.rfind("\n", i, end)
+            if nl != -1 and nl > i + max_chunk // 2:
+                end = nl + 1
+        chunk = t[i:end]
+        if chunk.strip():
+            send_max_text(access_token, chat_id_raw, chunk, text_format=text_format)
+        i = end
+
+
 def send_message_with_file(
     access_token: str,
     chat_id: int,
