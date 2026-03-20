@@ -10,10 +10,10 @@ import re
 import config
 
 try:
-    from call_analyzer.utils import send_alert, normalize_phone_number  # type: ignore
+    from call_analyzer.utils import send_alert, send_station_message, normalize_phone_number  # type: ignore
     # services.py больше не используется
 except ImportError:
-    from utils import send_alert, normalize_phone_number
+    from utils import send_alert, send_station_message, normalize_phone_number
 
 # Используем ту же логику привязки подстанций, что и в call_handler,
 # чтобы не было расхождений в определении основной станции.
@@ -440,7 +440,13 @@ def process_recall_closure(new_call_file: Path, recall_record: dict):
         original_filename = new_call_file.name if new_call_file else None
         save_transcript_for_analytics(transcript_text, recall_record['phone_number'], recall_record['station_code'], datetime.now(), original_filename)
         
-        send_alert(f"Специальный анализ перезвона завершён для {recall_record['phone_number']}. Результат: {filename}")
+        # В Telegram — документ с подписью; в MAX — тот же файл (как при _send_file_telegram), а не голый путь в тексте
+        msg = f"Специальный анализ перезвона завершён для {recall_record['phone_number']}."
+        alert_id = (getattr(config, "ALERT_CHAT_ID", None) or "").strip()
+        if alert_id:
+            send_station_message(alert_id, msg, file_path=str(filename))
+        else:
+            send_alert(f"{msg} Результат: {filename}")
 
         # --- Цикличность: если снова требуется перезвонить, создаём новый кейс ---
         # Теперь проверяем только на тег [ПЕРЕЗВОНИТЬ:СВЯЗАЛИСЬ] (без учёта регистра)

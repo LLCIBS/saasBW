@@ -8,7 +8,7 @@ import yaml
 import re
 
 from call_analyzer import config
-from call_analyzer.utils import send_alert
+from call_analyzer.utils import send_alert, send_station_message
 from call_analyzer.retruck.services import TranscriptionService, TheBaiAnalyzer
 
 logger = logging.getLogger(__name__)
@@ -420,7 +420,12 @@ def process_recall_closure(new_call_file: Path, recall_record: dict):
             f.write(analysis_result)
 
         logger.info(f"[recall_tracker] Анализ перезвона сохранён в {filename}")
-        send_alert(f"Специальный анализ перезвона завершён для {recall_record['phone_number']}. Результат: {filename}")
+        msg = f"Специальный анализ перезвона завершён для {recall_record['phone_number']}."
+        alert_id = (getattr(config, "ALERT_CHAT_ID", None) or "").strip()
+        if alert_id:
+            send_station_message(alert_id, msg, file_path=str(filename))
+        else:
+            send_alert(f"{msg} Результат: {filename}")
 
         # --- Цикличность: если снова требуется перезвонить, создаём новый кейс ---
         # Теперь проверяем только на тег [ПЕРЕЗВОНИТЬ:СВЯЗАЛИСЬ] (без учёта регистра)
