@@ -214,6 +214,10 @@
                 <i class="fab fa-telegram"></i>
                 <span>Telegram</span>
             </button>
+            <button class="config-tab" data-tab="max">
+                <span style="font-weight:800">M</span>
+                <span>MAX</span>
+            </button>
             <button class="config-tab" data-tab="paths">
                 <i class="fas fa-folder-open"></i>
                 <span>Пути</span>
@@ -272,7 +276,7 @@
                         </div>
                     </div>
 
-                    <div class="form-row-single">
+                    <div class="form-row">
                         <div class="input-wrapper">
                             <label for="telegramBotToken">Telegram Bot Token</label>
                             <div class="password-input-group">
@@ -284,6 +288,18 @@
                                 </button>
                             </div>
                             <div class="help-text">Токен бота для отправки уведомлений и отчетов</div>
+                        </div>
+                        <div class="input-wrapper">
+                            <label for="maxAccessToken">Токен бота MAX</label>
+                            <div class="password-input-group">
+                                <input type="password" class="form-control" id="maxAccessToken"
+                                       placeholder="из business.max.ru → Чат-боты → Интеграция">
+                                <button class="btn btn-outline-secondary" type="button" id="toggleMaxToken"
+                                        onclick="togglePassword('maxAccessToken', 'toggleMaxToken')">
+                                    <i class="fas fa-eye"></i>
+                                </button>
+                            </div>
+                            <div class="help-text">Токен для API <code>platform-api.max.ru</code> (как Telegram — один токен на бота)</div>
                         </div>
                     </div>
 
@@ -330,6 +346,14 @@
                     <span>Настройки уведомлений</span>
                 </div>
                 <form id="telegramConfigForm">
+                    <div class="form-row-single">
+                        <div class="switch-wrapper">
+                            <label for="telegramNotificationsEnabled">Отправлять уведомления в Telegram</label>
+                            <div class="form-check form-switch m-0">
+                                <input class="form-check-input" type="checkbox" id="telegramNotificationsEnabled" checked>
+                            </div>
+                        </div>
+                    </div>
                     <div class="form-row">
                         <div class="input-wrapper">
                             <label for="alertChatId">Alert Chat ID</label>
@@ -359,6 +383,49 @@
                             <input type="text" class="form-control" id="tgChannelOther" 
                                    placeholder="@channel_other">
                             <div class="help-text">Канал для остальных станций</div>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- MAX Panel -->
+        <div class="config-panel" id="max-panel">
+            <div class="form-card">
+                <div class="form-card-title">
+                    <span style="font-weight:800">M</span>
+                    <span>Настройки MAX</span>
+                </div>
+                <p class="text-muted small">Дублируют сценарии Telegram: те же роли чатов, но с числовыми <code>chat_id</code> в MAX. Документация: <a href="https://dev.max.ru/docs-api" target="_blank" rel="noopener">dev.max.ru/docs-api</a></p>
+                <form id="maxConfigForm">
+                    <div class="form-row-single">
+                        <div class="switch-wrapper">
+                            <label for="maxNotificationsEnabled">Отправлять уведомления в MAX</label>
+                            <div class="form-check form-switch m-0">
+                                <input class="form-check-input" type="checkbox" id="maxNotificationsEnabled" checked>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="input-wrapper">
+                            <label for="maxAlertChatId">Alert (MAX chat_id)</label>
+                            <input type="text" class="form-control" id="maxAlertChatId" placeholder="число">
+                            <div class="help-text">Критические уведомления (параллель Alert Chat ID в Telegram)</div>
+                        </div>
+                        <div class="input-wrapper">
+                            <label for="maxReportsChatId">Чат для отчётов (MAX)</label>
+                            <input type="text" class="form-control" id="maxReportsChatId" placeholder="число">
+                            <div class="help-text">Excel-отчёты (параллель «Чат для отчетов» в Telegram)</div>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="input-wrapper">
+                            <label for="maxTgChannelNizh">Канал Нижний (MAX)</label>
+                            <input type="text" class="form-control" id="maxTgChannelNizh" placeholder="chat_id">
+                        </div>
+                        <div class="input-wrapper">
+                            <label for="maxTgChannelOther">Канал остальных (MAX)</label>
+                            <input type="text" class="form-control" id="maxTgChannelOther" placeholder="chat_id">
                         </div>
                     </div>
                 </form>
@@ -726,6 +793,7 @@ document.addEventListener('DOMContentLoaded', async function() {
         document.getElementById('speechmaticsApiKey').value = configData.api_keys?.speechmatics_api_key || '';
         document.getElementById('thebaiApiKey').value = configData.api_keys?.thebai_api_key || '';
         document.getElementById('telegramBotToken').value = configData.api_keys?.telegram_bot_token || '';
+        document.getElementById('maxAccessToken').value = configData.api_keys?.max_access_token || '';
 
         // LLM / DeepSeek / Gemma
         const apiKeys = configData.api_keys || {};
@@ -740,10 +808,17 @@ document.addEventListener('DOMContentLoaded', async function() {
         document.getElementById('llmProviderDeepseek').checked = (provider === 'deepseek');
         document.getElementById('llmProviderLocalGemma').checked = (provider === 'local_gemma');
         
+        document.getElementById('telegramNotificationsEnabled').checked = configData.telegram?.notifications_enabled !== false;
         document.getElementById('alertChatId').value = configData.telegram?.alert_chat_id || '';
         document.getElementById('reportsChatId').value = configData.telegram?.reports_chat_id || '';
         document.getElementById('tgChannelNizh').value = configData.telegram?.tg_channel_nizh || '';
         document.getElementById('tgChannelOther').value = configData.telegram?.tg_channel_other || '';
+
+        document.getElementById('maxNotificationsEnabled').checked = configData.max?.notifications_enabled !== false;
+        document.getElementById('maxAlertChatId').value = configData.max?.alert_chat_id || '';
+        document.getElementById('maxReportsChatId').value = configData.max?.reports_chat_id || '';
+        document.getElementById('maxTgChannelNizh').value = configData.max?.tg_channel_nizh || '';
+        document.getElementById('maxTgChannelOther').value = configData.max?.tg_channel_other || '';
         
         // Источник звонков
         const sourceType = configData.paths?.source_type || 'local';
@@ -1125,13 +1200,22 @@ async function saveAllConfig() {
                 thebai_api_key: document.getElementById('thebaiApiKey').value,
                 thebai_url: document.getElementById('thebaiUrl').value,
                 thebai_model: document.getElementById('thebaiModel').value,
-                telegram_bot_token: document.getElementById('telegramBotToken').value
+                telegram_bot_token: document.getElementById('telegramBotToken').value,
+                max_access_token: document.getElementById('maxAccessToken').value
             },
             telegram: {
+                notifications_enabled: document.getElementById('telegramNotificationsEnabled').checked,
                 alert_chat_id: document.getElementById('alertChatId').value,
                 reports_chat_id: document.getElementById('reportsChatId').value,
                 tg_channel_nizh: document.getElementById('tgChannelNizh').value,
                 tg_channel_other: document.getElementById('tgChannelOther').value
+            },
+            max: {
+                notifications_enabled: document.getElementById('maxNotificationsEnabled').checked,
+                alert_chat_id: document.getElementById('maxAlertChatId').value,
+                reports_chat_id: document.getElementById('maxReportsChatId').value,
+                tg_channel_nizh: document.getElementById('maxTgChannelNizh').value,
+                tg_channel_other: document.getElementById('maxTgChannelOther').value
             },
             business_profile: document.getElementById('businessProfile')?.value || 'autoservice',
             paths: {

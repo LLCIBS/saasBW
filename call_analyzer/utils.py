@@ -16,12 +16,49 @@ logger = logging.getLogger(__name__)
 
 
 def ensure_telegram_ready(action_description):
+    if not getattr(config, 'TELEGRAM_NOTIFICATIONS_ENABLED', True):
+        return False
     token = (config.TELEGRAM_BOT_TOKEN or '').strip()
     if not token:
         logger.warning("[%s] Telegram не настроен: %s. Укажите токен бота в кабинете.",
                        config.PROFILE_LABEL, action_description)
         return False
     return True
+
+
+def ensure_max_ready(action_description):
+    if not getattr(config, 'MAX_NOTIFICATIONS_ENABLED', True):
+        return False
+    token = (getattr(config, 'MAX_ACCESS_TOKEN', '') or '').strip()
+    if not token:
+        logger.warning("[%s] MAX не настроен: %s. Укажите токен бота в кабинете (MAX).",
+                       config.PROFILE_LABEL, action_description)
+        return False
+    return True
+
+
+def resolve_max_chat_for_mirror(tg_chat_id):
+    """
+    Соответствие TG-чата MAX-чату: alert, каналы Нижний / остальные (как в настройках).
+    """
+    max_alert = (getattr(config, 'MAX_ALERT_CHAT_ID', '') or '').strip()
+    if not max_alert:
+        return None
+    tg_alert = (getattr(config, 'ALERT_CHAT_ID', '') or '').strip()
+    if tg_chat_id is None:
+        return max_alert
+    ts = str(tg_chat_id).strip()
+    if not ts or ts == tg_alert:
+        return max_alert
+    tn = (getattr(config, 'TG_CHANNEL_NIZH', '') or '').strip()
+    mn = (getattr(config, 'MAX_TG_CHANNEL_NIZH', '') or '').strip()
+    if mn and tn == ts:
+        return mn
+    to = (getattr(config, 'TG_CHANNEL_OTHER', '') or '').strip()
+    mo = (getattr(config, 'MAX_TG_CHANNEL_OTHER', '') or '').strip()
+    if mo and to == ts:
+        return mo
+    return None
 
 
 def wait_for_file(file_path, retries=5, delay=2):
@@ -76,11 +113,10 @@ def notify_on_error(raise_exception=False):
 
 def send_alert(message, filename=None, chat_id=None, reply_to_message_id=None):
     """
-    Отправляет критическое сообщение в Telegram.
+    Отправляет критическое сообщение в Telegram и дублирует в MAX (если включено в профиле).
     Если параметр chat_id не передан, используется config.ALERT_CHAT_ID.
-    Поддерживает ответ на сообщение через reply_to_message_id.
+    Поддерживает ответ на сообщение через reply_to_message_id (только Telegram).
     """
-    event_time = time.strftime("%Y-%m-%d %H:%M:%S")
     alert_message = f"{message}"
     if filename:
         alert_message += f"\nФайл: {filename}"
@@ -88,27 +124,43 @@ def send_alert(message, filename=None, chat_id=None, reply_to_message_id=None):
     if chat_id is None:
         chat_id = config.ALERT_CHAT_ID
 
-    if not ensure_telegram_ready("отправка сервисного уведомления"):
-        return None
-    url = f"https://api.telegram.org/bot{config.TELEGRAM_BOT_TOKEN}/sendMessage"
-    payload = {
-        "chat_id": chat_id,
-        "text": alert_message
-    }
+    msg_id = None
+    if getattr(config, 'TELEGRAM_NOTIFICATIONS_ENABLED', True) and ensure_telegram_ready("отправка сервисного уведомления"):
+        url = f"https://api.telegram.org/bot{config.TELEGRAM_BOT_TOKEN}/sendMessage"
+        payload = {
+            "chat_id": chat_id,
+            "text": alert_message
+        }
 
-    if reply_to_message_id:
-        payload["reply_to_message_id"] = reply_to_message_id
+        if reply_to_message_id:
+            payload["reply_to_message_id"] = reply_to_message_id
 
-    try:
-        resp = requests.post(url, data=payload)
-        if resp.status_code == 200:
-            logger.info("Alert отправлен в Телеграм.")
+        try:
+            resp = requests.post(url, data=payload)
+            if resp.status_code == 200:
+                logger.info("Alert отправлен в Телеграм.")
+                msg_id = resp.json().get("result", {}).get("message_id")
+            else:
+                logger.error(f"Не удалось отправить alert: {resp.status_code}, {resp.text}")
+        except Exception as e:
+            logger.error(f"Ошибка при отправке alert: {e}")
 
-            return resp.json().get("result", {}).get("message_id")  # Возвращаем message_id
-        else:
-            logger.error(f"Не удалось отправить alert: {resp.status_code}, {resp.text}")
-    except Exception as e:
-        logger.error(f"Ошибка при отправке alert: {e}")
+    if getattr(config, 'MAX_NOTIFICATIONS_ENABLED', True) and ensure_max_ready("отправка сервисного уведомления (MAX)"):
+        max_chat = resolve_max_chat_for_mirror(chat_id)
+        if max_chat:
+            try:
+                from common.max_messenger import send_max_text
+                send_max_text(
+                    getattr(config, 'MAX_ACCESS_TOKEN', ''),
+                    max_chat,
+                    alert_message,
+                    text_format=None,
+                )
+                logger.info("Alert продублирован в MAX.")
+            except Exception as e:
+                logger.error(f"Ошибка при отправке alert в MAX: {e}")
+
+    return msg_id
 
 
 
@@ -139,6 +191,16 @@ def _send_text_telegram(chat_id, text):
             logger.error(f"Ошибка при отправке текста в чат {chat_id}: {resp.status_code}, {resp.text}")
     except Exception as e:
         logger.error(f"Исключение при отправке сообщения в чат {chat_id}: {e}")
+
+    if getattr(config, 'MAX_NOTIFICATIONS_ENABLED', True) and ensure_max_ready("отправка текста в MAX"):
+        mid = resolve_max_chat_for_mirror(chat_id)
+        if mid:
+            try:
+                from common.max_messenger import send_max_text
+                fmt = "html" if ("<" in (text or "") and ">" in (text or "")) else None
+                send_max_text(getattr(config, 'MAX_ACCESS_TOKEN', ''), mid, text or '', text_format=fmt)
+            except Exception as e:
+                logger.error(f"MAX: текст в чат {mid}: {e}")
 
 
 def get_matched_pattern_config(file_name: str):
@@ -474,6 +536,20 @@ def _send_file_telegram(chat_id, caption, file_path):
             logger.error(f"Ошибка при отправке файла в чат {chat_id}: {resp.status_code}, {resp.text}")
     except Exception as e:
         logger.error(f"Исключение при отправке файла в чат {chat_id}: {e}")
+
+    if getattr(config, 'MAX_NOTIFICATIONS_ENABLED', True) and ensure_max_ready("отправка документа в MAX"):
+        mid = resolve_max_chat_for_mirror(chat_id)
+        if mid:
+            try:
+                from common.max_messenger import send_excel_report_to_max
+                send_excel_report_to_max(
+                    getattr(config, 'MAX_ACCESS_TOKEN', ''),
+                    mid,
+                    file_path,
+                    caption or '',
+                )
+            except Exception as e:
+                logger.error(f"MAX: файл в чат {mid}: {e}")
 
 
 def get_call_format(file_name: str):

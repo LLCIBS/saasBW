@@ -59,6 +59,7 @@ from database.models import (
     UserStation,
     UserStationMapping,
     UserStationChatId,
+    UserStationMaxChatId,
     UserEmployeeExtension,
     ReportSchedule,
     FinetuneSample,
@@ -119,79 +120,6 @@ def _get_or_create_user_config_record(actual_user):
         db.session.add(cfg)
         db.session.commit()
     return cfg
-
-
-def get_user_config_data(user=None):
-    """Загружает конфигурацию пользователя из нормализованных таблиц."""
-    actual_user = user if user else (current_user if hasattr(current_user, 'is_authenticated') and current_user.is_authenticated else None)
-    if not actual_user:
-        return default_config_template()
-
-    cfg = UserConfig.query.filter_by(user_id=actual_user.id).first()
-    config_data = default_config_template()
-
-    if cfg:
-        paths = config_data.get('paths') or {}
-        paths.update({
-            'source_type': cfg.source_type,
-            'prompts_file': cfg.prompts_file,
-            'base_records_path': cfg.base_records_path,
-            'ftp_connection_id': cfg.ftp_connection_id,
-            'rostelecom_ats_connection_id': getattr(cfg, 'rostelecom_ats_connection_id', None),
-            'script_prompt_file': cfg.script_prompt_file,
-            'additional_vocab_file': cfg.additional_vocab_file,
-        })
-        config_data['paths'] = paths
-
-        config_data['api_keys'] = {
-            'speechmatics_api_key': cfg.speechmatics_api_key or '',
-            'thebai_api_key': cfg.thebai_api_key or '',
-            'thebai_url': config_data['api_keys'].get('thebai_url', 'https://api.deepseek.com/v1/chat/completions'),
-            'thebai_model': config_data['api_keys'].get('thebai_model', 'deepseek-reasoner'),
-            'telegram_bot_token': cfg.telegram_bot_token or '',
-        }
-
-        config_data['telegram'] = {
-            'alert_chat_id': cfg.alert_chat_id or '',
-            'tg_channel_nizh': cfg.tg_channel_nizh or '',
-            'tg_channel_other': cfg.tg_channel_other or '',
-            'reports_chat_id': getattr(cfg, 'reports_chat_id', None) or '',
-        }
-
-        config_data['transcription'] = {
-            'tbank_stereo_enabled': bool(cfg.tbank_stereo_enabled),
-            'use_additional_vocab': bool(cfg.use_additional_vocab),
-            'auto_detect_operator_name': bool(cfg.auto_detect_operator_name),
-        }
-
-        config_data['filename'] = {
-            'enabled': bool(cfg.use_custom_filename_patterns),
-            'patterns': cfg.filename_patterns or [],
-            'extensions': cfg.filename_extensions or ['.mp3', '.wav']
-        }
-
-        config_data['allowed_stations'] = cfg.allowed_stations or []
-        config_data['nizh_station_codes'] = cfg.nizh_station_codes or []
-        config_data['legal_entity_keywords'] = cfg.legal_entity_keywords or []
-
-    stations = {s.code: s.name for s in UserStation.query.filter_by(user_id=actual_user.id).all()}
-    station_chat_ids = {}
-    for row in UserStationChatId.query.filter_by(user_id=actual_user.id).all():
-        station_chat_ids.setdefault(row.station_code, []).append(row.chat_id)
-    station_mapping = {}
-    for row in UserStationMapping.query.filter_by(user_id=actual_user.id).all():
-        station_mapping.setdefault(row.main_station_code, []).append(row.sub_station_code)
-    employee_by_extension = {
-        row.extension: row.employee
-        for row in UserEmployeeExtension.query.filter_by(user_id=actual_user.id).all()
-    }
-
-    config_data['stations'] = stations
-    config_data['station_chat_ids'] = station_chat_ids
-    config_data['station_mapping'] = station_mapping
-    config_data['employee_by_extension'] = employee_by_extension
-
-    return config_data
 
 
 # Legacy config loader (call_analyzer/config.py)
@@ -342,14 +270,23 @@ def get_user_config_data(user=None):
             'thebai_url': (getattr(cfg, 'thebai_url', None) or '').strip() or _def_url,
             'thebai_model': (getattr(cfg, 'thebai_model', None) or '').strip() or _def_model,
             'telegram_bot_token': cfg.telegram_bot_token or '',
+            'max_access_token': getattr(cfg, 'max_access_token', None) or '',
         }
 
-        # Telegram
+        # Telegram / MAX
         config_data['telegram'] = {
+            'notifications_enabled': getattr(cfg, 'telegram_notifications_enabled', True),
             'alert_chat_id': cfg.alert_chat_id or '',
             'tg_channel_nizh': cfg.tg_channel_nizh or '',
             'tg_channel_other': cfg.tg_channel_other or '',
             'reports_chat_id': getattr(cfg, 'reports_chat_id', None) or '',
+        }
+        config_data['max'] = {
+            'notifications_enabled': getattr(cfg, 'max_notifications_enabled', True),
+            'alert_chat_id': getattr(cfg, 'max_alert_chat_id', None) or '',
+            'tg_channel_nizh': getattr(cfg, 'max_tg_channel_nizh', None) or '',
+            'tg_channel_other': getattr(cfg, 'max_tg_channel_other', None) or '',
+            'reports_chat_id': getattr(cfg, 'max_reports_chat_id', None) or '',
         }
 
         # Transcription
@@ -382,6 +319,9 @@ def get_user_config_data(user=None):
     station_chat_ids = {}
     for row in UserStationChatId.query.filter_by(user_id=actual_user.id).all():
         station_chat_ids.setdefault(row.station_code, []).append(row.chat_id)
+    station_max_chat_ids = {}
+    for row in UserStationMaxChatId.query.filter_by(user_id=actual_user.id).all():
+        station_max_chat_ids.setdefault(row.station_code, []).append(row.chat_id)
     station_mapping = {}
     for row in UserStationMapping.query.filter_by(user_id=actual_user.id).all():
         station_mapping.setdefault(row.main_station_code, []).append(row.sub_station_code)
@@ -392,6 +332,7 @@ def get_user_config_data(user=None):
 
     config_data['stations'] = stations
     config_data['station_chat_ids'] = station_chat_ids
+    config_data['station_max_chat_ids'] = station_max_chat_ids
     config_data['station_mapping'] = station_mapping
     config_data['employee_by_extension'] = employee_by_extension
 
@@ -409,6 +350,7 @@ def save_user_config_data(config_data, user=None):
     paths = config_data.get('paths') or {}
     api_keys = config_data.get('api_keys') or {}
     telegram_cfg = config_data.get('telegram') or {}
+    max_cfg = config_data.get('max') or {}
     transcription_cfg = config_data.get('transcription') or {}
 
     cfg.source_type = paths.get('source_type')
@@ -425,11 +367,20 @@ def save_user_config_data(config_data, user=None):
     cfg.thebai_url = (api_keys.get('thebai_url') or '').strip() or None
     cfg.thebai_model = (api_keys.get('thebai_model') or '').strip() or None
     cfg.telegram_bot_token = api_keys.get('telegram_bot_token')
+    cfg.max_access_token = api_keys.get('max_access_token')
+
+    cfg.telegram_notifications_enabled = bool(telegram_cfg.get('notifications_enabled', True))
+    cfg.max_notifications_enabled = bool(max_cfg.get('notifications_enabled', True))
 
     cfg.alert_chat_id = telegram_cfg.get('alert_chat_id')
     cfg.tg_channel_nizh = telegram_cfg.get('tg_channel_nizh')
     cfg.tg_channel_other = telegram_cfg.get('tg_channel_other')
     cfg.reports_chat_id = telegram_cfg.get('reports_chat_id')
+
+    cfg.max_alert_chat_id = max_cfg.get('alert_chat_id')
+    cfg.max_tg_channel_nizh = max_cfg.get('tg_channel_nizh')
+    cfg.max_tg_channel_other = max_cfg.get('tg_channel_other')
+    cfg.max_reports_chat_id = max_cfg.get('reports_chat_id')
 
     cfg.tbank_stereo_enabled = bool(transcription_cfg.get('tbank_stereo_enabled', False))
     cfg.use_additional_vocab = bool(transcription_cfg.get('use_additional_vocab', True))
@@ -461,6 +412,7 @@ def save_user_config_data(config_data, user=None):
     # Станции, chat_id, маппинги, сотрудники
     UserStation.query.filter_by(user_id=actual_user.id).delete()
     UserStationChatId.query.filter_by(user_id=actual_user.id).delete()
+    UserStationMaxChatId.query.filter_by(user_id=actual_user.id).delete()
     UserStationMapping.query.filter_by(user_id=actual_user.id).delete()
     UserEmployeeExtension.query.filter_by(user_id=actual_user.id).delete()
 
@@ -477,6 +429,14 @@ def save_user_config_data(config_data, user=None):
             if chat_id:
                 db.session.add(UserStationChatId(user_id=actual_user.id, station_code=str(code), chat_id=str(chat_id)))
 
+    station_max_chat_ids = config_data.get('station_max_chat_ids') or {}
+    for code, chat_list in station_max_chat_ids.items():
+        if not code:
+            continue
+        for chat_id in chat_list or []:
+            if chat_id:
+                db.session.add(UserStationMaxChatId(user_id=actual_user.id, station_code=str(code), chat_id=str(chat_id)))
+
     station_mapping = config_data.get('station_mapping') or {}
     for main_code, sub_list in station_mapping.items():
         if not main_code:
@@ -491,7 +451,41 @@ def save_user_config_data(config_data, user=None):
             db.session.add(UserEmployeeExtension(user_id=actual_user.id, extension=str(ext), employee=str(emp)))
 
     db.session.commit()
+    sync_classification_notify_from_user_config(actual_user, config_data)
     return config_data
+
+
+def sync_classification_notify_from_user_config(actual_user, config_data):
+    """Дублирует настройки уведомлений в classification_rules.db пользователя."""
+    try:
+        from pathlib import Path
+        from classification_module.classification_rules import ClassificationRulesManager
+
+        base = (config_data.get('paths') or {}).get('base_records_path') or ''
+        base = str(base).strip()
+        if not base:
+            return
+        db_path = Path(base) / 'classification' / 'classification_rules.db'
+        if not db_path.is_file():
+            return
+        rules = ClassificationRulesManager(db_path=str(db_path))
+        telegram = config_data.get('telegram') or {}
+        max_c = config_data.get('max') or {}
+        api_keys = config_data.get('api_keys') or {}
+        rules.set_setting('telegram_enabled', '1' if telegram.get('notifications_enabled', True) else '0')
+        rules.set_setting('telegram_bot_token', api_keys.get('telegram_bot_token') or '')
+        rules.set_setting(
+            'telegram_chat_id',
+            (telegram.get('reports_chat_id') or telegram.get('alert_chat_id') or '').strip(),
+        )
+        rules.set_setting('max_enabled', '1' if max_c.get('notifications_enabled', True) else '0')
+        rules.set_setting('max_access_token', api_keys.get('max_access_token') or '')
+        rules.set_setting(
+            'max_chat_id',
+            (max_c.get('reports_chat_id') or max_c.get('alert_chat_id') or '').strip(),
+        )
+    except Exception:
+        pass
 
 
 def normalize_prompts_payload(data):
@@ -1051,12 +1045,21 @@ def legacy_config_override(runtime_cfg):
         _set_attr('THEBAI_URL', api_keys.get('thebai_url', 'https://api.deepseek.com/v1/chat/completions'))
         _set_attr('THEBAI_MODEL', api_keys.get('thebai_model', 'deepseek-reasoner'))
         _set_attr('TELEGRAM_BOT_TOKEN', api_keys.get('telegram_bot_token', ''))
+        _set_attr('MAX_ACCESS_TOKEN', api_keys.get('max_access_token', ''))
 
         telegram_cfg = runtime_cfg.get('telegram') or {}
+        _set_attr('TELEGRAM_NOTIFICATIONS_ENABLED', bool(telegram_cfg.get('notifications_enabled', True)))
         _set_attr('ALERT_CHAT_ID', telegram_cfg.get('alert_chat_id', ''))
         _set_attr('TG_CHANNEL_NIZH', telegram_cfg.get('tg_channel_nizh', ''))
         _set_attr('TG_CHANNEL_OTHER', telegram_cfg.get('tg_channel_other', ''))
         _set_attr('REPORTS_CHAT_ID', telegram_cfg.get('reports_chat_id', ''))
+
+        max_cfg = runtime_cfg.get('max') or {}
+        _set_attr('MAX_NOTIFICATIONS_ENABLED', bool(max_cfg.get('notifications_enabled', True)))
+        _set_attr('MAX_ALERT_CHAT_ID', max_cfg.get('alert_chat_id', ''))
+        _set_attr('MAX_TG_CHANNEL_NIZH', max_cfg.get('tg_channel_nizh', ''))
+        _set_attr('MAX_TG_CHANNEL_OTHER', max_cfg.get('tg_channel_other', ''))
+        _set_attr('MAX_REPORTS_CHAT_ID', max_cfg.get('reports_chat_id', ''))
 
         transcription_cfg = runtime_cfg.get('transcription') or {}
         _set_attr('TBANK_STEREO_ENABLED', bool(transcription_cfg.get('tbank_stereo_enabled', False)))
@@ -1066,6 +1069,7 @@ def legacy_config_override(runtime_cfg):
         _set_attr('EMPLOYEE_BY_EXTENSION', deepcopy(runtime_cfg.get('employee_by_extension') or {}))
         _set_attr('STATION_NAMES', deepcopy(runtime_cfg.get('stations') or {}))
         _set_attr('STATION_CHAT_IDS', deepcopy(runtime_cfg.get('station_chat_ids') or {}))
+        _set_attr('STATION_MAX_CHAT_IDS', deepcopy(runtime_cfg.get('station_max_chat_ids') or {}))
         _set_attr('STATION_MAPPING', deepcopy(runtime_cfg.get('station_mapping') or {}))
         _set_attr('NIZH_STATION_CODES', list(runtime_cfg.get('nizh_station_codes') or []))
 
@@ -1877,6 +1881,7 @@ def api_stations():
     config_data = get_user_config_data()
     stations = config_data.get('stations', {})
     station_chat_ids = config_data.get('station_chat_ids', {})
+    station_max_chat_ids = config_data.get('station_max_chat_ids', {})
     station_mapping = config_data.get('station_mapping', {})
 
     result = []
@@ -1885,6 +1890,7 @@ def api_stations():
             'code': code,
             'name': name,
             'chat_ids': station_chat_ids.get(code, []),
+            'max_chat_ids': station_max_chat_ids.get(code, []),
             'sub_stations': station_mapping.get(code, [])
         })
 
@@ -1900,6 +1906,7 @@ def api_stations_save():
 
         stations = dict(config_data.get('stations') or {})
         station_chat_ids = dict(config_data.get('station_chat_ids') or {})
+        station_max_chat_ids = dict(config_data.get('station_max_chat_ids') or {})
         station_mapping = dict(config_data.get('station_mapping') or {})
 
         stations_payload = data.get('stations')
@@ -1920,6 +1927,7 @@ def api_stations_save():
                 if payload is None:
                     stations.pop(code, None)
                     station_chat_ids.pop(code, None)
+                    station_max_chat_ids.pop(code, None)
                     station_mapping.pop(code, None)
                     continue
 
@@ -1932,6 +1940,9 @@ def api_stations_save():
                 if 'chat_ids' in payload:
                     station_chat_ids[code] = payload.get('chat_ids') or []
 
+                if 'max_chat_ids' in payload:
+                    station_max_chat_ids[code] = payload.get('max_chat_ids') or []
+
                 if 'sub_stations' in payload:
                     station_mapping[code] = payload.get('sub_stations') or []
 
@@ -1940,6 +1951,7 @@ def api_stations_save():
 
         config_data['stations'] = stations
         config_data['station_chat_ids'] = station_chat_ids
+        config_data['station_max_chat_ids'] = station_max_chat_ids
         config_data['station_mapping'] = station_mapping
 
         save_user_config_data(config_data)
@@ -2693,13 +2705,22 @@ def api_checklists_test():
     runtime_cfg = deepcopy(runtime_cfg)
     api_keys = runtime_cfg.get('api_keys') or {}
     api_keys['telegram_bot_token'] = ''
+    api_keys['max_access_token'] = ''
     runtime_cfg['api_keys'] = api_keys
     telegram_cfg = runtime_cfg.get('telegram') or {}
     telegram_cfg['alert_chat_id'] = ''
     telegram_cfg['tg_channel_nizh'] = ''
     telegram_cfg['tg_channel_other'] = ''
     telegram_cfg['reports_chat_id'] = ''
+    telegram_cfg['notifications_enabled'] = False
     runtime_cfg['telegram'] = telegram_cfg
+    max_cfg = runtime_cfg.get('max') or {}
+    max_cfg['notifications_enabled'] = False
+    max_cfg['alert_chat_id'] = ''
+    max_cfg['tg_channel_nizh'] = ''
+    max_cfg['tg_channel_other'] = ''
+    max_cfg['reports_chat_id'] = ''
+    runtime_cfg['max'] = max_cfg
     if script_prompt_override:
         runtime_cfg.setdefault('paths', {})
         runtime_cfg['paths']['script_prompt_file'] = script_prompt_override
@@ -3916,10 +3937,10 @@ def api_reports_generate():
                         return
                 
                 # Финальное обновление
-                report_generation_progress[report_type]['current_step'] = 'Отправка в Telegram...'
+                report_generation_progress[report_type]['current_step'] = 'Отправка в мессенджеры...'
                 report_generation_progress[report_type]['progress'] = 95
                 report_generation_status[report_type]['progress'] = 95
-                report_generation_status[report_type]['current_step'] = 'Отправка в Telegram...'
+                report_generation_status[report_type]['current_step'] = 'Отправка в мессенджеры...'
                 
                 time.sleep(1)
                 
@@ -5556,6 +5577,24 @@ def api_config_test():
         except Exception as e:
             test_results['telegram'] = {'status': 'error', 'message': str(e)}
 
+        # MAX (Bot API)
+        try:
+            import requests
+            max_token = (api_keys.get('max_access_token') or '').strip()
+            if not max_token:
+                raise ValueError('Не задан токен MAX')
+            r = requests.get(
+                'https://platform-api.max.ru/me',
+                headers={'Authorization': max_token},
+                timeout=10,
+            )
+            if r.status_code == 200:
+                test_results['max'] = {'status': 'success', 'message': 'Бот MAX доступен'}
+            else:
+                test_results['max'] = {'status': 'error', 'message': f'HTTP {r.status_code}'}
+        except Exception as e:
+            test_results['max'] = {'status': 'error', 'message': str(e)}
+
         # Speechmatics
         try:
             import requests
@@ -5603,6 +5642,9 @@ def api_config_save_all():
 
         if 'telegram' in data:
             config_data['telegram'] = data['telegram']
+
+        if 'max' in data:
+            config_data['max'] = data['max']
             
         if 'paths' in data:
             old_paths = config_data.get('paths', {})

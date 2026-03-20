@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import json
 import sqlite3
@@ -1905,5 +1905,56 @@ def api_schedule_status(schedule_id: int):
             "current_file": task.get("current_file", ""),
             "download_url": task.get("download_url"),
             "duration": task.get("duration", ""),
+        }
+    )
+
+
+_NOTIFY_SETTING_KEYS = (
+    "telegram_enabled",
+    "telegram_bot_token",
+    "telegram_chat_id",
+    "max_enabled",
+    "max_access_token",
+    "max_chat_id",
+)
+
+
+@classification_bp.route("/api/notify-settings", methods=["GET", "PUT"])
+@login_required
+def api_notify_settings():
+    """
+    Настройки отправки отчётов после классификации (Telegram и MAX).
+    Хранятся в classification_rules.db → system_settings.
+    """
+    rules = _rules_manager()
+    if request.method == "GET":
+        data = {k: rules.get_setting(k, "") for k in _NOTIFY_SETTING_KEYS}
+        # флаги как строки '0'/'1' для совместимости с SQLite
+        return jsonify({"success": True, "settings": data})
+
+    payload = request.get_json(silent=True) or {}
+    for key in _NOTIFY_SETTING_KEYS:
+        if key not in payload:
+            continue
+        val = payload[key]
+        if val is None:
+            val = ""
+        sval = "1" if val is True else ("0" if val is False else str(val))
+        if key in ("telegram_enabled", "max_enabled") and sval not in ("0", "1"):
+            return jsonify({"success": False, "message": f"{key}: ожидается 0 или 1"}), 400
+        if key == "max_chat_id" and str(sval).strip():
+            try:
+                int(str(sval).strip())
+            except ValueError:
+                return jsonify({"success": False, "message": "max_chat_id: укажите целое число"}), 400
+        desc = None
+        if key == "max_access_token":
+            desc = "Токен бота MAX"
+        rules.set_setting(key, sval, description=desc)
+
+    return jsonify(
+        {
+            "success": True,
+            "settings": {k: rules.get_setting(k, "") for k in _NOTIFY_SETTING_KEYS},
         }
     )

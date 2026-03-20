@@ -11,9 +11,18 @@ def default_config_template():
             # URL и модель берём из project_config (THEBAI_URL/THEBAI_MODEL) через fallback
             'thebai_url': '',
             'thebai_model': '',
-            'telegram_bot_token': ''
+            'telegram_bot_token': '',
+            'max_access_token': ''
         },
         'telegram': {
+            'notifications_enabled': True,
+            'alert_chat_id': '',
+            'tg_channel_nizh': '',
+            'tg_channel_other': '',
+            'reports_chat_id': ''
+        },
+        'max': {
+            'notifications_enabled': True,
             'alert_chat_id': '',
             'tg_channel_nizh': '',
             'tg_channel_other': '',
@@ -31,6 +40,7 @@ def default_config_template():
         'employee_by_extension': {},
         'stations': {},
         'station_chat_ids': {},
+        'station_max_chat_ids': {},
         'station_mapping': {},
         'nizh_station_codes': [],
         'transcription': {
@@ -81,6 +91,36 @@ def default_script_prompt_template():
     }
 
 
+def _merge_telegram(config_data, _fallback):
+    base = {
+        'notifications_enabled': True,
+        'alert_chat_id': _fallback('ALERT_CHAT_ID', ''),
+        'tg_channel_nizh': _fallback('TG_CHANNEL_NIZH', ''),
+        'tg_channel_other': _fallback('TG_CHANNEL_OTHER', ''),
+        'reports_chat_id': _fallback('REPORTS_CHAT_ID', ''),
+    }
+    over = config_data.get('telegram') or {}
+    base.update(over)
+    if 'notifications_enabled' not in over:
+        base['notifications_enabled'] = True
+    return base
+
+
+def _merge_max(config_data, _fallback):
+    base = {
+        'notifications_enabled': True,
+        'alert_chat_id': _fallback('MAX_ALERT_CHAT_ID', ''),
+        'tg_channel_nizh': _fallback('MAX_TG_CHANNEL_NIZH', ''),
+        'tg_channel_other': _fallback('MAX_TG_CHANNEL_OTHER', ''),
+        'reports_chat_id': _fallback('MAX_REPORTS_CHAT_ID', ''),
+    }
+    over = config_data.get('max') or {}
+    base.update(over)
+    if 'notifications_enabled' not in over:
+        base['notifications_enabled'] = True
+    return base
+
+
 def build_runtime_config(project_config, config_data=None, user_id=None):
     """
     Собирает конфигурацию профиля с учётом значений по умолчанию и legacy-config.
@@ -98,7 +138,8 @@ def build_runtime_config(project_config, config_data=None, user_id=None):
         'thebai_api_key': api_keys_cfg.get('thebai_api_key') or _fallback('THEBAI_API_KEY', ''),
         'thebai_url': api_keys_cfg.get('thebai_url') or _fallback('THEBAI_URL', 'https://api.deepseek.com/v1/chat/completions'),
         'thebai_model': api_keys_cfg.get('thebai_model') or _fallback('THEBAI_MODEL', 'deepseek-reasoner'),
-        'telegram_bot_token': api_keys_cfg.get('telegram_bot_token') or _fallback('TELEGRAM_BOT_TOKEN', '')
+        'telegram_bot_token': api_keys_cfg.get('telegram_bot_token') or _fallback('TELEGRAM_BOT_TOKEN', ''),
+        'max_access_token': api_keys_cfg.get('max_access_token') or _fallback('MAX_ACCESS_TOKEN', ''),
     }
 
     paths_cfg = config_data.get('paths') or {}
@@ -162,12 +203,8 @@ def build_runtime_config(project_config, config_data=None, user_id=None):
         'api_keys': runtime_api_keys,
         'paths': runtime_paths,
         'llm_provider': (config_data.get('llm_provider') or 'deepseek'),
-        'telegram': config_data.get('telegram') or {
-            'alert_chat_id': _fallback('ALERT_CHAT_ID', ''),
-            'tg_channel_nizh': _fallback('TG_CHANNEL_NIZH', ''),
-            'tg_channel_other': _fallback('TG_CHANNEL_OTHER', ''),
-            'reports_chat_id': _fallback('REPORTS_CHAT_ID', '')
-        },
+        'telegram': _merge_telegram(config_data, _fallback),
+        'max': _merge_max(config_data, _fallback),
         # Для SaaS-режима станции, маппинги и сотрудники должны
         # браться только из пользовательских настроек/таблиц,
         # а не подмешиваться из глобального legacy-конфига.
@@ -175,6 +212,7 @@ def build_runtime_config(project_config, config_data=None, user_id=None):
         'employee_by_extension': config_data.get('employee_by_extension') or {},
         'stations': config_data.get('stations') or {},
         'station_chat_ids': config_data.get('station_chat_ids') or {},
+        'station_max_chat_ids': config_data.get('station_max_chat_ids') or {},
         'station_mapping': config_data.get('station_mapping') or {},
         'nizh_station_codes': config_data.get('nizh_station_codes') or [],
         'transcription': transcription_cfg if transcription_cfg else {

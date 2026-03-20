@@ -14,9 +14,9 @@ from openpyxl.styles import Font, Border, Side, Alignment
 import shutil
 import yaml
 try:
-    from call_analyzer.utils import ensure_telegram_ready  # type: ignore
+    from call_analyzer.utils import ensure_telegram_ready, ensure_max_ready  # type: ignore
 except ImportError:
-    from utils import ensure_telegram_ready
+    from utils import ensure_telegram_ready, ensure_max_ready
 
 # Импортируем конфигурацию из основного модуля
 import sys
@@ -388,6 +388,7 @@ def analyze_files(period_start: datetime, period_end: datetime, base_folder=None
     output_file_path = os.path.join(transcriptions_folder, report_name)
     create_excel_report(transcriptions_folder, output_file_path, telegram_message, call_records)
     send_report_to_telegram(output_file_path, telegram_message)
+    send_report_to_max(output_file_path, telegram_message)
     print(f"Отчет успешно создан и отправлен в {output_file_path}")
     return output_file_path
 
@@ -544,7 +545,7 @@ def replace_yes_no_in_excel(file_path):
 
 def send_report_to_telegram(file_path, message):
     """Отправка отчёта в Telegram. Используется только REPORTS_CHAT_ID (чат для отчётов)."""
-    if not ensure_telegram_ready('отправка отчёта week_full'):
+    if not getattr(main_config, 'TELEGRAM_NOTIFICATIONS_ENABLED', True) or not ensure_telegram_ready('отправка отчёта week_full'):
         return
     chat_id = (getattr(main_config, 'REPORTS_CHAT_ID', None) or '').strip()
     if not chat_id:
@@ -563,6 +564,23 @@ def send_report_to_telegram(file_path, message):
             print(f'Ошибка при отправке отчёта в Telegram: {resp.text}')
     except Exception as e:
         print(f'Исключение при отправке отчёта: {e}')
+
+
+def send_report_to_max(file_path, message):
+    """Отправка отчёта в MAX (MAX_REPORTS_CHAT_ID)."""
+    if not getattr(main_config, 'MAX_NOTIFICATIONS_ENABLED', True) or not ensure_max_ready('отправка отчёта week_full (MAX)'):
+        return
+    chat_id = (getattr(main_config, 'MAX_REPORTS_CHAT_ID', None) or '').strip()
+    if not chat_id:
+        print('MAX: чат для отчётов (MAX_REPORTS_CHAT_ID) не задан, отправка пропущена')
+        return
+    token = getattr(main_config, 'MAX_ACCESS_TOKEN', '')
+    try:
+        from common.max_messenger import send_excel_report_to_max
+        send_excel_report_to_max(token, chat_id, file_path, message)
+        print(f'Отчёт {file_path} успешно отправлен в MAX (чат {chat_id})')
+    except Exception as e:
+        print(f'Ошибка при отправке отчёта в MAX: {e}')
 
 def get_station_groups(station_names=None, station_mapping=None, employee_map=None):
     station_names = station_names or getattr(main_config, 'STATION_NAMES', {})

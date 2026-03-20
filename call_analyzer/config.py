@@ -40,6 +40,15 @@ THEBAI_MODEL = os.getenv("THEBAI_MODEL", "deepseek-reasoner")
 # Telegram
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "7990616547:AAG-4jvHgWhR6JtR6pk3wOxzeWmreHnzMyY")
 ALERT_CHAT_ID = os.getenv("ALERT_CHAT_ID", "-1002413323859")
+TELEGRAM_NOTIFICATIONS_ENABLED = True
+
+# MAX (дубль Telegram: business.max.ru → Чат-боты → токен)
+MAX_NOTIFICATIONS_ENABLED = True
+MAX_ACCESS_TOKEN = os.getenv("MAX_ACCESS_TOKEN", "")
+MAX_ALERT_CHAT_ID = os.getenv("MAX_ALERT_CHAT_ID", "")
+MAX_REPORTS_CHAT_ID = os.getenv("MAX_REPORTS_CHAT_ID", "")
+MAX_TG_CHANNEL_NIZH = os.getenv("MAX_TG_CHANNEL_NIZH", "")
+MAX_TG_CHANNEL_OTHER = os.getenv("MAX_TG_CHANNEL_OTHER", "")
 
 # Пути к файлам (читаем из .env или используем значения по умолчанию)
 _script_prompt_8_default = Path("D:\\ООО ИБС\\Бествей\\Система чек листов коммерция BW\\monv2_безRerTruck web5\\script_prompt_8.yaml")
@@ -59,6 +68,9 @@ STATION_CHAT_IDS = {
 '128801': ['-1002413323859'],
     '303': ['-1002413323859'],
 }
+
+# MAX: chat_id по станциям (параллель STATION_CHAT_IDS)
+STATION_MAX_CHAT_IDS = {}
 
 STATION_NAMES = {
 "128801": "Фокус на Малышева",
@@ -195,9 +207,11 @@ def _apply_profile_overrides():
 
 def _apply_profile_dict(profile_data):
     global BASE_RECORDS_PATH, PROMPTS_FILE, ADDITIONAL_VOCAB_FILE, SCRIPT_PROMPT_8_PATH
-    global TELEGRAM_BOT_TOKEN
+    global TELEGRAM_BOT_TOKEN, TELEGRAM_NOTIFICATIONS_ENABLED
+    global MAX_NOTIFICATIONS_ENABLED, MAX_ACCESS_TOKEN
     global ALERT_CHAT_ID, TG_CHANNEL_NIZH, TG_CHANNEL_OTHER, REPORTS_CHAT_ID
-    global STATION_NAMES, STATION_CHAT_IDS, STATION_MAPPING
+    global MAX_ALERT_CHAT_ID, MAX_TG_CHANNEL_NIZH, MAX_TG_CHANNEL_OTHER, MAX_REPORTS_CHAT_ID
+    global STATION_NAMES, STATION_CHAT_IDS, STATION_MAPPING, STATION_MAX_CHAT_IDS
     global NIZH_STATION_CODES, EMPLOYEE_BY_EXTENSION
     global ALLOWED_STATIONS, PROFILE_SETTINGS, TBANK_STEREO_ENABLED, USE_ADDITIONAL_VOCAB, AUTO_DETECT_OPERATOR_NAME
     global FILENAME_PATTERNS
@@ -217,8 +231,12 @@ def _apply_profile_dict(profile_data):
     api_keys = (profile_data or {}).get('api_keys') or {}
     if api_keys.get('telegram_bot_token'):
         TELEGRAM_BOT_TOKEN = api_keys['telegram_bot_token']
+    if api_keys.get('max_access_token') is not None:
+        MAX_ACCESS_TOKEN = api_keys.get('max_access_token') or ''
 
     telegram_cfg = (profile_data or {}).get('telegram') or {}
+    if 'notifications_enabled' in telegram_cfg:
+        TELEGRAM_NOTIFICATIONS_ENABLED = bool(telegram_cfg.get('notifications_enabled', True))
     if telegram_cfg.get('alert_chat_id'):
         ALERT_CHAT_ID = telegram_cfg['alert_chat_id']
     if telegram_cfg.get('tg_channel_nizh'):
@@ -228,9 +246,22 @@ def _apply_profile_dict(profile_data):
     if telegram_cfg.get('reports_chat_id') is not None:
         REPORTS_CHAT_ID = telegram_cfg.get('reports_chat_id') or ''
 
+    max_cfg = (profile_data or {}).get('max') or {}
+    if 'notifications_enabled' in max_cfg:
+        MAX_NOTIFICATIONS_ENABLED = bool(max_cfg.get('notifications_enabled', True))
+    if max_cfg.get('alert_chat_id') is not None:
+        MAX_ALERT_CHAT_ID = max_cfg.get('alert_chat_id') or ''
+    if max_cfg.get('tg_channel_nizh') is not None:
+        MAX_TG_CHANNEL_NIZH = max_cfg.get('tg_channel_nizh') or ''
+    if max_cfg.get('tg_channel_other') is not None:
+        MAX_TG_CHANNEL_OTHER = max_cfg.get('tg_channel_other') or ''
+    if max_cfg.get('reports_chat_id') is not None:
+        MAX_REPORTS_CHAT_ID = max_cfg.get('reports_chat_id') or ''
+
     EMPLOYEE_BY_EXTENSION = (profile_data or {}).get('employee_by_extension') or EMPLOYEE_BY_EXTENSION
     STATION_NAMES = (profile_data or {}).get('stations') or STATION_NAMES
     STATION_CHAT_IDS = (profile_data or {}).get('station_chat_ids') or STATION_CHAT_IDS
+    STATION_MAX_CHAT_IDS = (profile_data or {}).get('station_max_chat_ids') or STATION_MAX_CHAT_IDS
     STATION_MAPPING = (profile_data or {}).get('station_mapping') or STATION_MAPPING
     NIZH_STATION_CODES = (profile_data or {}).get('nizh_station_codes') or NIZH_STATION_CODES
 

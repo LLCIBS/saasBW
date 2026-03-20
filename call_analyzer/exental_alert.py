@@ -11,9 +11,9 @@ from pathlib import Path
 import config
 
 try:
-    from call_analyzer.utils import ensure_telegram_ready  # type: ignore
+    from call_analyzer.utils import ensure_telegram_ready, ensure_max_ready, resolve_max_chat_for_mirror  # type: ignore
 except ImportError:
-    from utils import ensure_telegram_ready
+    from utils import ensure_telegram_ready, ensure_max_ready, resolve_max_chat_for_mirror
 
 logger = logging.getLogger(__name__)
 
@@ -762,34 +762,51 @@ def guess_mp3_path(txt_path: str) -> str:
 def send_exental_results(station_code: str, caption: str, overall_text: str, mp3_path: str, analysis_path: str):
     """
     Отправляем аудио + (опционально) текстовый файл в чаты станции, взятые из config.
+    Дублируем сценарий в MAX (STATION_MAX_CHAT_IDS или MAX_ALERT_CHAT_ID).
     """
+    mp3_path_obj = Path(mp3_path)
+    try:
+        mp3_path_obj = mp3_path_obj.resolve()
+    except (OSError, ValueError):
+        pass
+
     chat_list = config.STATION_CHAT_IDS.get(station_code, [config.ALERT_CHAT_ID])
     for cid in chat_list:
         audio_sent = False
-        # Используем Path для кроссплатформенности
-        mp3_path_obj = Path(mp3_path)
-        # Нормализуем путь для проверки существования (важно для Ubuntu)
-        try:
-            mp3_path_obj = mp3_path_obj.resolve()
-        except (OSError, ValueError):
-            pass
-        
         if mp3_path_obj.exists() and mp3_path_obj.is_file():
             audio_sent = send_telegram_audio(cid, str(mp3_path_obj), caption)
         else:
             logger.warning(f"[exental_alert] MP3 {mp3_path_obj} не найден, не отправляем аудио.")
-        
-        # Если аудио не удалось отправить, отправляем caption отдельным текстовым сообщением
+
         if not audio_sent:
             logger.info(f"[exental_alert] Отправляем caption как текстовое сообщение (аудио не отправлено)")
             send_telegram_message(cid, caption)
 
-        # Вторым сообщением отправляем общий вывод (короткий текст)
         if overall_text:
             send_telegram_message(cid, f"<b>Общий вывод</b>: {overall_text}")
 
-        # Если нужно отправлять txt (отключено по умолчанию)
-        # send_telegram_document(cid, analysis_path, "<b>Дополнительный анализ (скрипт-8):</b>")
+    max_list = list(config.STATION_MAX_CHAT_IDS.get(station_code, []))
+    if not max_list and (getattr(config, 'MAX_ALERT_CHAT_ID', '') or '').strip():
+        max_list = [str((getattr(config, 'MAX_ALERT_CHAT_ID', '') or '').strip())]
+
+    for mid in max_list:
+        if not getattr(config, 'MAX_NOTIFICATIONS_ENABLED', True):
+            continue
+        if not ensure_max_ready("exental MAX"):
+            continue
+        try:
+            from common.max_messenger import send_audio_file_to_max, send_max_text
+        except ImportError as ie:
+            logger.warning("[exental_alert] MAX недоступен: %s", ie)
+            continue
+        token = getattr(config, 'MAX_ACCESS_TOKEN', '')
+        audio_ok = False
+        if mp3_path_obj.exists() and mp3_path_obj.is_file():
+            audio_ok = send_audio_file_to_max(token, str(mid), str(mp3_path_obj), caption)
+        if not audio_ok:
+            send_max_text(token, str(mid), caption, text_format="html")
+        if overall_text:
+            send_max_text(token, str(mid), f"<b>Общий вывод</b>: {overall_text}", text_format="html")
 
 def send_telegram_audio(chat_id: str, audio_path: str, caption: str):
     """
@@ -849,3 +866,17 @@ def send_telegram_document(chat_id: str, doc_path: str, caption: str):
             logger.error(f"[exental_alert] Ошибка при отправке документа: {resp.status_code} {resp.text}")
     except Exception as e:
         logger.error(f"[exental_alert] Ошибка при отправке {doc_path} в чат {chat_id}: {e}")
+
+    if getattr(config, 'MAX_NOTIFICATIONS_ENABLED', True) and ensure_max_ready("отправка документа в MAX"):
+        mid = resolve_max_chat_for_mirror(chat_id)
+        if mid:
+            try:
+                from common.max_messenger import send_excel_report_to_max
+                send_excel_report_to_max(
+                    getattr(config, 'MAX_ACCESS_TOKEN', ''),
+                    mid,
+                    doc_path,
+                    caption or '',
+                )
+            except Exception as me:
+                logger.error(f"[exental_alert] MAX документ: {me}")

@@ -65,6 +65,8 @@ def load_active_profiles(engine):
                        script_prompt_file, additional_vocab_file,
                        thebai_api_key, telegram_bot_token, speechmatics_api_key,
                        alert_chat_id, tg_channel_nizh, tg_channel_other, reports_chat_id,
+                       telegram_notifications_enabled, max_notifications_enabled, max_access_token,
+                       max_alert_chat_id, max_tg_channel_nizh, max_tg_channel_other, max_reports_chat_id,
                        tbank_stereo_enabled, use_additional_vocab, auto_detect_operator_name,
                        allowed_stations, nizh_station_codes, legal_entity_keywords,
                        use_custom_filename_patterns, filename_patterns, filename_extensions
@@ -95,6 +97,15 @@ def load_active_profiles(engine):
             chat_map = {}
             for r in chat_rows:
                 chat_map.setdefault(r.user_id, {}).setdefault(r.station_code, []).append(r.chat_id)
+
+            max_chat_rows = fetch("""
+                SELECT user_id, station_code, chat_id
+                FROM user_station_max_chat_ids
+                WHERE user_id IN :ids
+            """)
+            max_chat_map = {}
+            for r in max_chat_rows:
+                max_chat_map.setdefault(r.user_id, {}).setdefault(r.station_code, []).append(r.chat_id)
 
             employee_rows = fetch("""
                 SELECT user_id, extension, employee
@@ -131,13 +142,22 @@ def load_active_profiles(engine):
                 'thebai_url': config_data['api_keys'].get('thebai_url', 'https://api.deepseek.com/v1/chat/completions'),
                 'thebai_model': config_data['api_keys'].get('thebai_model', 'deepseek-reasoner'),
                 'telegram_bot_token': cfg_row.telegram_bot_token or '',
+                'max_access_token': getattr(cfg_row, 'max_access_token', None) or '',
             }
 
             config_data['telegram'] = {
+                'notifications_enabled': getattr(cfg_row, 'telegram_notifications_enabled', True),
                 'alert_chat_id': cfg_row.alert_chat_id or '',
                 'tg_channel_nizh': cfg_row.tg_channel_nizh or '',
                 'tg_channel_other': cfg_row.tg_channel_other or '',
                 'reports_chat_id': getattr(cfg_row, 'reports_chat_id', None) or '',
+            }
+            config_data['max'] = {
+                'notifications_enabled': getattr(cfg_row, 'max_notifications_enabled', True),
+                'alert_chat_id': getattr(cfg_row, 'max_alert_chat_id', None) or '',
+                'tg_channel_nizh': getattr(cfg_row, 'max_tg_channel_nizh', None) or '',
+                'tg_channel_other': getattr(cfg_row, 'max_tg_channel_other', None) or '',
+                'reports_chat_id': getattr(cfg_row, 'max_reports_chat_id', None) or '',
             }
 
             config_data['transcription'] = {
@@ -159,6 +179,7 @@ def load_active_profiles(engine):
         config_data['stations'] = station_map.get(row.id, {})
         config_data['station_mapping'] = mapping_map.get(row.id, {})
         config_data['station_chat_ids'] = chat_map.get(row.id, {})
+        config_data['station_max_chat_ids'] = max_chat_map.get(row.id, {})
         config_data['employee_by_extension'] = employee_map.get(row.id, {})
 
         runtime, _, _ = build_runtime_config(legacy_config, config_data, user_id=row.id)

@@ -404,12 +404,22 @@ class UserConfig(db.Model):
     thebai_model = db.Column(db.String(100), nullable=True)  # имя модели (deepseek-chat, gemma2:9b и т.д.)
     telegram_bot_token = db.Column(db.String(255), nullable=True)
     speechmatics_api_key = db.Column(db.String(255), nullable=True)
+    # Включение каналов уведомлений (Telegram / MAX)
+    telegram_notifications_enabled = db.Column(db.Boolean, default=True, nullable=False)
+    max_notifications_enabled = db.Column(db.Boolean, default=True, nullable=False)
+    max_access_token = db.Column(db.String(255), nullable=True)
     
     # Telegram
     alert_chat_id = db.Column(db.String(100), nullable=True)
     tg_channel_nizh = db.Column(db.String(100), nullable=True)
     tg_channel_other = db.Column(db.String(100), nullable=True)
     reports_chat_id = db.Column(db.String(100), nullable=True)
+    
+    # MAX (дубль полей Telegram)
+    max_alert_chat_id = db.Column(db.String(100), nullable=True)
+    max_tg_channel_nizh = db.Column(db.String(100), nullable=True)
+    max_tg_channel_other = db.Column(db.String(100), nullable=True)
+    max_reports_chat_id = db.Column(db.String(100), nullable=True)
     
     # Transcription
     tbank_stereo_enabled = db.Column(db.Boolean, default=False, nullable=False)
@@ -503,6 +513,27 @@ class UserStationChatId(db.Model):
     
     def __repr__(self):
         return f'<UserStationChatId user_id={self.user_id} station={self.station_code} chat_id={self.chat_id}>'
+
+
+class UserStationMaxChatId(db.Model):
+    """MAX chat_id по станциям (параллель user_station_chat_ids)."""
+    __tablename__ = 'user_station_max_chat_ids'
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
+    station_code = db.Column(db.String(20), nullable=False)
+    chat_id = db.Column(db.String(100), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    __table_args__ = (
+        Index('idx_maxchat_user_station', 'user_id', 'station_code'),
+        db.UniqueConstraint('user_id', 'station_code', 'chat_id', name='uq_user_station_max_chat'),
+    )
+
+    user = db.relationship('User', backref=db.backref('station_max_chat_ids', lazy='dynamic', cascade='all, delete-orphan'))
+
+    def __repr__(self):
+        return f'<UserStationMaxChatId user_id={self.user_id} station={self.station_code} chat_id={self.chat_id}>'
 
 
 class UserEmployeeExtension(db.Model):

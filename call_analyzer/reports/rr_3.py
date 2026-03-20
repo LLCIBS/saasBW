@@ -10,16 +10,17 @@ import pandas as pd
 import yaml
 
 try:
-    from call_analyzer.utils import ensure_telegram_ready  # type: ignore
+    from call_analyzer.utils import ensure_telegram_ready, ensure_max_ready  # type: ignore
 except ImportError:
-    from utils import ensure_telegram_ready
+    from utils import ensure_telegram_ready, ensure_max_ready
 
 def load_config(config_path):
     with open(config_path, 'r', encoding='utf-8') as f:
         return yaml.safe_load(f)
 
 def send_telegram_report(file_path, text_message, config):
-    if not ensure_telegram_ready('отправка отчёта rr_3'):
+    import config as main_config
+    if not getattr(main_config, 'TELEGRAM_NOTIFICATIONS_ENABLED', True) or not ensure_telegram_ready('отправка отчёта rr_3'):
         return
     token = config['telegram']['token']
     chat_ids = [chat_id for chat_id in config['telegram']['chats'] if chat_id]
@@ -43,20 +44,27 @@ def send_telegram_report(file_path, text_message, config):
                     print(f'Ошибка {resp.status_code}: {resp.text}')
             except Exception as e:
                 print(f'Исключение при отправке отчёта: {e}')
-    return
-    for chat_id in chat_ids:
-        print(f"Отправляем отчет в чат {chat_id}...")
-        with open(file_path, 'rb') as f:
-            files = {'document': f}
-            data = {'chat_id': chat_id, 'caption': text_message}
-            try:
-                resp = requests.post(url_base, files=files, data=data)
-                if resp.status_code == 200:
-                    print(f"Отправлено в чат {chat_id}.")
-                else:
-                    print(f"Ошибка {resp.status_code}: {resp.text}")
-            except Exception as e:
-                print(f"Ошибка при отправке: {e}")
+
+
+def send_max_report_rr3(file_path, text_message, main_config):
+    """Дубль отправки отчёта в MAX (чат MAX_REPORTS_CHAT_ID)."""
+    if not getattr(main_config, 'MAX_NOTIFICATIONS_ENABLED', True) or not ensure_max_ready('отправка отчёта rr_3 (MAX)'):
+        return
+    chat_id = (getattr(main_config, 'MAX_REPORTS_CHAT_ID', None) or '').strip()
+    token = getattr(main_config, 'MAX_ACCESS_TOKEN', '')
+    if not token or not chat_id:
+        print('MAX не настроен для отчёта rr_3, отправка пропущена.')
+        return
+    if not os.path.exists(file_path):
+        print(f'Файл {file_path} не найден.')
+        return
+    try:
+        from common.max_messenger import send_excel_report_to_max
+        send_excel_report_to_max(token, chat_id, file_path, text_message)
+        print(f'Отчёт rr_3 отправлен в MAX (чат {chat_id})')
+    except Exception as e:
+        print(f'Ошибка отправки отчёта в MAX: {e}')
+
 
 STATION_MAP = {
     "9309": "Ретрак Сервис",
@@ -450,6 +458,7 @@ def run_rr_3():
             }
         }
         send_telegram_report(report_path, period_text, telegram_config)
+        send_max_report_rr3(report_path, period_text, main_config)
 
 if __name__ == "__main__":
     run_rr_3()

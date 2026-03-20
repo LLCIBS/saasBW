@@ -12,9 +12,11 @@ from datetime import datetime
 try:
     from .classification_rules import ClassificationRulesManager
     from .classification_engine import CallClassificationEngine
+    from .max_notify import send_excel_report_to_max
 except ImportError:
     from classification_rules import ClassificationRulesManager
     from classification_engine import CallClassificationEngine
+    from max_notify import send_excel_report_to_max
 import os
 import requests
 
@@ -263,6 +265,20 @@ class ClassificationScheduler:
                         requests.post(url, data=data, files=files, timeout=30)
             except Exception as te:
                 print(f"Ошибка отправки отчета в Telegram: {te}")
+
+            # Отправка в MAX (Bot API), если включено — тот же сценарий, что и Excel в Telegram
+            try:
+                max_enabled = self.rules_manager.get_setting('max_enabled', '0') == '1'
+                max_token = (self.rules_manager.get_setting('max_access_token', '') or '').strip()
+                max_chat = (self.rules_manager.get_setting('max_chat_id', '') or '').strip()
+                max_caption = (
+                    f'Запланированный отчет: {os.path.basename(output_path)} ({total_calls} звонков)'
+                )
+                if max_enabled and max_token and max_chat and os.path.exists(output_path):
+                    send_excel_report_to_max(max_token, max_chat, output_path, max_caption)
+            except Exception as me:
+                logger.warning("Ошибка отправки отчета в MAX: %s", me)
+                print(f"Ошибка отправки отчета в MAX: {me}")
                 
         except Exception as e:
             print(f"Ошибка при выполнении классификации для расписания {schedule['name']}: {e}")

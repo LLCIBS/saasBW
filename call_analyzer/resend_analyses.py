@@ -12,7 +12,7 @@ current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, current_dir)
 
 import config
-from exental_alert import send_exental_results, guess_mp3_path, send_telegram_message, get_operator_name, extract_dialog_from_txt
+from exental_alert import send_exental_results, guess_mp3_path, get_operator_name, extract_dialog_from_txt
 
 logger = logging.getLogger(__name__)
 

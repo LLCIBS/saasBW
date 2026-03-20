@@ -73,6 +73,18 @@
                         <div class="form-text">ID чатов для отправки уведомлений</div>
                     </div>
                     <div class="mb-3">
+                        <label class="form-label">MAX chat_id (числа)</label>
+                        <div class="input-group mb-2">
+                            <input type="text" class="form-control" id="newMaxChatId"
+                                   placeholder="chat_id в MAX">
+                            <button class="btn btn-outline-secondary" type="button" onclick="addMaxChatId()">
+                                <i class="fas fa-plus"></i> Добавить
+                            </button>
+                        </div>
+                        <div id="maxChatIdsContainer"></div>
+                        <div class="form-text">Дубль Telegram-чатов для мессенджера MAX</div>
+                    </div>
+                    <div class="mb-3">
                         <label class="form-label">Подстанции (коды)</label>
                         <div class="input-group mb-2">
                             <input type="text" class="form-control" id="newSubStation" 
@@ -131,6 +143,17 @@
                             </button>
                         </div>
                         <div id="editChatIdsContainer"></div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">MAX chat_id</label>
+                        <div class="input-group mb-2">
+                            <input type="text" class="form-control" id="editNewMaxChatId"
+                                   placeholder="chat_id в MAX">
+                            <button class="btn btn-outline-secondary" type="button" onclick="addEditMaxChatId()">
+                                <i class="fas fa-plus"></i> Добавить
+                            </button>
+                        </div>
+                        <div id="editMaxChatIdsContainer"></div>
                     </div>
                     <div class="mb-3">
                         <label class="form-label">Подстанции (коды)</label>
@@ -202,7 +225,7 @@ function renderStations() {
             </div>
             
             <div class="row">
-                <div class="col-md-6">
+                <div class="col-md-4">
                     <h6 class="text-muted mb-2">
                         <i class="fas fa-comments me-2"></i>Telegram Chat IDs
                     </h6>
@@ -215,7 +238,16 @@ function renderStations() {
                         }
                     </div>
                 </div>
-                <div class="col-md-6">
+                <div class="col-md-4">
+                    <h6 class="text-muted mb-2">MAX chat_id</h6>
+                    <div>
+                        ${station.max_chat_ids && station.max_chat_ids.length > 0
+                            ? station.max_chat_ids.map(id => `<span class="chat-id-tag">${id}</span>`).join('')
+                            : '<span class="text-muted">Не заданы</span>'
+                        }
+                    </div>
+                </div>
+                <div class="col-md-4">
                     <h6 class="text-muted mb-2">
                         <i class="fas fa-sitemap me-2"></i>Подстанции
                     </h6>
@@ -254,6 +286,38 @@ function addChatId() {
 
 function removeChatId(element) {
     element.parentElement.remove();
+}
+
+function addMaxChatId() {
+    const input = document.getElementById('newMaxChatId');
+    const chatId = input.value.trim();
+    if (chatId) {
+        const container = document.getElementById('maxChatIdsContainer');
+        const tag = document.createElement('span');
+        tag.className = 'chat-id-tag';
+        tag.innerHTML = `
+            ${chatId}
+            <span class="remove-chat-id" onclick="removeChatId(this)" style="cursor: pointer; margin-left: 5px; color: #d32f2f;">×</span>
+        `;
+        container.appendChild(tag);
+        input.value = '';
+    }
+}
+
+function addEditMaxChatId() {
+    const input = document.getElementById('editNewMaxChatId');
+    const chatId = input.value.trim();
+    if (chatId) {
+        const container = document.getElementById('editMaxChatIdsContainer');
+        const tag = document.createElement('span');
+        tag.className = 'chat-id-tag';
+        tag.innerHTML = `
+            ${chatId}
+            <span class="remove-chat-id" onclick="removeChatId(this)" style="cursor: pointer; margin-left: 5px; color: #d32f2f;">×</span>
+        `;
+        container.appendChild(tag);
+        input.value = '';
+    }
 }
 
 function addSubStation() {
@@ -335,6 +399,20 @@ function editStation(stationCode) {
             chatIdsContainer.appendChild(tag);
         });
     }
+
+    const maxChatIdsContainer = document.getElementById('editMaxChatIdsContainer');
+    maxChatIdsContainer.innerHTML = '';
+    if (station.max_chat_ids && station.max_chat_ids.length > 0) {
+        station.max_chat_ids.forEach(chatId => {
+            const tag = document.createElement('span');
+            tag.className = 'chat-id-tag';
+            tag.innerHTML = `
+                ${chatId}
+                <span class="remove-chat-id" onclick="removeChatId(this)" style="cursor: pointer; margin-left: 5px; color: #d32f2f;">×</span>
+            `;
+            maxChatIdsContainer.appendChild(tag);
+        });
+    }
     
     // Заполняем подстанции
     const subStationsContainer = document.getElementById('editSubStationsContainer');
@@ -371,6 +449,13 @@ async function saveStation() {
         const chatId = text.replace('×', '').trim();
         if (chatId) chatIds.push(chatId);
     });
+
+    const maxChatIds = [];
+    document.querySelectorAll('#maxChatIdsContainer .chat-id-tag').forEach(tag => {
+        const text = tag.textContent.trim();
+        const id = text.replace('×', '').trim();
+        if (id) maxChatIds.push(id);
+    });
     
     // Собираем подстанции
     const subStations = [];
@@ -385,6 +470,7 @@ async function saveStation() {
             [code]: {
                 name: name,
                 chat_ids: chatIds,
+                max_chat_ids: maxChatIds,
                 sub_stations: subStations
             }
         }
@@ -408,6 +494,7 @@ async function saveStation() {
             modal.hide();
             document.getElementById('addStationForm').reset();
             document.getElementById('chatIdsContainer').innerHTML = '';
+            document.getElementById('maxChatIdsContainer').innerHTML = '';
             document.getElementById('subStationsContainer').innerHTML = '';
             
             loadStations();
@@ -437,6 +524,13 @@ async function updateStation() {
         const chatId = text.replace('×', '').trim();
         if (chatId) chatIds.push(chatId);
     });
+
+    const maxChatIds = [];
+    document.querySelectorAll('#editMaxChatIdsContainer .chat-id-tag').forEach(tag => {
+        const text = tag.textContent.trim();
+        const id = text.replace('×', '').trim();
+        if (id) maxChatIds.push(id);
+    });
     
     // Собираем подстанции
     const subStations = [];
@@ -450,6 +544,7 @@ async function updateStation() {
         code: currentEditStation.code,
         name: name,
         chat_ids: chatIds,
+        max_chat_ids: maxChatIds,
         sub_stations: subStations
     };
     
@@ -464,6 +559,7 @@ async function updateStation() {
                     [stationData.code]: {
                         name: stationData.name,
                         chat_ids: stationData.chat_ids,
+                        max_chat_ids: stationData.max_chat_ids,
                         sub_stations: stationData.sub_stations
                     }
                 }

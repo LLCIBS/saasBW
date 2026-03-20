@@ -117,11 +117,14 @@ class ClassificationRulesManager:
             )
         ''')
 
-        # Значения по умолчанию для Telegram настроек (если не заданы)
+        # Значения по умолчанию для Telegram / MAX (если не заданы)
         try:
             cursor.execute("INSERT OR IGNORE INTO system_settings (setting_key, setting_value, description) VALUES ('telegram_enabled', '0', 'Включить отправку отчетов в Telegram')")
             cursor.execute("INSERT OR IGNORE INTO system_settings (setting_key, setting_value, description) VALUES ('telegram_bot_token', '', 'Токен Telegram-бота')")
             cursor.execute("INSERT OR IGNORE INTO system_settings (setting_key, setting_value, description) VALUES ('telegram_chat_id', '', 'ID чата или канала для отправки')")
+            cursor.execute("INSERT OR IGNORE INTO system_settings (setting_key, setting_value, description) VALUES ('max_enabled', '0', 'Включить отправку отчетов в MAX')")
+            cursor.execute("INSERT OR IGNORE INTO system_settings (setting_key, setting_value, description) VALUES ('max_access_token', '', 'Токен бота MAX (business.max.ru → Чат-боты)')")
+            cursor.execute("INSERT OR IGNORE INTO system_settings (setting_key, setting_value, description) VALUES ('max_chat_id', '', 'Числовой chat_id чата MAX для отчётов')")
         except Exception:
             pass
         
