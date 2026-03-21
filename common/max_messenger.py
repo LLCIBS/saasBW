@@ -46,13 +46,15 @@ def _post_multipart_to_upload_url(
     field_name: str = "data",
     timeout_upload: int = 300,
 ):
-    """POST multipart как в документации MAX: `-F "data=@file"` без явного MIME (иначе CDN даёт 415)."""
-    auth = _authorization_value(access_token)
+    """POST multipart на CDN-слот.
+    CDN-URL уже содержит подпись (sig/expires) — Authorization НЕ отправляем,
+    иначе CDN отвечает 415 или 403 'There is no file in request'.
+    Соответствует документации: curl без -H Authorization для CDN-шагов.
+    """
     path = os.path.abspath(file_path)
     with open(path, "rb") as f:
         return requests.post(
             upload_url,
-            headers={"Authorization": auth},
             files={field_name: (os.path.basename(path), f)},
             timeout=timeout_upload,
         )
