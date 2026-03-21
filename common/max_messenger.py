@@ -39,23 +39,16 @@ def _extract_upload_token(upload_response_body: Any) -> str:
     raise ValueError(f"Не удалось извлечь token из ответа загрузки: {upload_response_body!r}")
 
 
-def _post_multipart_to_upload_url(
-    access_token: str,
-    upload_url: str,
-    file_path: str,
-    field_name: str = "data",
-    timeout_upload: int = 300,
-):
-    """POST multipart на CDN-слот.
-    CDN-URL уже содержит подпись (sig/expires) — Authorization НЕ отправляем,
-    иначе CDN отвечает 415 или 403 'There is no file in request'.
-    Соответствует документации: curl без -H Authorization для CDN-шагов.
+def _upload_raw_to_cdn(upload_url: str, file_path: str, timeout_upload: int = 300):
+    """Raw binary upload на CDN-слот.
+    CDN-URL аутентифицирован через sig/expires в query-строке.
+    Не используем multipart (415) и не передаём Authorization (CDN не нужен).
     """
     path = os.path.abspath(file_path)
     with open(path, "rb") as f:
         return requests.post(
             upload_url,
-            files={field_name: (os.path.basename(path), f)},
+            data=f,
             timeout=timeout_upload,
         )
 
@@ -64,12 +57,9 @@ def _upload_to_slot(
     access_token: str,
     upload_url: str,
     file_path: str,
-    field_name: str = "data",
     timeout_upload: int = 300,
 ) -> str:
-    r2 = _post_multipart_to_upload_url(
-        access_token, upload_url, file_path, field_name=field_name, timeout_upload=timeout_upload
-    )
+    r2 = _upload_raw_to_cdn(upload_url, file_path, timeout_upload)
     if not r2.ok:
         logger.warning("MAX upload to slot: %s %s", r2.status_code, r2.text[:500])
         r2.raise_for_status()
@@ -109,21 +99,13 @@ def upload_file_get_token(access_token: str, file_path: str, timeout_upload: int
 
 
 def upload_audio_get_token(access_token: str, audio_path: str, timeout_upload: int = 300) -> str:
-    """Для audio MAX возвращает token в ответе /uploads, а не в ответе на загрузку файла."""
+    """Для audio MAX возвращает token в ответе /uploads, а не в ответе на загрузку файла.
+    CDN vu.okcdn.ru (clientType=51) не принимает multipart — загружаем raw binary.
+    """
     upload_url, pre_token = _request_upload_slot(access_token, "audio")
     if not pre_token:
         raise ValueError("MAX /uploads?type=audio: token не пришёл в ответе слота")
-    # Загружаем файл; ответ сервера — retval, token уже есть из слота
-    auth = _authorization_value(access_token)
-    ext = os.path.splitext(audio_path)[1].lower()
-    content_type = "audio/wav" if ext == ".wav" else "audio/mpeg"
-    with open(os.path.abspath(audio_path), "rb") as f:
-        r2 = requests.post(
-            upload_url,
-            headers={"Authorization": auth},
-            files={"data": (os.path.basename(audio_path), f, content_type)},
-            timeout=timeout_upload,
-        )
+    r2 = _upload_raw_to_cdn(upload_url, audio_path, timeout_upload)
     if not r2.ok:
         logger.warning("MAX audio upload to slot: %s %s", r2.status_code, r2.text[:500])
         r2.raise_for_status()
