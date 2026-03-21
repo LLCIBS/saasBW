@@ -39,27 +39,29 @@ def _extract_upload_token(upload_response_body: Any) -> str:
     raise ValueError(f"Не удалось извлечь token из ответа загрузки: {upload_response_body!r}")
 
 
-def _upload_raw_to_cdn(upload_url: str, file_path: str, timeout_upload: int = 300):
-    """Raw binary upload на CDN-слот.
-    CDN-URL аутентифицирован через sig/expires в query-строке.
-    Не используем multipart (415) и не передаём Authorization (CDN не нужен).
-    """
-    path = os.path.abspath(file_path)
-    with open(path, "rb") as f:
-        return requests.post(
-            upload_url,
-            data=f,
-            timeout=timeout_upload,
-        )
-
-
 def _upload_to_slot(
     access_token: str,
     upload_url: str,
     file_path: str,
     timeout_upload: int = 300,
 ) -> str:
-    r2 = _upload_raw_to_cdn(upload_url, file_path, timeout_upload)
+    """Загрузка файла на fu.oneme.ru (clientType=10).
+    CDN требует raw binary + Content-Disposition с filename + Content-Length.
+    """
+    path = os.path.abspath(file_path)
+    filename = os.path.basename(path)
+    file_size = os.path.getsize(path)
+    with open(path, "rb") as f:
+        r2 = requests.post(
+            upload_url,
+            data=f,
+            headers={
+                "Content-Type": "application/octet-stream",
+                "Content-Disposition": f'attachment; filename="{filename}"',
+                "Content-Length": str(file_size),
+            },
+            timeout=timeout_upload,
+        )
     if not r2.ok:
         logger.warning("MAX upload to slot: %s %s", r2.status_code, r2.text[:500])
         r2.raise_for_status()
@@ -100,12 +102,26 @@ def upload_file_get_token(access_token: str, file_path: str, timeout_upload: int
 
 def upload_audio_get_token(access_token: str, audio_path: str, timeout_upload: int = 300) -> str:
     """Для audio MAX возвращает token в ответе /uploads, а не в ответе на загрузку файла.
-    CDN vu.okcdn.ru (clientType=51) не принимает multipart — загружаем raw binary.
+    CDN vu.okcdn.ru (clientType=51): raw binary + Content-Type аудио + Content-Length.
+    412 возникает без Content-Type, 415 — при multipart.
     """
     upload_url, pre_token = _request_upload_slot(access_token, "audio")
     if not pre_token:
         raise ValueError("MAX /uploads?type=audio: token не пришёл в ответе слота")
-    r2 = _upload_raw_to_cdn(upload_url, audio_path, timeout_upload)
+    path = os.path.abspath(audio_path)
+    ext = os.path.splitext(audio_path)[1].lower()
+    mime = "audio/wav" if ext == ".wav" else "audio/mpeg"
+    file_size = os.path.getsize(path)
+    with open(path, "rb") as f:
+        r2 = requests.post(
+            upload_url,
+            data=f,
+            headers={
+                "Content-Type": mime,
+                "Content-Length": str(file_size),
+            },
+            timeout=timeout_upload,
+        )
     if not r2.ok:
         logger.warning("MAX audio upload to slot: %s %s", r2.status_code, r2.text[:500])
         r2.raise_for_status()
