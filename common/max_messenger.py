@@ -46,22 +46,24 @@ def _upload_to_slot(
     timeout_upload: int = 300,
 ) -> str:
     """Загрузка файла на fu.oneme.ru (clientType=10).
-    CDN требует raw binary + Content-Disposition с filename + Content-Length.
+    Resumable upload: обязателен Content-Range: bytes 0-{last}/{total}.
     """
     path = os.path.abspath(file_path)
     filename = os.path.basename(path)
-    file_size = os.path.getsize(path)
     with open(path, "rb") as f:
-        r2 = requests.post(
-            upload_url,
-            data=f,
-            headers={
-                "Content-Type": "application/octet-stream",
-                "Content-Disposition": f'attachment; filename="{filename}"',
-                "Content-Length": str(file_size),
-            },
-            timeout=timeout_upload,
-        )
+        data = f.read()
+    size = len(data)
+    r2 = requests.post(
+        upload_url,
+        data=data,
+        headers={
+            "Content-Type": "application/octet-stream",
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Content-Length": str(size),
+            "Content-Range": f"bytes 0-{size - 1}/{size}",
+        },
+        timeout=timeout_upload,
+    )
     if not r2.ok:
         logger.warning("MAX upload to slot: %s %s", r2.status_code, r2.text[:500])
         r2.raise_for_status()
@@ -102,8 +104,7 @@ def upload_file_get_token(access_token: str, file_path: str, timeout_upload: int
 
 def upload_audio_get_token(access_token: str, audio_path: str, timeout_upload: int = 300) -> str:
     """Для audio MAX возвращает token в ответе /uploads, а не в ответе на загрузку файла.
-    CDN vu.okcdn.ru (clientType=51): raw binary + Content-Type аудио + Content-Length.
-    412 возникает без Content-Type, 415 — при multipart.
+    CDN vu.okcdn.ru (clientType=51): resumable upload — обязателен Content-Range.
     """
     upload_url, pre_token = _request_upload_slot(access_token, "audio")
     if not pre_token:
@@ -111,17 +112,19 @@ def upload_audio_get_token(access_token: str, audio_path: str, timeout_upload: i
     path = os.path.abspath(audio_path)
     ext = os.path.splitext(audio_path)[1].lower()
     mime = "audio/wav" if ext == ".wav" else "audio/mpeg"
-    file_size = os.path.getsize(path)
     with open(path, "rb") as f:
-        r2 = requests.post(
-            upload_url,
-            data=f,
-            headers={
-                "Content-Type": mime,
-                "Content-Length": str(file_size),
-            },
-            timeout=timeout_upload,
-        )
+        data = f.read()
+    size = len(data)
+    r2 = requests.post(
+        upload_url,
+        data=data,
+        headers={
+            "Content-Type": mime,
+            "Content-Length": str(size),
+            "Content-Range": f"bytes 0-{size - 1}/{size}",
+        },
+        timeout=timeout_upload,
+    )
     if not r2.ok:
         logger.warning("MAX audio upload to slot: %s %s", r2.status_code, r2.text[:500])
         r2.raise_for_status()
