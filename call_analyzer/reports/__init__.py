@@ -8,5 +8,5 @@ from .rr_bad import run_rr_bad
 REPORT_FUNCTIONS = {
     "week_full": run_week_full,
     "rr_3": run_rr_3,
-    "rr_bad": run_rr_bad
+    "rr_bad": run_rr_bad,
 }

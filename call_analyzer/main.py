@@ -252,10 +252,6 @@ def main():
             time_str = now.strftime("%H:%M")
             day_of_week = now.weekday()  # 0=понедельник, 6=воскресенье
 
-            # Пример: запуск run_skolko() в 20:00
-            if time_str == "20:00":
-                run_skolko_52()
-
             # Запуск run_week_full() по понедельникам в 05:00
             if day_of_week == 6 and time_str == "20:10":
                 run_week_full()

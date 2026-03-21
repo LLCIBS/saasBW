@@ -630,7 +630,7 @@ class ReportSchedule(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
 
-    report_type = db.Column(db.String(50), nullable=False)  # 'week_full', 'rr_3', 'rr_bad', 'skolko_52'
+    report_type = db.Column(db.String(50), nullable=False)  # 'week_full', 'rr_3', 'rr_bad'
     schedule_type = db.Column(db.String(20), nullable=False)  # 'daily', 'interval', 'weekly', 'custom'
     enabled = db.Column(db.Boolean, nullable=False, default=True)
 
