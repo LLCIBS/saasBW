@@ -39,6 +39,25 @@ def _extract_upload_token(upload_response_body: Any) -> str:
     raise ValueError(f"Не удалось извлечь token из ответа загрузки: {upload_response_body!r}")
 
 
+def _post_multipart_to_upload_url(
+    access_token: str,
+    upload_url: str,
+    file_path: str,
+    field_name: str = "data",
+    timeout_upload: int = 300,
+):
+    """POST multipart как в документации MAX: `-F "data=@file"` без явного MIME (иначе CDN даёт 415)."""
+    auth = _authorization_value(access_token)
+    path = os.path.abspath(file_path)
+    with open(path, "rb") as f:
+        return requests.post(
+            upload_url,
+            headers={"Authorization": auth},
+            files={field_name: (os.path.basename(path), f)},
+            timeout=timeout_upload,
+        )
+
+
 def _upload_to_slot(
     access_token: str,
     upload_url: str,
@@ -46,17 +65,11 @@ def _upload_to_slot(
     field_name: str = "data",
     timeout_upload: int = 300,
 ) -> str:
-    auth = _authorization_value(access_token)
-    path = os.path.abspath(file_path)
-    with open(path, "rb") as f:
-        r2 = requests.post(
-            upload_url,
-            headers={"Authorization": auth},
-            files={field_name: (os.path.basename(path), f)},
-            timeout=timeout_upload,
-        )
+    r2 = _post_multipart_to_upload_url(
+        access_token, upload_url, file_path, field_name=field_name, timeout_upload=timeout_upload
+    )
     if not r2.ok:
-        logger.warning("MAX upload to slot: %s %s", r2.status_code, r2.text)
+        logger.warning("MAX upload to slot: %s %s", r2.status_code, r2.text[:500])
         r2.raise_for_status()
     try:
         body = r2.json()
@@ -274,9 +287,9 @@ def send_audio_file_to_max(
     audio_path: str,
     caption: str,
 ) -> bool:
-    """Аудио как вложение (аналог sendAudio). Возвращает True при успехе."""
+    """Аудио как вложение (аналог sendAudio). При сбое audio — дубль как обычный file."""
+    chat_id = int(str(chat_id_raw).strip())
     try:
-        chat_id = int(str(chat_id_raw).strip())
         tok = upload_audio_get_token(access_token, audio_path)
         time.sleep(2.0)
         send_message_with_audio(access_token, chat_id, tok, caption)
@@ -284,4 +297,10 @@ def send_audio_file_to_max(
         return True
     except Exception as e:
         logger.error("MAX send_audio_file_to_max FAILED: %s | file=%s", e, audio_path)
-        return False
+        try:
+            send_excel_report_to_max(access_token, chat_id_raw, audio_path, caption)
+            logger.info("MAX: запись отправлена как file (fallback после сбоя audio)")
+            return True
+        except Exception as e2:
+            logger.error("MAX send_audio_file_to_max fallback file FAILED: %s", e2)
+            return False

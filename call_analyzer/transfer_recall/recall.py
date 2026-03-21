@@ -340,16 +340,25 @@ def check_new_call_for_recall(phone_number: str, new_station: str, new_call_time
 
 try:
     from call_analyzer.internal_transcription import transcribe_audio_with_internal_service
-    from call_analyzer.call_handler import thebai_analyze
 except ImportError:
     try:
         from internal_transcription import transcribe_audio_with_internal_service
+    except ImportError:
+        transcribe_audio_with_internal_service = None
+
+try:
+    from call_analyzer.call_handler import thebai_analyze
+except ImportError:
+    try:
         from call_handler import thebai_analyze
     except ImportError:
-        pass
+        thebai_analyze = None
 
 def get_transcript_via_service(file_path: Path) -> str:
     try:
+        if transcribe_audio_with_internal_service is None:
+            logger.error("transcribe_audio_with_internal_service недоступен (импорт не удался)")
+            return ""
         # Читаем настройку стерео/моно из профиля пользователя
         stereo_mode = False
         if hasattr(config, 'PROFILE_SETTINGS') and config.PROFILE_SETTINGS:
@@ -382,6 +391,9 @@ def get_transcript_via_service(file_path: Path) -> str:
 
 def analyze_with_recall_prompt(transcript: str, recall_prompt: str) -> str:
     try:
+        if thebai_analyze is None:
+            logger.error("thebai_analyze недоступен (импорт не удался)")
+            return "Ошибка анализа перезвона"
         return thebai_analyze(transcript, recall_prompt)
     except Exception as e:
         logger.error(f"Ошибка при анализе перезвона: {e}")
