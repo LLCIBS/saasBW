@@ -65,7 +65,11 @@ def _upload_to_slot(
     return _extract_upload_token(body)
 
 
-def _request_upload_slot(access_token: str, upload_type: str) -> str:
+def _request_upload_slot(access_token: str, upload_type: str) -> tuple[str, Optional[str]]:
+    """Возвращает (upload_url, pre_token).
+    Для audio/video MAX сразу возвращает token в ответе /uploads,
+    а после загрузки файла отвечает retval (не token).
+    Для file/image token приходит в ответе на саму загрузку."""
     auth = _authorization_value(access_token)
     r1 = requests.post(
         f"{MAX_API}/uploads",
@@ -80,17 +84,36 @@ def _request_upload_slot(access_token: str, upload_type: str) -> str:
     upload_url = slot.get("url")
     if not upload_url:
         raise ValueError(f"MAX /uploads: нет url в ответе: {slot!r}")
-    return upload_url
+    pre_token = slot.get("token") or None
+    return upload_url, pre_token
 
 
 def upload_file_get_token(access_token: str, file_path: str, timeout_upload: int = 300) -> str:
-    upload_url = _request_upload_slot(access_token, "file")
+    upload_url, _ = _request_upload_slot(access_token, "file")
     return _upload_to_slot(access_token, upload_url, file_path, timeout_upload=timeout_upload)
 
 
 def upload_audio_get_token(access_token: str, audio_path: str, timeout_upload: int = 300) -> str:
-    upload_url = _request_upload_slot(access_token, "audio")
-    return _upload_to_slot(access_token, upload_url, audio_path, timeout_upload=timeout_upload)
+    """Для audio MAX возвращает token в ответе /uploads, а не в ответе на загрузку файла."""
+    upload_url, pre_token = _request_upload_slot(access_token, "audio")
+    if not pre_token:
+        raise ValueError("MAX /uploads?type=audio: token не пришёл в ответе слота")
+    # Загружаем файл; ответ сервера — retval, token уже есть из слота
+    auth = _authorization_value(access_token)
+    ext = os.path.splitext(audio_path)[1].lower()
+    content_type = "audio/wav" if ext == ".wav" else "audio/mpeg"
+    with open(os.path.abspath(audio_path), "rb") as f:
+        r2 = requests.post(
+            upload_url,
+            headers={"Authorization": auth},
+            files={"data": (os.path.basename(audio_path), f, content_type)},
+            timeout=timeout_upload,
+        )
+    if not r2.ok:
+        logger.warning("MAX audio upload to slot: %s %s", r2.status_code, r2.text[:500])
+        r2.raise_for_status()
+    logger.debug("MAX audio upload retval: %s", r2.text[:200])
+    return pre_token
 
 
 def send_message_with_attachments(
@@ -255,9 +278,10 @@ def send_audio_file_to_max(
     try:
         chat_id = int(str(chat_id_raw).strip())
         tok = upload_audio_get_token(access_token, audio_path)
-        time.sleep(1.0)
+        time.sleep(2.0)
         send_message_with_audio(access_token, chat_id, tok, caption)
+        logger.info("MAX audio sent ok: chat=%s file=%s", chat_id, os.path.basename(audio_path))
         return True
     except Exception as e:
-        logger.warning("MAX send_audio_file_to_max: %s", e)
+        logger.error("MAX send_audio_file_to_max FAILED: %s | file=%s", e, audio_path)
         return False
