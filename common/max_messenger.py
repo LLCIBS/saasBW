@@ -39,43 +39,32 @@ def _extract_upload_token(upload_response_body: Any) -> str:
     raise ValueError(f"Не удалось извлечь token из ответа загрузки: {upload_response_body!r}")
 
 
-def _post_cdn_multipart_upload(
-    upload_url: str,
-    file_path: str,
-    *,
-    access_token: Optional[str] = None,
-    timeout_upload: int = 300,
-):
-    """
-    Загрузка на CDN как в документации MAX: multipart/form-data, поле ``data``
-    (аналог ``curl -F "data=@file"``). Без явного MIME на часть — иначе CDN даёт 415.
-
-    - ``type=file``: в доке указаны ``Authorization`` и ``-F data=@...`` на upload URL.
-    - ``type=audio|video`` (vu.okcdn.ru): пример video — multipart без Authorization на CDN.
-    """
-    path = os.path.abspath(file_path)
-    headers: Optional[Dict[str, str]] = None
-    if access_token:
-        headers = {"Authorization": _authorization_value(access_token)}
-    with open(path, "rb") as f:
-        r = requests.post(
-            upload_url,
-            headers=headers,
-            files={"data": (os.path.basename(path), f)},
-            timeout=timeout_upload,
-        )
-    return r
-
-
 def _upload_to_slot(
     access_token: str,
     upload_url: str,
     file_path: str,
     timeout_upload: int = 300,
 ) -> str:
-    """Загрузка type=file: token в JSON ответа CDN."""
-    r2 = _post_cdn_multipart_upload(
-        upload_url, file_path, access_token=access_token, timeout_upload=timeout_upload
+    """
+    Загрузка файла на fu.oneme.ru (type=file, clientType=10).
+    CDN принимает resumable upload: raw binary + Content-Range.
+    Multipart даёт 403 «There is no file in request» на этом CDN.
+    """
+    path = os.path.abspath(file_path)
+    filename = os.path.basename(path)
+    with open(path, "rb") as f:
+        data = f.read()
+    size = len(data)
+    r2 = requests.post(
+        upload_url,
+        data=data,
+        headers={
+            "Content-Type": "application/octet-stream",
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Content-Length": str(size),
+            "Content-Range": f"bytes 0-{size - 1}/{size}",
+        },
+        timeout=timeout_upload,
     )
     if not r2.ok:
         logger.warning("MAX upload to slot: %s %s", r2.status_code, r2.text[:500])
@@ -116,17 +105,27 @@ def upload_file_get_token(access_token: str, file_path: str, timeout_upload: int
 
 
 def upload_audio_get_token(access_token: str, audio_path: str, timeout_upload: int = 300) -> str:
-    """Token для сообщения — в ответе /uploads; на CDN — multipart как для video в доке MAX."""
+    """
+    Token для сообщения — в ответе /uploads.
+    CDN vu.okcdn.ru (clientType=51): multipart + Authorization (как первый curl-пример в доке).
+    Без Authorization раньше давал 400; raw binary с Content-Range давал 412.
+    """
     upload_url, pre_token = _request_upload_slot(access_token, "audio")
     if not pre_token:
         raise ValueError("MAX /uploads?type=audio: token не пришёл в ответе слота")
-    r2 = _post_cdn_multipart_upload(
-        upload_url, audio_path, access_token=None, timeout_upload=timeout_upload
-    )
+    auth = _authorization_value(access_token)
+    path = os.path.abspath(audio_path)
+    with open(path, "rb") as f:
+        r2 = requests.post(
+            upload_url,
+            headers={"Authorization": auth},
+            files={"data": (os.path.basename(path), f)},
+            timeout=timeout_upload,
+        )
+    logger.info("MAX audio CDN response: %s | %s", r2.status_code, r2.text[:300])
     if not r2.ok:
         logger.warning("MAX audio upload to slot: %s %s", r2.status_code, r2.text[:500])
         r2.raise_for_status()
-    logger.debug("MAX audio upload retval: %s", r2.text[:200])
     return pre_token
 
 
