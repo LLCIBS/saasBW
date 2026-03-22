@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
+import mimetypes
 import os
 import time
 from typing import Any, Dict, Optional
@@ -107,40 +108,44 @@ def upload_file_get_token(access_token: str, file_path: str, timeout_upload: int
 def upload_audio_get_token(access_token: str, audio_path: str, timeout_upload: int = 300) -> str:
     """
     Загрузка аудио на CDN по URL из POST /uploads?type=audio.
-    Официальный сценарий MAX (dev.max.ru): multipart form, поле ``data``,
-    без Authorization на CDN; ``token`` для вложения — в JSON ответа CDN
-    (как curl: -F \"data=@file.mp3\"). Raw binary на vu.okcdn.ru даёт 415
-    с X-Reason error.fileName — нужен multipart с именем файла в части.
+
+    Рабочий сценарий (как в тестовом клиенте): в ответе ``/uploads`` приходит
+    ``url`` и ``token`` — вложение в ``POST /messages`` использует **этот**
+    ``token``. Ответ CDN после загрузки часто **не JSON**, а XML вида
+    ``<retval>1</retval>``; парсить ``r.json()`` нельзя.
+
+    Multipart: поле ``data``, тройной кортеж ``(имя, file, mime)`` —
+    например ``audio/mpeg`` для mp3 (иначе CDN может ответить 415).
+    Без Authorization на URL CDN.
     """
     upload_url, pre_token = _request_upload_slot(access_token, "audio")
+    if not pre_token:
+        raise ValueError("MAX /uploads?type=audio: нет token в ответе (нужен для вложения)")
+
     path = os.path.abspath(audio_path)
     filename = os.path.basename(path)
+    mime_type = mimetypes.guess_type(path)[0] or "audio/mpeg"
 
     with open(path, "rb") as f:
         r2 = requests.post(
             upload_url,
-            files={"data": (filename, f)},
+            files={"data": (filename, f, mime_type)},
             timeout=timeout_upload,
         )
     logger.info("MAX audio CDN upload: %s | %s", r2.status_code, r2.text[:400])
     if not r2.ok:
         logger.warning("MAX audio upload to slot: %s %s", r2.status_code, r2.text[:500])
         r2.raise_for_status()
-    try:
-        body = r2.json()
-    except json.JSONDecodeError as e:
-        raise ValueError(f"MAX: не JSON после загрузки аудио: {r2.text[:500]}") from e
 
-    try:
-        return _extract_upload_token(body)
-    except ValueError:
-        if pre_token:
-            logger.warning(
-                "MAX audio: token не найден в ответе CDN %r, используем token из /uploads",
-                body,
-            )
-            return pre_token
-        raise
+    text = (r2.text or "").strip()
+    if text.startswith("{") or text.startswith("["):
+        try:
+            body = r2.json()
+            if isinstance(body, dict) and body.get("token"):
+                return str(body["token"])
+        except json.JSONDecodeError:
+            pass
+    return pre_token
 
 
 def send_message_with_attachments(
