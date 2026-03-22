@@ -10,6 +10,8 @@ import json
 import logging
 import mimetypes
 import os
+import subprocess
+import tempfile
 import time
 from typing import Any, Dict, Optional
 
@@ -18,6 +20,72 @@ import requests
 logger = logging.getLogger(__name__)
 
 MAX_API = "https://platform-api.max.ru"
+
+
+def _audio_multipart_mime(path: str) -> str:
+    """
+    MIME для поля multipart при загрузке аудио на CDN MAX.
+    ``mimetypes.guess_type`` на Windows для .wav часто даёт ``audio/x-wav`` —
+    CDN vu.okcdn.ru отвечает 415 Unsupported Media Type.
+    """
+    ext = os.path.splitext(path)[1].lower()
+    if ext == ".mp3":
+        return "audio/mpeg"
+    if ext == ".wav":
+        return "audio/wav"
+    if ext in (".m4a", ".aac"):
+        return "audio/mp4"
+    if ext in (".ogg", ".oga"):
+        return "audio/ogg"
+    if ext == ".flac":
+        return "audio/flac"
+    g = mimetypes.guess_type(path)[0]
+    if g == "audio/x-wav":
+        return "audio/wav"
+    return g or "audio/mpeg"
+
+
+def _wav_to_mp3_temp(wav_path: str, timeout_sec: int = 600) -> str:
+    """Конвертация WAV → MP3 для CDN, который принимает только MPEG (если есть ffmpeg)."""
+    fd, out = tempfile.mkstemp(suffix=".mp3")
+    os.close(fd)
+    try:
+        subprocess.run(
+            [
+                "ffmpeg",
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-y",
+                "-i",
+                wav_path,
+                "-codec:a",
+                "libmp3lame",
+                "-q:a",
+                "4",
+                out,
+            ],
+            check=True,
+            timeout=timeout_sec,
+            capture_output=True,
+        )
+        return out
+    except Exception:
+        try:
+            os.unlink(out)
+        except OSError:
+            pass
+        raise
+
+
+def _post_audio_multipart(upload_url: str, path: str, mime_type: str, timeout_upload: int) -> requests.Response:
+    filename = os.path.basename(path)
+    with open(path, "rb") as f:
+        return requests.post(
+            upload_url,
+            files={"data": (filename, f, mime_type)},
+            timeout=timeout_upload,
+        )
 
 
 def _authorization_value(raw_token: str) -> str:
@@ -112,40 +180,56 @@ def upload_audio_get_token(access_token: str, audio_path: str, timeout_upload: i
     Рабочий сценарий (как в тестовом клиенте): в ответе ``/uploads`` приходит
     ``url`` и ``token`` — вложение в ``POST /messages`` использует **этот**
     ``token``. Ответ CDN после загрузки часто **не JSON**, а XML вида
-    ``<retval>1</retval>``; парсить ``r.json()`` нельзя.
+    ``<retval>1</retval>``.
 
-    Multipart: поле ``data``, тройной кортеж ``(имя, file, mime)`` —
-    например ``audio/mpeg`` для mp3 (иначе CDN может ответить 415).
-    Без Authorization на URL CDN.
+    Multipart: поле ``data``, кортеж ``(имя, file, mime)``; без Authorization на CDN.
+    Для ``.wav`` не использовать ``audio/x-wav`` — CDN даёт 415; при 415 на WAV
+    пробуем временную конвертацию в MP3 через ``ffmpeg`` (как в рабочем тесте с MP3).
     """
     upload_url, pre_token = _request_upload_slot(access_token, "audio")
     if not pre_token:
         raise ValueError("MAX /uploads?type=audio: нет token в ответе (нужен для вложения)")
 
     path = os.path.abspath(audio_path)
-    filename = os.path.basename(path)
-    mime_type = mimetypes.guess_type(path)[0] or "audio/mpeg"
-
-    with open(path, "rb") as f:
-        r2 = requests.post(
-            upload_url,
-            files={"data": (filename, f, mime_type)},
-            timeout=timeout_upload,
-        )
+    mime_type = _audio_multipart_mime(path)
+    r2 = _post_audio_multipart(upload_url, path, mime_type, timeout_upload)
     logger.info("MAX audio CDN upload: %s | %s", r2.status_code, r2.text[:400])
-    if not r2.ok:
-        logger.warning("MAX audio upload to slot: %s %s", r2.status_code, r2.text[:500])
-        r2.raise_for_status()
 
-    text = (r2.text or "").strip()
-    if text.startswith("{") or text.startswith("["):
-        try:
-            body = r2.json()
-            if isinstance(body, dict) and body.get("token"):
-                return str(body["token"])
-        except json.JSONDecodeError:
-            pass
-    return pre_token
+    tmp_mp3: Optional[str] = None
+    try:
+        if r2.status_code == 415 and os.path.splitext(path)[1].lower() == ".wav":
+            try:
+                tmp_mp3 = _wav_to_mp3_temp(path, timeout_sec=timeout_upload)
+                r2 = _post_audio_multipart(upload_url, tmp_mp3, "audio/mpeg", timeout_upload)
+                logger.info(
+                    "MAX audio CDN upload (wav→mp3 через ffmpeg): %s | %s",
+                    r2.status_code,
+                    r2.text[:400],
+                )
+            except FileNotFoundError:
+                logger.warning("MAX ffmpeg не найден — не удалось перекодировать WAV для CDN")
+            except Exception as e:
+                logger.warning("MAX ffmpeg перекодирование WAV: %s", e)
+
+        if not r2.ok:
+            logger.warning("MAX audio upload to slot: %s %s", r2.status_code, r2.text[:500])
+            r2.raise_for_status()
+
+        text = (r2.text or "").strip()
+        if text.startswith("{") or text.startswith("["):
+            try:
+                body = r2.json()
+                if isinstance(body, dict) and body.get("token"):
+                    return str(body["token"])
+            except json.JSONDecodeError:
+                pass
+        return pre_token
+    finally:
+        if tmp_mp3:
+            try:
+                os.unlink(tmp_mp3)
+            except OSError:
+                pass
 
 
 def send_message_with_attachments(
