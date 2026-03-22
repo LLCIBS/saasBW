@@ -249,9 +249,12 @@ def send_message_with_attachments(
     url = f"{MAX_API}/messages"
     params = {"chat_id": int(chat_id)}
     headers = {"Authorization": auth, "Content-Type": "application/json"}
-    payload: Dict[str, Any] = {"text": (text or "")[:4000]}
+    # Порядок ключей в JSON влияет на отрисовку в клиенте MAX: при text перед
+    # attachments текст оказывается над плеером; сначала attachments — запись сверху.
+    payload: Dict[str, Any] = {}
     if attachments:
         payload["attachments"] = attachments
+    payload["text"] = (text or "")[:4000]
     if text_format:
         payload["format"] = text_format
 

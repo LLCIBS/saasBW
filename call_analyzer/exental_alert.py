@@ -17,9 +17,9 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-# Аудио с короткой подписью отдельным сообщением, полный разбор — следующим (в MAX текст в одном
-# сообщении с вложением рисуется над плеером; так плеер оказывается сверху).
-EXENTAL_AUDIO_SHORT_CAPTION_HTML = "<b>Запись звонка</b>"
+# Лимиты подписи: Telegram sendAudio — 1024 символа; MAX поле text — 4000 (common/max_messenger).
+TELEGRAM_AUDIO_CAPTION_LIMIT = 1024
+MAX_MESSAGE_TEXT_LIMIT = 4000
 
 # Список вопросов по умолчанию (fallback на случай отсутствия YAML)
 DEFAULT_QUESTIONS = [
@@ -775,22 +775,26 @@ def send_exental_results(station_code: str, caption: str, overall_text: str, mp3
         pass
 
     chat_list = config.STATION_CHAT_IDS.get(station_code, [config.ALERT_CHAT_ID])
+    cap = caption or ""
     for cid in chat_list:
-        audio_sent = False
-        if mp3_path_obj.exists() and mp3_path_obj.is_file():
-            audio_sent = send_telegram_audio(
-                cid, str(mp3_path_obj), EXENTAL_AUDIO_SHORT_CAPTION_HTML
-            )
+        has_audio = mp3_path_obj.exists() and mp3_path_obj.is_file()
+        if has_audio:
+            if len(cap) <= TELEGRAM_AUDIO_CAPTION_LIMIT:
+                audio_sent = send_telegram_audio(cid, str(mp3_path_obj), cap)
+                if not audio_sent and cap.strip():
+                    send_telegram_message(cid, cap)
+            else:
+                send_telegram_audio(
+                    cid,
+                    str(mp3_path_obj),
+                    "<b>Запись звонка</b> — полный чек-лист в следующем сообщении.",
+                )
+                if cap.strip():
+                    send_telegram_message(cid, cap)
         else:
             logger.warning(f"[exental_alert] MP3 {mp3_path_obj} не найден, не отправляем аудио.")
-
-        if caption and str(caption).strip():
-            send_telegram_message(cid, caption)
-        elif not audio_sent:
-            logger.info(
-                "[exental_alert] Нет текста разбора и аудио не отправлено — пропускаем текст для чата %s",
-                cid,
-            )
+            if cap.strip():
+                send_telegram_message(cid, cap)
 
         if overall_text:
             send_telegram_message(cid, f"<b>Общий вывод</b>: {overall_text}")
@@ -815,14 +819,23 @@ def send_exental_results(station_code: str, caption: str, overall_text: str, mp3
             logger.warning("[exental_alert] MAX недоступен: %s", ie)
             continue
         token = getattr(config, 'MAX_ACCESS_TOKEN', '')
+        cap = caption or ""
         audio_ok = False
         if mp3_path_obj.exists() and mp3_path_obj.is_file():
-            audio_ok = send_audio_file_to_max(
-                token, str(mid), str(mp3_path_obj), EXENTAL_AUDIO_SHORT_CAPTION_HTML
-            )
+            if len(cap) <= MAX_MESSAGE_TEXT_LIMIT:
+                audio_ok = send_audio_file_to_max(
+                    token, str(mid), str(mp3_path_obj), cap
+                )
+            else:
+                audio_ok = send_audio_file_to_max(
+                    token, str(mid), str(mp3_path_obj), "<b>Запись звонка</b>"
+                )
         try:
-            if caption and str(caption).strip():
-                send_max_text_chunked(token, str(mid), caption, text_format="html")
+            need_text_chunk = cap.strip() and (
+                not audio_ok or len(cap) > MAX_MESSAGE_TEXT_LIMIT
+            )
+            if need_text_chunk:
+                send_max_text_chunked(token, str(mid), cap, text_format="html")
         except Exception as te:
             logger.error("[exental_alert] MAX текст чек-листа: %s", te)
         if overall_text:
