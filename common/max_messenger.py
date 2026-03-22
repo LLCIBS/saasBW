@@ -78,9 +78,9 @@ def _upload_to_slot(
 
 def _request_upload_slot(access_token: str, upload_type: str) -> tuple[str, Optional[str]]:
     """Возвращает (upload_url, pre_token).
-    Для audio/video MAX сразу возвращает token в ответе /uploads,
-    а после загрузки файла отвечает retval (не token).
-    Для file/image token приходит в ответе на саму загрузку."""
+    Для type=file|image token приходит в ответе на POST на CDN.
+    Для type=audio|video в доке MAX token чаще приходит в JSON ответа CDN после загрузки;
+    иногда дублируется в ответе /uploads — см. upload_audio_get_token."""
     auth = _authorization_value(access_token)
     r1 = requests.post(
         f"{MAX_API}/uploads",
@@ -106,63 +106,41 @@ def upload_file_get_token(access_token: str, file_path: str, timeout_upload: int
 
 def upload_audio_get_token(access_token: str, audio_path: str, timeout_upload: int = 300) -> str:
     """
-    Token для сообщения — в ответе /uploads (pre_token).
-    CDN vu.okcdn.ru (clientType=51): resumable raw-binary upload.
-    Согласно документации OK.ru Graph API: для AUDIO/IMAGE обязателен корректный MIME-type
-    в Content-Type; тело запроса — сырой бинарный поток файла (не multipart).
-    multipart даёт 400, raw binary без Content-Range даёт 412 «Precondition Failed».
-    Пробуем двухшаговый resumable:
-      шаг 1 — POST с пустым телом + Content-Range: bytes */{size} (инициализация);
-      шаг 2 — POST с данными + Content-Range: bytes 0-{last}/{size}.
-    Если шаг 1 вернул 200/308 — переходим к шагу 2.
+    Загрузка аудио на CDN по URL из POST /uploads?type=audio.
+    Официальный сценарий MAX (dev.max.ru): multipart form, поле ``data``,
+    без Authorization на CDN; ``token`` для вложения — в JSON ответа CDN
+    (как curl: -F \"data=@file.mp3\"). Raw binary на vu.okcdn.ru даёт 415
+    с X-Reason error.fileName — нужен multipart с именем файла в части.
     """
-    import mimetypes
-
     upload_url, pre_token = _request_upload_slot(access_token, "audio")
-    if not pre_token:
-        raise ValueError("MAX /uploads?type=audio: token не пришёл в ответе слота")
-
     path = os.path.abspath(audio_path)
-    mime_type = mimetypes.guess_type(path)[0] or "audio/mpeg"
+    filename = os.path.basename(path)
 
     with open(path, "rb") as f:
-        data = f.read()
-    size = len(data)
-
-    # Шаг 1: инициализация resumable-сессии (пустое тело, Content-Range: bytes */{size})
-    r_init = requests.post(
-        upload_url,
-        data=b"",
-        headers={
-            "Content-Type": mime_type,
-            "Content-Length": "0",
-            "Content-Range": f"bytes */{size}",
-        },
-        timeout=60,
-    )
-    logger.info(
-        "MAX audio CDN init: %s | headers=%s | body=%s",
-        r_init.status_code,
-        dict(r_init.headers),
-        r_init.text[:300],
-    )
-
-    # Шаг 2: загрузка данных
-    r2 = requests.post(
-        upload_url,
-        data=data,
-        headers={
-            "Content-Type": mime_type,
-            "Content-Length": str(size),
-            "Content-Range": f"bytes 0-{size - 1}/{size}",
-        },
-        timeout=timeout_upload,
-    )
-    logger.info("MAX audio CDN upload: %s | headers=%s | body=%s", r2.status_code, dict(r2.headers), r2.text[:300])
+        r2 = requests.post(
+            upload_url,
+            files={"data": (filename, f)},
+            timeout=timeout_upload,
+        )
+    logger.info("MAX audio CDN upload: %s | %s", r2.status_code, r2.text[:400])
     if not r2.ok:
         logger.warning("MAX audio upload to slot: %s %s", r2.status_code, r2.text[:500])
         r2.raise_for_status()
-    return pre_token
+    try:
+        body = r2.json()
+    except json.JSONDecodeError as e:
+        raise ValueError(f"MAX: не JSON после загрузки аудио: {r2.text[:500]}") from e
+
+    try:
+        return _extract_upload_token(body)
+    except ValueError:
+        if pre_token:
+            logger.warning(
+                "MAX audio: token не найден в ответе CDN %r, используем token из /uploads",
+                body,
+            )
+            return pre_token
+        raise
 
 
 def send_message_with_attachments(
@@ -327,7 +305,7 @@ def send_audio_file_to_max(
     chat_id = int(str(chat_id_raw).strip())
     try:
         tok = upload_audio_get_token(access_token, audio_path)
-        time.sleep(2.0)
+        time.sleep(3.0)
         send_message_with_audio(access_token, chat_id, tok, caption)
         logger.info("MAX audio sent ok: chat=%s file=%s", chat_id, os.path.basename(audio_path))
         return True
