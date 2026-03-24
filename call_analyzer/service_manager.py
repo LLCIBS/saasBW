@@ -65,7 +65,7 @@ def load_active_profiles(engine):
                        script_prompt_file, additional_vocab_file,
                        thebai_api_key, telegram_bot_token, speechmatics_api_key,
                        alert_chat_id, tg_channel_nizh, tg_channel_other, reports_chat_id,
-                       telegram_notifications_enabled, max_notifications_enabled, max_access_token,
+                       telegram_notifications_enabled, max_notifications_enabled, max_send_checklist_analysis_file, max_access_token,
                        max_alert_chat_id, max_tg_channel_nizh, max_tg_channel_other, max_reports_chat_id,
                        tbank_stereo_enabled, use_additional_vocab, auto_detect_operator_name,
                        allowed_stations, nizh_station_codes, legal_entity_keywords,
@@ -154,6 +154,9 @@ def load_active_profiles(engine):
             }
             config_data['max'] = {
                 'notifications_enabled': getattr(cfg_row, 'max_notifications_enabled', True),
+                'send_checklist_analysis_file': getattr(
+                    cfg_row, 'max_send_checklist_analysis_file', True
+                ),
                 'alert_chat_id': getattr(cfg_row, 'max_alert_chat_id', None) or '',
                 'tg_channel_nizh': getattr(cfg_row, 'max_tg_channel_nizh', None) or '',
                 'tg_channel_other': getattr(cfg_row, 'max_tg_channel_other', None) or '',

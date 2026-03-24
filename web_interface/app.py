@@ -283,6 +283,9 @@ def get_user_config_data(user=None):
         }
         config_data['max'] = {
             'notifications_enabled': getattr(cfg, 'max_notifications_enabled', True),
+            'send_checklist_analysis_file': getattr(
+                cfg, 'max_send_checklist_analysis_file', True
+            ),
             'alert_chat_id': getattr(cfg, 'max_alert_chat_id', None) or '',
             'tg_channel_nizh': getattr(cfg, 'max_tg_channel_nizh', None) or '',
             'tg_channel_other': getattr(cfg, 'max_tg_channel_other', None) or '',
@@ -371,6 +374,7 @@ def save_user_config_data(config_data, user=None):
 
     cfg.telegram_notifications_enabled = bool(telegram_cfg.get('notifications_enabled', True))
     cfg.max_notifications_enabled = bool(max_cfg.get('notifications_enabled', True))
+    cfg.max_send_checklist_analysis_file = bool(max_cfg.get('send_checklist_analysis_file', True))
 
     cfg.alert_chat_id = telegram_cfg.get('alert_chat_id')
     cfg.tg_channel_nizh = telegram_cfg.get('tg_channel_nizh')
@@ -1056,6 +1060,10 @@ def legacy_config_override(runtime_cfg):
 
         max_cfg = runtime_cfg.get('max') or {}
         _set_attr('MAX_NOTIFICATIONS_ENABLED', bool(max_cfg.get('notifications_enabled', True)))
+        _set_attr(
+            'MAX_SEND_CHECKLIST_ANALYSIS_FILE',
+            bool(max_cfg.get('send_checklist_analysis_file', True)),
+        )
         _set_attr('MAX_ALERT_CHAT_ID', max_cfg.get('alert_chat_id', ''))
         _set_attr('MAX_TG_CHANNEL_NIZH', max_cfg.get('tg_channel_nizh', ''))
         _set_attr('MAX_TG_CHANNEL_OTHER', max_cfg.get('tg_channel_other', ''))

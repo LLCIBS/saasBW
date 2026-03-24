@@ -846,7 +846,11 @@ def send_exental_results(station_code: str, caption: str, overall_text: str, mp3
                 text_format="html",
             )
         ap = Path(analysis_path) if analysis_path else None
-        if ap and ap.is_file():
+        if (
+            ap
+            and ap.is_file()
+            and getattr(config, "MAX_SEND_CHECKLIST_ANALYSIS_FILE", True)
+        ):
             try:
                 send_excel_report_to_max(
                     token,

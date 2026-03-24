@@ -407,6 +407,8 @@ class UserConfig(db.Model):
     # Включение каналов уведомлений (Telegram / MAX)
     telegram_notifications_enabled = db.Column(db.Boolean, default=True, nullable=False)
     max_notifications_enabled = db.Column(db.Boolean, default=True, nullable=False)
+    # Отправка в MAX файла «Полный текст разбора чек-листа» после разбора звонка
+    max_send_checklist_analysis_file = db.Column(db.Boolean, default=True, nullable=False)
     max_access_token = db.Column(db.String(255), nullable=True)
     
     # Telegram

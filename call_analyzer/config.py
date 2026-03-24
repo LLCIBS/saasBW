@@ -49,6 +49,8 @@ MAX_ALERT_CHAT_ID = os.getenv("MAX_ALERT_CHAT_ID", "")
 MAX_REPORTS_CHAT_ID = os.getenv("MAX_REPORTS_CHAT_ID", "")
 MAX_TG_CHANNEL_NIZH = os.getenv("MAX_TG_CHANNEL_NIZH", "")
 MAX_TG_CHANNEL_OTHER = os.getenv("MAX_TG_CHANNEL_OTHER", "")
+# Отправка в MAX txt с полным разбором чек-листа (дубль Telegram)
+MAX_SEND_CHECKLIST_ANALYSIS_FILE = True
 
 # Пути к файлам (читаем из .env или используем значения по умолчанию)
 _script_prompt_8_default = Path("D:\\ООО ИБС\\Бествей\\Система чек листов коммерция BW\\monv2_безRerTruck web5\\script_prompt_8.yaml")
@@ -257,6 +259,8 @@ def _apply_profile_dict(profile_data):
         MAX_TG_CHANNEL_OTHER = max_cfg.get('tg_channel_other') or ''
     if max_cfg.get('reports_chat_id') is not None:
         MAX_REPORTS_CHAT_ID = max_cfg.get('reports_chat_id') or ''
+    if 'send_checklist_analysis_file' in max_cfg:
+        MAX_SEND_CHECKLIST_ANALYSIS_FILE = bool(max_cfg.get('send_checklist_analysis_file', True))
 
     EMPLOYEE_BY_EXTENSION = (profile_data or {}).get('employee_by_extension') or EMPLOYEE_BY_EXTENSION
     STATION_NAMES = (profile_data or {}).get('stations') or STATION_NAMES

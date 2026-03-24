@@ -406,6 +406,15 @@
                             </div>
                         </div>
                     </div>
+                    <div class="form-row-single">
+                        <div class="switch-wrapper">
+                            <label for="maxSendChecklistAnalysisFile">Файл «Полный текст разбора чек-листа» в MAX</label>
+                            <div class="form-check form-switch m-0">
+                                <input class="form-check-input" type="checkbox" id="maxSendChecklistAnalysisFile" checked>
+                            </div>
+                        </div>
+                        <div class="help-text">Отдельное сообщение с .txt после разбора звонка по чек-листу (как в Telegram)</div>
+                    </div>
                     <div class="form-row">
                         <div class="input-wrapper">
                             <label for="maxAlertChatId">Alert (MAX chat_id)</label>
@@ -815,6 +824,7 @@ document.addEventListener('DOMContentLoaded', async function() {
         document.getElementById('tgChannelOther').value = configData.telegram?.tg_channel_other || '';
 
         document.getElementById('maxNotificationsEnabled').checked = configData.max?.notifications_enabled !== false;
+        document.getElementById('maxSendChecklistAnalysisFile').checked = configData.max?.send_checklist_analysis_file !== false;
         document.getElementById('maxAlertChatId').value = configData.max?.alert_chat_id || '';
         document.getElementById('maxReportsChatId').value = configData.max?.reports_chat_id || '';
         document.getElementById('maxTgChannelNizh').value = configData.max?.tg_channel_nizh || '';
@@ -1212,6 +1222,7 @@ async function saveAllConfig() {
             },
             max: {
                 notifications_enabled: document.getElementById('maxNotificationsEnabled').checked,
+                send_checklist_analysis_file: document.getElementById('maxSendChecklistAnalysisFile').checked,
                 alert_chat_id: document.getElementById('maxAlertChatId').value,
                 reports_chat_id: document.getElementById('maxReportsChatId').value,
                 tg_channel_nizh: document.getElementById('maxTgChannelNizh').value,

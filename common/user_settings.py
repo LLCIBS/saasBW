@@ -23,6 +23,7 @@ def default_config_template():
         },
         'max': {
             'notifications_enabled': True,
+            'send_checklist_analysis_file': True,
             'alert_chat_id': '',
             'tg_channel_nizh': '',
             'tg_channel_other': '',
@@ -109,6 +110,7 @@ def _merge_telegram(config_data, _fallback):
 def _merge_max(config_data, _fallback):
     base = {
         'notifications_enabled': True,
+        'send_checklist_analysis_file': True,
         'alert_chat_id': _fallback('MAX_ALERT_CHAT_ID', ''),
         'tg_channel_nizh': _fallback('MAX_TG_CHANNEL_NIZH', ''),
         'tg_channel_other': _fallback('MAX_TG_CHANNEL_OTHER', ''),
@@ -118,6 +120,8 @@ def _merge_max(config_data, _fallback):
     base.update(over)
     if 'notifications_enabled' not in over:
         base['notifications_enabled'] = True
+    if 'send_checklist_analysis_file' not in over:
+        base['send_checklist_analysis_file'] = True
     return base
 
 
