@@ -63,6 +63,7 @@ def load_active_profiles(engine):
             configs = fetch("""
                 SELECT user_id, source_type, prompts_file, base_records_path, ftp_connection_id,
                        script_prompt_file, additional_vocab_file,
+                       thebai_url, thebai_model,
                        thebai_api_key, telegram_bot_token, speechmatics_api_key,
                        alert_chat_id, tg_channel_nizh, tg_channel_other, reports_chat_id,
                        telegram_notifications_enabled, max_notifications_enabled, max_send_checklist_analysis_file, max_access_token,
@@ -136,14 +137,20 @@ def load_active_profiles(engine):
             })
             config_data['paths'] = paths
 
+            _def_url = getattr(legacy_config, 'THEBAI_URL', 'https://api.deepseek.com/v1/chat/completions')
+            _def_model = getattr(legacy_config, 'THEBAI_MODEL', 'deepseek-reasoner')
             config_data['api_keys'] = {
                 'speechmatics_api_key': cfg_row.speechmatics_api_key or '',
                 'thebai_api_key': cfg_row.thebai_api_key or '',
-                'thebai_url': config_data['api_keys'].get('thebai_url', 'https://api.deepseek.com/v1/chat/completions'),
-                'thebai_model': config_data['api_keys'].get('thebai_model', 'deepseek-reasoner'),
+                'thebai_url': (getattr(cfg_row, 'thebai_url', None) or '').strip() or _def_url,
+                'thebai_model': (getattr(cfg_row, 'thebai_model', None) or '').strip() or _def_model,
                 'telegram_bot_token': cfg_row.telegram_bot_token or '',
                 'max_access_token': getattr(cfg_row, 'max_access_token', None) or '',
             }
+            _u = (config_data.get('api_keys') or {}).get('thebai_url') or ''
+            config_data['llm_provider'] = (
+                'deepseek' if 'deepseek.com' in _u.lower() else 'local_gemma'
+            )
 
             config_data['telegram'] = {
                 'notifications_enabled': getattr(cfg_row, 'telegram_notifications_enabled', True),

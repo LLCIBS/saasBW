@@ -272,6 +272,10 @@ def get_user_config_data(user=None):
             'telegram_bot_token': cfg.telegram_bot_token or '',
             'max_access_token': getattr(cfg, 'max_access_token', None) or '',
         }
+        _tb_url = (config_data.get('api_keys') or {}).get('thebai_url') or ''
+        config_data['llm_provider'] = (
+            'deepseek' if 'deepseek.com' in _tb_url.lower() else 'local_gemma'
+        )
 
         # Telegram / MAX
         config_data['telegram'] = {
@@ -338,6 +342,8 @@ def get_user_config_data(user=None):
     config_data['station_max_chat_ids'] = station_max_chat_ids
     config_data['station_mapping'] = station_mapping
     config_data['employee_by_extension'] = employee_by_extension
+
+    config_data['vocabulary'] = get_user_vocabulary_data(user=actual_user)
 
     return config_data
 
@@ -623,34 +629,34 @@ def get_user_vocabulary_data(user=None):
         user = current_user if hasattr(current_user, 'is_authenticated') and current_user.is_authenticated else None
     if not user:
         return default_vocabulary_template()
-    
+
     vocab = UserVocabulary.query.filter_by(user_id=user.id).first()
-    
-    # Если в новых таблицах есть данные, возвращаем их
-    if vocab and (vocab.additional_vocab or vocab.enabled is not None):
+
+    # Если запись есть — всегда отдаём её (раньше пустой additional_vocab давал default и терялись данные БД)
+    if vocab:
         return {
-            'enabled': vocab.enabled,
-            'additional_vocab': vocab.additional_vocab or []
+            'enabled': bool(vocab.enabled) if vocab.enabled is not None else True,
+            'additional_vocab': list(vocab.additional_vocab or []),
         }
-    
+
     # Если в новых таблицах пусто, читаем из старых UserSettings.data
     old_data = get_user_settings_section('vocabulary', default_vocabulary_template, user=user)
     if old_data and (old_data.get('additional_vocab') or old_data.get('enabled') is not None):
-        # Автоматически мигрируем данные
         save_user_vocabulary_data(old_data, user=user)
-        return old_data
-    
-    # Создаем запись с дефолтными значениями
-    if not vocab:
-        vocab = UserVocabulary(
-            user_id=user.id,
-            enabled=True,
-            additional_vocab=[]
-        )
-        db.session.add(vocab)
-        db.session.commit()
-    
-    return default_vocabulary_template()
+        return {
+            'enabled': bool(old_data.get('enabled', True)),
+            'additional_vocab': list(old_data.get('additional_vocab') or []),
+        }
+
+    vocab = UserVocabulary(
+        user_id=user.id,
+        enabled=True,
+        additional_vocab=[],
+    )
+    db.session.add(vocab)
+    db.session.commit()
+
+    return {'enabled': True, 'additional_vocab': []}
 
 
 def save_user_vocabulary_data(vocab_data, user=None):
@@ -2568,8 +2574,12 @@ def api_regenerate_checklist_item_prompt():
         api_keys = runtime_cfg.get('api_keys', {})
         thebai_api_key = api_keys.get('thebai_api_key')
         thebai_url = api_keys.get('thebai_url') or 'https://api.deepseek.com/v1/chat/completions'
-        # Используем deepseek-chat (V3) вместо reasoner для более предсказуемого формата текста
-        thebai_model = 'deepseek-chat' 
+        # Модель из профиля; для DeepSeek без явной модели — deepseek-chat (предсказуемый формат текста)
+        thebai_model = (api_keys.get('thebai_model') or '').strip()
+        if not thebai_model:
+            thebai_model = (
+                'deepseek-chat' if 'deepseek.com' in (thebai_url or '').lower() else 'gemma2:9b'
+            )
 
         if not thebai_api_key:
             return jsonify({'success': False, 'message': 'Укажите DeepSeek/TheB.ai API key в настройках профиля'}), 400
