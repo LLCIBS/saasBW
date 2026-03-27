@@ -209,6 +209,7 @@ def _apply_profile_overrides():
 
 def _apply_profile_dict(profile_data):
     global BASE_RECORDS_PATH, PROMPTS_FILE, ADDITIONAL_VOCAB_FILE, SCRIPT_PROMPT_8_PATH
+    global THEBAI_API_KEY, THEBAI_URL, THEBAI_MODEL
     global TELEGRAM_BOT_TOKEN, TELEGRAM_NOTIFICATIONS_ENABLED
     global MAX_NOTIFICATIONS_ENABLED, MAX_ACCESS_TOKEN, MAX_SEND_CHECKLIST_ANALYSIS_FILE
     global ALERT_CHAT_ID, TG_CHANNEL_NIZH, TG_CHANNEL_OTHER, REPORTS_CHAT_ID
@@ -231,6 +232,17 @@ def _apply_profile_dict(profile_data):
         SCRIPT_PROMPT_8_PATH = Path(paths['script_prompt_file'])
 
     api_keys = (profile_data or {}).get('api_keys') or {}
+    # LLM (профиль пользователя; иначе остаются значения из .env / дефолты модуля)
+    _tb_url = (api_keys.get('thebai_url') or '').strip()
+    if _tb_url:
+        THEBAI_URL = _tb_url
+    _tb_model = (api_keys.get('thebai_model') or '').strip()
+    if _tb_model:
+        THEBAI_MODEL = _tb_model
+    # В JSON профиля ключ часто не пишется (service_manager); тогда не трогаем THEBAI_API_KEY
+    if api_keys.get('thebai_api_key'):
+        THEBAI_API_KEY = str(api_keys.get('thebai_api_key') or '').strip()
+
     if api_keys.get('telegram_bot_token'):
         TELEGRAM_BOT_TOKEN = api_keys['telegram_bot_token']
     if api_keys.get('max_access_token') is not None:
