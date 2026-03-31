@@ -117,6 +117,22 @@ class ClassificationRulesManager:
             )
         ''')
 
+        # Автоправила (self-learning); должны существовать всегда — generate_system_prompt()
+        # вызывает get_auto_extracted_rules(). Раньше таблица создавалась только в SelfLearningSystem.
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS auto_extracted_rules (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                rule_text TEXT NOT NULL,
+                category_id TEXT NOT NULL,
+                confidence REAL DEFAULT 0.0,
+                source_type TEXT DEFAULT 'pattern_analysis',
+                example_count INTEGER DEFAULT 0,
+                is_active BOOLEAN DEFAULT 1,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                last_verified TIMESTAMP
+            )
+        ''')
+
         # Значения по умолчанию для Telegram / MAX (если не заданы)
         try:
             cursor.execute("INSERT OR IGNORE INTO system_settings (setting_key, setting_value, description) VALUES ('telegram_enabled', '0', 'Включить отправку отчетов в Telegram')")
