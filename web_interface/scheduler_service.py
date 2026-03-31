@@ -4,6 +4,7 @@
 """
 
 from datetime import datetime, timedelta, time as dt_time
+from pathlib import Path
 from typing import Optional
 import logging
 
@@ -13,7 +14,7 @@ from apscheduler.triggers.interval import IntervalTrigger
 from flask import current_app
 
 from database import db
-from database.models import ReportSchedule, User
+from database.models import ReportSchedule, User, UserConfig
 
 logger = logging.getLogger(__name__)
 
@@ -264,6 +265,49 @@ def _add_schedule_job(sched: BackgroundScheduler, schedule: ReportSchedule):
         logger.error(f"[Scheduler] Error adding schedule {job_id}: {e}", exc_info=True)
 
 
+def _run_audio_retention_job():
+    """Ежедневное удаление просроченных исходных аудиофайлов (транскрипции и разборы не трогаем)."""
+    from common.audio_retention_cleanup import cleanup_expired_audio_files
+
+    logger.info("[Scheduler] audio retention: старт задачи")
+    try:
+        from web_interface.app import app
+
+        with app.app_context():
+            rows = UserConfig.query.all()
+            for uc in rows:
+                base = (uc.base_records_path or "").strip()
+                if not base:
+                    continue
+                try:
+                    days = int(getattr(uc, "audio_retention_days", 10))
+                except (TypeError, ValueError):
+                    days = 10
+                if days <= 0:
+                    continue
+                exts = getattr(uc, "filename_extensions", None) or [".mp3", ".wav"]
+                try:
+                    n = cleanup_expired_audio_files(
+                        Path(base), days, extra_extensions=exts
+                    )
+                    if n:
+                        logger.info(
+                            "[Scheduler] audio retention: user_id=%s удалено файлов=%s (%s)",
+                            uc.user_id,
+                            n,
+                            base,
+                        )
+                except Exception as exc:
+                    logger.error(
+                        "[Scheduler] audio retention: ошибка user_id=%s: %s",
+                        uc.user_id,
+                        exc,
+                        exc_info=True,
+                    )
+    except Exception as exc:
+        logger.error("[Scheduler] audio retention: критическая ошибка: %s", exc, exc_info=True)
+
+
 def load_all_schedules(app=None):
     """Перезагрузить все расписания из БД в планировщик."""
     if scheduler is None:
@@ -337,7 +381,18 @@ def init_scheduler(app):
         
         with app.app_context():
             load_all_schedules(app)
-            
+
+        scheduler.add_job(
+            _run_audio_retention_job,
+            trigger=CronTrigger(hour=3, minute=30),
+            id="global_audio_retention_cleanup",
+            replace_existing=True,
+            max_instances=1,
+        )
+        app.logger.info(
+            "[Scheduler] Зарегистрирована ежедневная очистка аудио (03:30 Europe/Moscow)"
+        )
+
         return scheduler
     except Exception as e:
         app.logger.error(f"[Scheduler] Failed to initialize scheduler: {e}", exc_info=True)

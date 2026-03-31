@@ -564,6 +564,14 @@
                     <label class="form-check-label" for="autoDetectOperatorName">Автоматическое определение имени оператора</label>
                 </div>
                 <div class="form-text mt-2">При включении система пытается извлечь имя оператора из транскрипции (когда консультант представляется), затем использует таблицу привязки. При выключении сразу берет имя из таблицы EMPLOYEE_BY_EXTENSION.</div>
+
+                <div class="form-row mt-4">
+                    <div class="input-wrapper" style="max-width: 280px;">
+                        <label for="audioRetentionDays">Хранение исходных аудиозаписей на сервере (дней)</label>
+                        <input type="number" class="form-control" id="audioRetentionDays" min="0" max="3650" step="1" value="10">
+                        <div class="form-text">По истечении срока исходные файлы (.mp3, .wav и др.) удаляются из папки записей. Транскрипции, разборы и отчёты не удаляются. Значение 0 — не удалять автоматически.</div>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -862,6 +870,8 @@ document.addEventListener('DOMContentLoaded', async function() {
         document.getElementById('tbankStereoEnabled').checked = stereo;
         const autoDetectOperator = configData.transcription?.auto_detect_operator_name !== false;
         document.getElementById('autoDetectOperatorName').checked = autoDetectOperator;
+        const ard = configData.transcription?.audio_retention_days;
+        document.getElementById('audioRetentionDays').value = (ard !== undefined && ard !== null) ? ard : 10;
 
         // Форматы файлов
         document.getElementById('filenameEnabled').checked = configData.filename?.enabled === true;
@@ -1239,7 +1249,8 @@ async function saveAllConfig() {
             },
             transcription: {
                 tbank_stereo_enabled: document.getElementById('tbankStereoEnabled').checked,
-                auto_detect_operator_name: document.getElementById('autoDetectOperatorName').checked
+                auto_detect_operator_name: document.getElementById('autoDetectOperatorName').checked,
+                audio_retention_days: parseInt(document.getElementById('audioRetentionDays').value, 10) || 0
             },
             filename: {
                 enabled: document.getElementById('filenameEnabled').checked,

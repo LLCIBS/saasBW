@@ -174,6 +174,7 @@ def load_active_profiles(engine):
                 'tbank_stereo_enabled': bool(cfg_row.tbank_stereo_enabled),
                 'use_additional_vocab': bool(cfg_row.use_additional_vocab),
                 'auto_detect_operator_name': bool(cfg_row.auto_detect_operator_name),
+                'audio_retention_days': int(getattr(cfg_row, 'audio_retention_days', 10)),
             }
 
             config_data['filename'] = {

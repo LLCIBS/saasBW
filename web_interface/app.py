@@ -297,10 +297,14 @@ def get_user_config_data(user=None):
         }
 
         # Transcription
+        _ard = getattr(cfg, 'audio_retention_days', None)
+        if _ard is None:
+            _ard = 10
         config_data['transcription'] = {
             'tbank_stereo_enabled': bool(cfg.tbank_stereo_enabled),
             'use_additional_vocab': bool(cfg.use_additional_vocab),
             'auto_detect_operator_name': bool(cfg.auto_detect_operator_name),
+            'audio_retention_days': int(_ard),
         }
 
         # Filename formats
@@ -396,6 +400,11 @@ def save_user_config_data(config_data, user=None):
     cfg.use_additional_vocab = bool(transcription_cfg.get('use_additional_vocab', True))
     # По умолчанию должно совпадать с default_config_template (True)
     cfg.auto_detect_operator_name = bool(transcription_cfg.get('auto_detect_operator_name', True))
+    try:
+        _ard = int(transcription_cfg.get('audio_retention_days', 10))
+    except (TypeError, ValueError):
+        _ard = 10
+    cfg.audio_retention_days = max(0, min(_ard, 3650))
 
     filename_cfg = config_data.get('filename') or {}
     cfg.use_custom_filename_patterns = bool(filename_cfg.get('enabled', False))

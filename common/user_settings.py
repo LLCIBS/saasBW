@@ -53,6 +53,8 @@ def default_config_template():
             # True - пытаться извлечь имя из транскрипции, затем из таблицы
             # False - сразу брать из таблицы EMPLOYEE_BY_EXTENSION
             'auto_detect_operator_name': True,
+            # Хранение исходных аудиозаписей на сервере (дней). 0 — не удалять автоматически.
+            'audio_retention_days': 10,
         },
         'filename': {
             'enabled': False,
@@ -196,13 +198,16 @@ def build_runtime_config(project_config, config_data=None, user_id=None):
     # Синхронизируем vocabulary.enabled с transcription.use_additional_vocab
     vocabulary_cfg = config_data.get('vocabulary') or {}
     vocab_enabled = vocabulary_cfg.get('enabled', True)  # По умолчанию True
-    
-    transcription_cfg = config_data.get('transcription') or {}
-    # Если use_additional_vocab не задан явно, берем из vocabulary.enabled
-    if 'use_additional_vocab' not in transcription_cfg:
+
+    _tx_defaults = default_config_template()['transcription']
+    raw_transcription = config_data.get('transcription') or {}
+    # Полная секция: устаревшие/частичные JSON без новых ключей получают значения по умолчанию
+    transcription_cfg = {**_tx_defaults, **raw_transcription}
+    # Если use_additional_vocab не задан явно в исходных данных, берем из vocabulary.enabled
+    if 'use_additional_vocab' not in raw_transcription:
         transcription_cfg['use_additional_vocab'] = vocab_enabled
         changed = True
-    
+
     runtime = {
         'api_keys': runtime_api_keys,
         'paths': runtime_paths,
@@ -219,10 +224,7 @@ def build_runtime_config(project_config, config_data=None, user_id=None):
         'station_max_chat_ids': config_data.get('station_max_chat_ids') or {},
         'station_mapping': config_data.get('station_mapping') or {},
         'nizh_station_codes': config_data.get('nizh_station_codes') or [],
-        'transcription': transcription_cfg if transcription_cfg else {
-            'tbank_stereo_enabled': bool(getattr(project_config, 'TBANK_STEREO_ENABLED', False)),
-            'use_additional_vocab': vocab_enabled
-        },
+        'transcription': transcription_cfg,
         'filename': config_data.get('filename') or default_config_template()['filename'],
         'allowed_stations': config_data.get('allowed_stations') or []
     }
