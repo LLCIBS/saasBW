@@ -24,9 +24,9 @@ import os
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 import config as main_config
 try:
-    from call_analyzer.utils import parse_filename  # type: ignore
+    from call_analyzer.utils import parse_filename, parse_call_metadata_from_basename  # type: ignore
 except ImportError:
-    from utils import parse_filename
+    from utils import parse_filename, parse_call_metadata_from_basename
 import config as cfg
 # Импортируем функции для извлечения имени оператора
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
@@ -634,70 +634,22 @@ def create_excel_report(transcriptions_folder, output_file_path, telegram_messag
             with open(file_path, 'r', encoding='utf-8') as f:
                 content = f.read()
 
-            # Извлекаем номер телефона и дату/время из имени файла
+            # Извлекаем номер телефона и дату/время из имени файла (единый разбор — utils.parse_call_metadata_from_basename)
             base_name = file.replace('_analysis.txt', '')
-            mp3_filename = base_name + '.mp3'
-
 
             consultant_surname = 'Не указано'
             station_code = 'Неизвестно'
 
             phone_number = None
             date_time_obj = None
-            # Поддержка формата с префиксом fs_ и без него
-            match_fs = re.match(r'(?:fs_)?(\+?\d+)_\d{3,4}_(\d{4}-\d{2}-\d{2})-(\d{2}-\d{2}-\d{2})', base_name)
-            if match_fs:
-                phone_number = match_fs.group(1).lstrip('+')
-                date_str = match_fs.group(2)
-                time_str = match_fs.group(3)
-                date_time_str = f"{date_str} {time_str.replace('-', ':')}"
-                try:
-                    date_time_obj = datetime.strptime(date_time_str, '%Y-%m-%d %H:%M:%S')
-                except ValueError:
-                    date_time_obj = None
-            # Поддержка формата external-<station>-<phone>-<YYYYMMDD>-<HHMMSS>-...
-            if not date_time_obj:
-                if base_name.lower().startswith('external-'):
-                    try:
-                        parts = base_name.split('-')
-                        station_code = parts[1]
-                        ph = parts[2].lstrip('+')
-                        yyyymmdd = parts[3]
-                        hhmmss = parts[4]
-                        date_time_obj = datetime.strptime(f"{yyyymmdd} {hhmmss}", '%Y%m%d %H%M%S')
-                        phone_number = ph
-                    except Exception:
-                        date_time_obj = None
-            # Поддержка формата вход_<station>_с_<phone>_на_<phone>_от_<YYYY>_<MM>_<DD>
-            if not date_time_obj:
-                if base_name.lower().startswith('вход_'):
-                    try:
-                        # Формат: вход_EkbFocusMal128801_с_79536098664_на_73432260822_от_2025_10_21
-                        match_vhod = re.match(r'вход_([^_]+)_с_(\+?\d+)_на_\d+_от_(\d{4})_(\d{1,2})_(\d{1,2})', base_name, re.IGNORECASE)
-                        if match_vhod:
-                            station_code = match_vhod.group(1)
-                            phone_number = match_vhod.group(2).lstrip('+')
-                            year = match_vhod.group(3)
-                            month = match_vhod.group(4)
-                            day = match_vhod.group(5)
-                            # Время устанавливаем в 00:00:00, так как в файлах анализа время не указано
-                            date_time_obj = datetime.strptime(f"{year}-{month.zfill(2)}-{day.zfill(2)} 00:00:00", '%Y-%m-%d %H:%M:%S')
-                    except Exception:
-                        date_time_obj = None
 
-            # Поддержка формата out-<phone>-<station>-<YYYYMMDD>-<HHMMSS>-...
-            if not date_time_obj:
-                if base_name.lower().startswith('out-'):
-                    try:
-                        parts = base_name.split('-')
-                        # out-89196552973-203-20251120-173809-...
-                        phone_number = parts[1].lstrip('+')
-                        station_code = parts[2]
-                        yyyymmdd = parts[3]
-                        hhmmss = parts[4]
-                        date_time_obj = datetime.strptime(f"{yyyymmdd} {hhmmss}", '%Y%m%d %H%M%S')
-                    except Exception:
-                        date_time_obj = None
+            ph_parsed, st_parsed, dt_parsed = parse_call_metadata_from_basename(base_name)
+            if ph_parsed:
+                phone_number = ph_parsed.lstrip('+') if isinstance(ph_parsed, str) else ph_parsed
+            if st_parsed:
+                station_code = st_parsed
+            if dt_parsed:
+                date_time_obj = dt_parsed
 
             # station_code и consultant_surname уже инициализированы выше (строки 624-625)
             # и могли быть обновлены при парсинге имени файла — НЕ сбрасываем их
@@ -892,8 +844,12 @@ def create_summary_report(output_file_path):
             excel_data = excel_data.iloc[:, :len(column_names)]
     excel_data.columns = column_names
 
-    exclude_consultant_names = ["Не указано"]
-    excel_data = excel_data[~excel_data['Консультант'].isin(exclude_consultant_names)]
+    # Не отбрасываем строки только из‑за «Не указано» у консультанта: иначе при пустом
+    # EMPLOYEE_BY_EXTENSION у нового клиента пропадает вся сводка при известной станции.
+    # Исключаем только строки без привязки к станции.
+    excel_data = excel_data[
+        excel_data['Название станции'].astype(str).str.strip() != 'Неизвестно'
+    ]
 
     # Заменяем числовые коды станций на полные названия
     # Объединяем основную станцию и подстанцию в одну группу
@@ -925,7 +881,6 @@ def create_summary_report(output_file_path):
     station_totals = []
 
     row_num = 1
-    station_names = get_station_groups()
 
     # Готовим список вопросов для группировки по размеру чек-листа
     total_q = get_num_questions_from_yaml()
@@ -1119,41 +1074,13 @@ def compute_realtime_summary(
             phone_number = None
             date_time_obj = None
 
-            # Формат с префиксом fs_ и без него
-            match_fs = re.match(r'(?:fs_)?(\+?\d+)_\d{3,4}_(\d{4}-\d{2}-\d{2})-(\d{2}-\d{2}-\d{2})', base_name)
-            if match_fs:
-                phone_number = match_fs.group(1).lstrip('+')
-                date_str = match_fs.group(2)
-                time_str = match_fs.group(3)
-                try:
-                    date_time_obj = datetime.strptime(f"{date_str} {time_str.replace('-', ':')}", '%Y-%m-%d %H:%M:%S')
-                except ValueError:
-                    date_time_obj = None
-
-            # external- формат
-            if not date_time_obj and base_name.lower().startswith('external-'):
-                try:
-                    parts = base_name.split('-')
-                    station_code = parts[1]
-                    phone_number = parts[2].lstrip('+')
-                    yyyymmdd = parts[3]
-                    hhmmss = parts[4]
-                    date_time_obj = datetime.strptime(f"{yyyymmdd} {hhmmss}", '%Y%m%d %H%M%S')
-                except Exception:
-                    date_time_obj = None
-
-            # Если станция не была определена, попытаемся достать её из parse_filename
-            if station_code == 'Неизвестно':
-                try:
-                    ph2, st2, dt2 = parse_filename(base_name)
-                    if st2:
-                        station_code = st2
-                    if not date_time_obj:
-                        date_time_obj = dt2
-                    if not phone_number:
-                        phone_number = ph2.lstrip('+') if ph2 else None
-                except Exception:
-                    pass
+            ph_parsed, st_parsed, dt_parsed = parse_call_metadata_from_basename(base_name)
+            if ph_parsed:
+                phone_number = ph_parsed.lstrip('+') if isinstance(ph_parsed, str) else ph_parsed
+            if st_parsed:
+                station_code = st_parsed
+            if dt_parsed:
+                date_time_obj = dt_parsed
 
             # Файл содержимого
             try:

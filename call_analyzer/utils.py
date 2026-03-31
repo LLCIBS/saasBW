@@ -457,6 +457,41 @@ def parse_filename(file_name: str):
     return phone_number, station_code, call_time
 
 
+def parse_call_metadata_from_basename(base_name: str):
+    """
+    Единая точка разбора базового имени файла звонка без суффикса _analysis.txt
+    (и обычно без расширения .mp3/.wav). Делегирует в parse_filename.
+
+    Для форматов, где в regex требуется расширение (rostelecom, stocrm и т.п.),
+    дополнительно пробует варианты с .mp3 / .wav / .ogg.
+
+    Возвращает (phone, station_code, call_datetime) — как parse_filename.
+    """
+    if not base_name:
+        return None, None, None
+    base_name = str(base_name).strip()
+    if not base_name:
+        return None, None, None
+
+    lower = base_name.lower()
+    has_audio_ext = any(lower.endswith(ext) for ext in ('.mp3', '.wav', '.ogg'))
+
+    candidates = [base_name]
+    if not has_audio_ext:
+        candidates.extend(
+            [base_name + '.mp3', base_name + '.wav', base_name + '.ogg']
+        )
+
+    for cand in candidates:
+        try:
+            ph, st, dt = parse_filename(cand)
+        except Exception:
+            continue
+        if ph is not None or st is not None or dt is not None:
+            return ph, st, dt
+    return None, None, None
+
+
 def is_valid_call_filename(filename: str) -> bool:
     """
     Проверяет, является ли файл валидным файлом звонка.
