@@ -131,3 +131,70 @@ def format_transcription_result(data):
     
     return result
 
+
+def _resolve_transcription_engine():
+    """internal | gemini — по профилю или глобальным настройкам call_analyzer.config."""
+    if hasattr(config, "PROFILE_SETTINGS") and config.PROFILE_SETTINGS:
+        tc = config.PROFILE_SETTINGS.get("transcription") or {}
+        e = (tc.get("engine") or "internal").strip().lower()
+        if e in ("internal", "gemini"):
+            return e
+    eng = getattr(config, "TRANSCRIPTION_ENGINE", None) or "internal"
+    return eng if eng in ("internal", "gemini") else "internal"
+
+
+def _resolve_gemini_api_key():
+    if hasattr(config, "PROFILE_SETTINGS") and config.PROFILE_SETTINGS:
+        keys = config.PROFILE_SETTINGS.get("api_keys") or {}
+        if "gemini_api_key" in keys:
+            return (keys.get("gemini_api_key") or "").strip()
+    return (getattr(config, "GEMINI_API_KEY", None) or os.getenv("GEMINI_API_KEY", "") or "").strip()
+
+
+def _resolve_gemini_model():
+    if hasattr(config, "PROFILE_SETTINGS") and config.PROFILE_SETTINGS:
+        tc = config.PROFILE_SETTINGS.get("transcription") or {}
+        m = (tc.get("gemini_model") or "").strip()
+        if m:
+            return m
+    return (
+        getattr(config, "GEMINI_MODEL", None)
+        or os.getenv("GEMINI_MODEL")
+        or "gemini-2.0-flash"
+    ).strip()
+
+
+def transcribe_call_audio(
+    file_path, stereo_mode=None, additional_vocab=None, timeout=600
+):
+    """
+    Единая точка входа: внутренний HTTP-сервис (Whisper) или Google Gemini по настройкам профиля.
+    По умолчанию — internal.
+    """
+    engine = _resolve_transcription_engine()
+    if engine == "gemini":
+        try:
+            from call_analyzer.gemini_transcription import transcribe_audio_with_gemini
+        except ImportError:
+            from gemini_transcription import transcribe_audio_with_gemini
+
+        api_key = _resolve_gemini_api_key()
+        model = _resolve_gemini_model()
+        if stereo_mode is None:
+            stereo_mode = getattr(config, "TBANK_STEREO_ENABLED", False)
+        return transcribe_audio_with_gemini(
+            file_path,
+            api_key=api_key,
+            model=model,
+            stereo_mode=bool(stereo_mode),
+            additional_vocab=additional_vocab,
+            timeout=timeout,
+        )
+
+    return transcribe_audio_with_internal_service(
+        file_path,
+        stereo_mode=stereo_mode,
+        additional_vocab=additional_vocab,
+        timeout=timeout,
+    )
+

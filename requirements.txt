@@ -41,6 +41,8 @@ watchdog>=3.0.0
 
 # LLM client used by analyzer
 openai>=1.0.0
+# Опционально для транскрибации через Google Gemini (режим engine=gemini)
+google-genai>=1.0.0
 
 # Utilities
 tenacity>=9.0.0

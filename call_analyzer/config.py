@@ -192,6 +192,12 @@ USE_ADDITIONAL_VOCAB = True
 # True - пытаться извлечь имя из транскрипции, затем из таблицы
 # False - сразу брать из таблицы EMPLOYEE_BY_EXTENSION
 AUTO_DETECT_OPERATOR_NAME = True
+# Способ транскрибации: internal (HTTP Whisper-сервис) или gemini (Google Gemini API)
+TRANSCRIPTION_ENGINE = "internal"
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
+# Прокси только для клиента Gemini (см. gemini_proxy.py): GEMINI_PROXY_URL, GEMINI_PROXY,
+# опционально HTTPS_PROXY/HTTP_PROXY — подставляются в httpx, а не в глобальный стек процесса.
 
 
 def _apply_profile_overrides():
@@ -218,6 +224,7 @@ def _apply_profile_dict(profile_data):
     global NIZH_STATION_CODES, EMPLOYEE_BY_EXTENSION
     global ALLOWED_STATIONS, PROFILE_SETTINGS, TBANK_STEREO_ENABLED, USE_ADDITIONAL_VOCAB, AUTO_DETECT_OPERATOR_NAME
     global FILENAME_PATTERNS
+    global TRANSCRIPTION_ENGINE, GEMINI_API_KEY, GEMINI_MODEL
 
     PROFILE_SETTINGS = profile_data or {}
 
@@ -247,6 +254,8 @@ def _apply_profile_dict(profile_data):
         TELEGRAM_BOT_TOKEN = api_keys['telegram_bot_token']
     if api_keys.get('max_access_token') is not None:
         MAX_ACCESS_TOKEN = api_keys.get('max_access_token') or ''
+    if 'gemini_api_key' in api_keys:
+        GEMINI_API_KEY = str(api_keys.get('gemini_api_key') or '').strip()
 
     telegram_cfg = (profile_data or {}).get('telegram') or {}
     if 'notifications_enabled' in telegram_cfg:
@@ -290,6 +299,13 @@ def _apply_profile_dict(profile_data):
     USE_ADDITIONAL_VOCAB = bool(transcription_cfg.get('use_additional_vocab', True))
     # Автоматическое определение имени оператора (по умолчанию включено)
     AUTO_DETECT_OPERATOR_NAME = bool(transcription_cfg.get('auto_detect_operator_name', True))
+    _engine = (transcription_cfg.get('engine') or 'internal').strip().lower()
+    TRANSCRIPTION_ENGINE = _engine if _engine in ('internal', 'gemini') else 'internal'
+    GEMINI_MODEL = (
+        transcription_cfg.get('gemini_model')
+        or os.getenv('GEMINI_MODEL')
+        or 'gemini-2.0-flash'
+    ).strip()
 
     # Переопределение форматов файлов по профилю
     filename_cfg = (profile_data or {}).get('filename') or {}

@@ -552,6 +552,31 @@
                     <i class="fas fa-cogs"></i>
                     <span>Параметры транскрипции</span>
                 </div>
+
+                <div class="mb-3">
+                    <label class="form-label">Способ транскрибации</label>
+                    <div class="btn-group flex-wrap" role="group" id="transcriptionEngineGroup">
+                        <input type="radio" class="btn-check" name="transcriptionEngine" id="transcriptionEngineInternal" value="internal" checked>
+                        <label class="btn btn-outline-primary" for="transcriptionEngineInternal">Внутренний сервис</label>
+                        <input type="radio" class="btn-check" name="transcriptionEngine" id="transcriptionEngineGemini" value="gemini">
+                        <label class="btn btn-outline-primary" for="transcriptionEngineGemini">Google Gemini</label>
+                    </div>
+                    <div class="form-text mt-1">По умолчанию используется ваш HTTP-сервис транскрипции (Whisper). Режим Gemini обращается к API Google по тому же принципу, что SDK <code>@google/genai</code> в проекте okpd; на сервере приложения нужен пакет <code>google-genai</code> и ключ API.</div>
+                </div>
+
+                <div id="geminiTranscriptionFields" style="display: none;" class="mb-4 p-3 rounded border bg-light">
+                    <div class="form-row">
+                        <div class="input-wrapper flex-grow-1">
+                            <label for="geminiApiKey">Ключ API Gemini (GEMINI_API_KEY)</label>
+                            <input type="password" class="form-control" id="geminiApiKey" autocomplete="off" placeholder="ключ из Google AI Studio">
+                        </div>
+                        <div class="input-wrapper" style="max-width: 340px;">
+                            <label for="geminiModel">Идентификатор модели</label>
+                            <input type="text" class="form-control" id="geminiModel" placeholder="gemini-2.0-flash">
+                        </div>
+                    </div>
+                    <div class="form-text small mt-2">Если ключ не задан в интерфейсе, для процесса анализатора может использоваться <code>GEMINI_API_KEY</code> в окружении. Прокси <strong>только для запросов к Gemini</strong> (остальной трафик без него): задайте в <code>.env</code> или окружении воркера <code>GEMINI_PROXY_URL</code> (полный URL, как в okpd) или <code>GEMINI_PROXY</code> в формате <code>host:port:user:pass</code>; при необходимости также читаются <code>HTTPS_PROXY</code> / <code>HTTP_PROXY</code> — они передаются только во внутренний HTTP-клиент Gemini, без смены глобального сетевого стека.</div>
+                </div>
                 
                 <div class="form-check form-switch mb-3">
                     <input class="form-check-input" type="checkbox" id="tbankStereoEnabled">
@@ -809,6 +834,7 @@ document.addEventListener('DOMContentLoaded', async function() {
         // Заполняем поля формы
         document.getElementById('speechmaticsApiKey').value = configData.api_keys?.speechmatics_api_key || '';
         document.getElementById('thebaiApiKey').value = configData.api_keys?.thebai_api_key || '';
+        document.getElementById('geminiApiKey').value = configData.api_keys?.gemini_api_key || '';
         document.getElementById('telegramBotToken').value = configData.api_keys?.telegram_bot_token || '';
         document.getElementById('maxAccessToken').value = configData.api_keys?.max_access_token || '';
 
@@ -866,6 +892,11 @@ document.addEventListener('DOMContentLoaded', async function() {
         document.getElementById('scriptPromptFile').value = configData.paths?.script_prompt_file || '';
         
         // Транскрипция
+        const txEngine = (configData.transcription?.engine || 'internal').toLowerCase();
+        document.getElementById('transcriptionEngineInternal').checked = (txEngine !== 'gemini');
+        document.getElementById('transcriptionEngineGemini').checked = (txEngine === 'gemini');
+        document.getElementById('geminiModel').value = configData.transcription?.gemini_model || 'gemini-2.0-flash';
+        updateTranscriptionEngineUI();
         const stereo = configData.transcription?.tbank_stereo_enabled === true;
         document.getElementById('tbankStereoEnabled').checked = stereo;
         const autoDetectOperator = configData.transcription?.auto_detect_operator_name !== false;
@@ -892,6 +923,18 @@ document.addEventListener('DOMContentLoaded', async function() {
         console.error('Ошибка загрузки конфигурации:', error);
         showAlert('Ошибка загрузки конфигурации', 'danger');
     }
+});
+
+function updateTranscriptionEngineUI() {
+    const gemini = document.getElementById('transcriptionEngineGemini')?.checked === true;
+    const block = document.getElementById('geminiTranscriptionFields');
+    if (block) {
+        block.style.display = gemini ? 'block' : 'none';
+    }
+}
+
+document.querySelectorAll('input[name="transcriptionEngine"]').forEach(function (el) {
+    el.addEventListener('change', updateTranscriptionEngineUI);
 });
 
 function ensureFilenameConfig() {
@@ -1221,7 +1264,8 @@ async function saveAllConfig() {
                 thebai_url: document.getElementById('thebaiUrl').value,
                 thebai_model: document.getElementById('thebaiModel').value,
                 telegram_bot_token: document.getElementById('telegramBotToken').value,
-                max_access_token: document.getElementById('maxAccessToken').value
+                max_access_token: document.getElementById('maxAccessToken').value,
+                gemini_api_key: document.getElementById('geminiApiKey').value
             },
             telegram: {
                 notifications_enabled: document.getElementById('telegramNotificationsEnabled').checked,
@@ -1248,6 +1292,8 @@ async function saveAllConfig() {
                 ftp_connection_id: sourceType === 'ftp' ? parseInt(document.getElementById('ftpConnectionId').value) || null : null
             },
             transcription: {
+                engine: (document.querySelector('input[name="transcriptionEngine"]:checked') || {}).value || 'internal',
+                gemini_model: (document.getElementById('geminiModel').value || '').trim() || 'gemini-2.0-flash',
                 tbank_stereo_enabled: document.getElementById('tbankStereoEnabled').checked,
                 auto_detect_operator_name: document.getElementById('autoDetectOperatorName').checked,
                 audio_retention_days: parseInt(document.getElementById('audioRetentionDays').value, 10) || 0

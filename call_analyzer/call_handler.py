@@ -67,9 +67,9 @@ except ImportError:
     from exental_alert import run_exental_alert
 
 try:
-    from call_analyzer.internal_transcription import transcribe_audio_with_internal_service
+    from call_analyzer.internal_transcription import transcribe_call_audio
 except ImportError:
-    from internal_transcription import transcribe_audio_with_internal_service
+    from internal_transcription import transcribe_call_audio
 
 from concurrent.futures import ThreadPoolExecutor
 executor = ThreadPoolExecutor(max_workers=4)
@@ -162,7 +162,7 @@ def transcribe_and_analyze(file_path: Path, station_code: str, original_station_
     
     transcript_text = None
     for attempt in range(1, max_retries + 1):
-        transcript_text = transcribe_audio_with_internal_service(
+        transcript_text = transcribe_call_audio(
             file_path, 
             stereo_mode=stereo_mode,
             additional_vocab=additional_vocab_current

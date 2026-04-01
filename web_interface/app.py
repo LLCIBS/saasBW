@@ -84,7 +84,7 @@ try:
         save_transcript_analysis,
         parse_filename,
     )
-    from call_analyzer.internal_transcription import transcribe_audio_with_internal_service
+    from call_analyzer.internal_transcription import transcribe_call_audio
     from call_analyzer.exental_alert import run_exental_alert
 except ImportError:
     thebai_analyze = None
@@ -92,7 +92,7 @@ except ImportError:
     load_additional_vocab = None
     save_transcript_analysis = None
     parse_filename = None
-    transcribe_audio_with_internal_service = None
+    transcribe_call_audio = None
     run_exental_alert = None
 
 
@@ -129,6 +129,7 @@ LEGACY_CONFIG_PATH = PROJECT_ROOT / 'call_analyzer' / 'config.py'
 
 class MockConfig:
     SPEECHMATICS_API_KEY = ''
+    GEMINI_API_KEY = ''
     THEBAI_API_KEY = ''
     TELEGRAM_BOT_TOKEN = ''
     ALERT_CHAT_ID = ''
@@ -271,6 +272,7 @@ def get_user_config_data(user=None):
             'thebai_model': (getattr(cfg, 'thebai_model', None) or '').strip() or _def_model,
             'telegram_bot_token': cfg.telegram_bot_token or '',
             'max_access_token': getattr(cfg, 'max_access_token', None) or '',
+            'gemini_api_key': getattr(cfg, 'gemini_api_key', None) or '',
         }
         _tb_url = (config_data.get('api_keys') or {}).get('thebai_url') or ''
         config_data['llm_provider'] = (
@@ -301,6 +303,8 @@ def get_user_config_data(user=None):
         if _ard is None:
             _ard = 10
         config_data['transcription'] = {
+            'engine': getattr(cfg, 'transcription_engine', None) or 'internal',
+            'gemini_model': getattr(cfg, 'gemini_model', None) or 'gemini-2.0-flash',
             'tbank_stereo_enabled': bool(cfg.tbank_stereo_enabled),
             'use_additional_vocab': bool(cfg.use_additional_vocab),
             'auto_detect_operator_name': bool(cfg.auto_detect_operator_name),
@@ -381,6 +385,7 @@ def save_user_config_data(config_data, user=None):
     cfg.thebai_model = (api_keys.get('thebai_model') or '').strip() or None
     cfg.telegram_bot_token = api_keys.get('telegram_bot_token')
     cfg.max_access_token = api_keys.get('max_access_token')
+    cfg.gemini_api_key = api_keys.get('gemini_api_key')
 
     cfg.telegram_notifications_enabled = bool(telegram_cfg.get('notifications_enabled', True))
     cfg.max_notifications_enabled = bool(max_cfg.get('notifications_enabled', True))
@@ -396,6 +401,10 @@ def save_user_config_data(config_data, user=None):
     cfg.max_tg_channel_other = max_cfg.get('tg_channel_other')
     cfg.max_reports_chat_id = max_cfg.get('reports_chat_id')
 
+    _eng = (transcription_cfg.get('engine') or 'internal').strip().lower()
+    cfg.transcription_engine = _eng if _eng in ('internal', 'gemini') else 'internal'
+    _gm = (transcription_cfg.get('gemini_model') or '').strip()
+    cfg.gemini_model = _gm or 'gemini-2.0-flash'
     cfg.tbank_stereo_enabled = bool(transcription_cfg.get('tbank_stereo_enabled', False))
     cfg.use_additional_vocab = bool(transcription_cfg.get('use_additional_vocab', True))
     # По умолчанию должно совпадать с default_config_template (True)
@@ -1065,6 +1074,7 @@ def legacy_config_override(runtime_cfg):
         _set_attr('THEBAI_MODEL', api_keys.get('thebai_model', 'deepseek-reasoner'))
         _set_attr('TELEGRAM_BOT_TOKEN', api_keys.get('telegram_bot_token', ''))
         _set_attr('MAX_ACCESS_TOKEN', api_keys.get('max_access_token', ''))
+        _set_attr('GEMINI_API_KEY', (api_keys.get('gemini_api_key') or '').strip())
 
         telegram_cfg = runtime_cfg.get('telegram') or {}
         _set_attr('TELEGRAM_NOTIFICATIONS_ENABLED', bool(telegram_cfg.get('notifications_enabled', True)))
@@ -1088,6 +1098,17 @@ def legacy_config_override(runtime_cfg):
         _set_attr('TBANK_STEREO_ENABLED', bool(transcription_cfg.get('tbank_stereo_enabled', False)))
         _set_attr('USE_ADDITIONAL_VOCAB', bool(transcription_cfg.get('use_additional_vocab', True)))
         _set_attr('AUTO_DETECT_OPERATOR_NAME', bool(transcription_cfg.get('auto_detect_operator_name', True)))
+        _eng = (transcription_cfg.get('engine') or 'internal').strip().lower()
+        _set_attr(
+            'TRANSCRIPTION_ENGINE',
+            _eng if _eng in ('internal', 'gemini') else 'internal',
+        )
+        _set_attr(
+            'GEMINI_MODEL',
+            (transcription_cfg.get('gemini_model') or 'gemini-2.0-flash').strip(),
+        )
+        ps = {k: v for k, v in runtime_cfg.items() if k != 'config_data'}
+        _set_attr('PROFILE_SETTINGS', deepcopy(ps))
 
         _set_attr('EMPLOYEE_BY_EXTENSION', deepcopy(runtime_cfg.get('employee_by_extension') or {}))
         _set_attr('STATION_NAMES', deepcopy(runtime_cfg.get('stations') or {}))
@@ -2717,7 +2738,7 @@ def api_checklists_meta():
 @login_required
 def api_checklists_test():
     """Прогон загруженного файла через транскрибацию и чек-лист без Telegram уведомлений."""
-    if not transcribe_audio_with_internal_service or not thebai_analyze or not save_transcript_analysis:
+    if not transcribe_call_audio or not thebai_analyze or not save_transcript_analysis:
         return jsonify({'success': False, 'message': 'Модуль обработки недоступен на сервере.'}), 500
 
     upload = request.files.get('file')
@@ -2789,7 +2810,7 @@ def api_checklists_test():
             # Транскрипция
             stereo_mode = bool((runtime_cfg.get('transcription') or {}).get('tbank_stereo_enabled', False))
             additional_vocab = load_additional_vocab() if load_additional_vocab else []
-            transcript_text = transcribe_audio_with_internal_service(
+            transcript_text = transcribe_call_audio(
                 saved_path,
                 stereo_mode=stereo_mode,
                 additional_vocab=additional_vocab,
@@ -3334,7 +3355,7 @@ def api_finetune_samples_delete_all():
 @login_required
 def api_finetune_transcribe():
     """Автоматическое распознавание загруженного файла (чтобы пользователь мог исправить)."""
-    if not transcribe_audio_with_internal_service:
+    if not transcribe_call_audio:
         return jsonify({'success': False, 'message': 'Сервис транскрипции недоступен'}), 500
 
     upload = request.files.get('audio')
@@ -3351,7 +3372,7 @@ def api_finetune_transcribe():
         stereo_mode = bool((runtime_cfg.get('transcription') or {}).get('tbank_stereo_enabled', False))
         additional_vocab = load_additional_vocab() if load_additional_vocab else []
 
-        transcript_text = transcribe_audio_with_internal_service(
+        transcript_text = transcribe_call_audio(
             tmp_path,
             stereo_mode=stereo_mode,
             additional_vocab=additional_vocab,
@@ -5697,7 +5718,9 @@ def api_config_save_all():
                     app.logger.error(f"FTP Sync toggle error: {e}")
 
         if 'transcription' in data:
-            config_data['transcription'] = data['transcription']
+            tx = dict(config_data.get('transcription') or {})
+            tx.update(data['transcription'] or {})
+            config_data['transcription'] = tx
             
         if 'filename' in data:
             config_data['filename'] = data['filename']

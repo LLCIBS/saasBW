@@ -339,12 +339,12 @@ def check_new_call_for_recall(phone_number: str, new_station: str, new_call_time
     return False
 
 try:
-    from call_analyzer.internal_transcription import transcribe_audio_with_internal_service
+    from call_analyzer.internal_transcription import transcribe_call_audio
 except ImportError:
     try:
-        from internal_transcription import transcribe_audio_with_internal_service
+        from internal_transcription import transcribe_call_audio
     except ImportError:
-        transcribe_audio_with_internal_service = None
+        transcribe_call_audio = None
 
 try:
     from call_analyzer.call_handler import thebai_analyze
@@ -356,8 +356,8 @@ except ImportError:
 
 def get_transcript_via_service(file_path: Path) -> str:
     try:
-        if transcribe_audio_with_internal_service is None:
-            logger.error("transcribe_audio_with_internal_service недоступен (импорт не удался)")
+        if transcribe_call_audio is None:
+            logger.error("transcribe_call_audio недоступен (импорт не удался)")
             return ""
         # Читаем настройку стерео/моно из профиля пользователя
         stereo_mode = False
@@ -380,7 +380,7 @@ def get_transcript_via_service(file_path: Path) -> str:
         except Exception as e:
             logger.debug(f"Не удалось загрузить словарь для транскрипции: {e}")
         
-        return transcribe_audio_with_internal_service(
+        return transcribe_call_audio(
             file_path, 
             stereo_mode=stereo_mode,
             additional_vocab=additional_vocab if additional_vocab else None

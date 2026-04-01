@@ -146,6 +146,7 @@ def load_active_profiles(engine):
                 'thebai_model': (getattr(cfg_row, 'thebai_model', None) or '').strip() or _def_model,
                 'telegram_bot_token': cfg_row.telegram_bot_token or '',
                 'max_access_token': getattr(cfg_row, 'max_access_token', None) or '',
+                'gemini_api_key': getattr(cfg_row, 'gemini_api_key', None) or '',
             }
             _u = (config_data.get('api_keys') or {}).get('thebai_url') or ''
             config_data['llm_provider'] = (
@@ -171,6 +172,8 @@ def load_active_profiles(engine):
             }
 
             config_data['transcription'] = {
+                'engine': getattr(cfg_row, 'transcription_engine', None) or 'internal',
+                'gemini_model': getattr(cfg_row, 'gemini_model', None) or 'gemini-2.0-flash',
                 'tbank_stereo_enabled': bool(cfg_row.tbank_stereo_enabled),
                 'use_additional_vocab': bool(cfg_row.use_additional_vocab),
                 'auto_detect_operator_name': bool(cfg_row.auto_detect_operator_name),

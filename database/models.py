@@ -404,6 +404,7 @@ class UserConfig(db.Model):
     thebai_model = db.Column(db.String(100), nullable=True)  # имя модели (deepseek-chat, gemma2:9b и т.д.)
     telegram_bot_token = db.Column(db.String(255), nullable=True)
     speechmatics_api_key = db.Column(db.String(255), nullable=True)
+    gemini_api_key = db.Column(db.String(255), nullable=True)
     # Включение каналов уведомлений (Telegram / MAX)
     telegram_notifications_enabled = db.Column(db.Boolean, default=True, nullable=False)
     max_notifications_enabled = db.Column(db.Boolean, default=True, nullable=False)
@@ -424,6 +425,9 @@ class UserConfig(db.Model):
     max_reports_chat_id = db.Column(db.String(100), nullable=True)
     
     # Transcription
+    # engine: internal — HTTP-сервис Whisper (по умолчанию); gemini — Google Gemini API
+    transcription_engine = db.Column(db.String(20), default='internal', nullable=False)
+    gemini_model = db.Column(db.String(120), nullable=True)
     tbank_stereo_enabled = db.Column(db.Boolean, default=False, nullable=False)
     use_additional_vocab = db.Column(db.Boolean, default=True, nullable=False)
     auto_detect_operator_name = db.Column(db.Boolean, default=False, nullable=False)

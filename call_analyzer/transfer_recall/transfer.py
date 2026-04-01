@@ -372,15 +372,16 @@ def check_new_call_for_transfer(phone_number: str, new_station: str, new_call_ti
     return False
 
 try:
-    from call_analyzer.internal_transcription import transcribe_audio_with_internal_service
+    from call_analyzer.internal_transcription import transcribe_call_audio
     from call_analyzer.call_handler import thebai_analyze
 except ImportError:
     try:
-        from internal_transcription import transcribe_audio_with_internal_service
+        from internal_transcription import transcribe_call_audio
         from call_handler import thebai_analyze
     except ImportError:
         # Fallback if call_handler imports cause issues (circular import)
-        pass
+        transcribe_call_audio = None  # type: ignore
+        thebai_analyze = None  # type: ignore
 
 def get_transcript_via_service(file_path: Path) -> str:
     """
@@ -408,7 +409,9 @@ def get_transcript_via_service(file_path: Path) -> str:
         except Exception as e:
             logger.debug(f"Не удалось загрузить словарь для транскрипции: {e}")
         
-        return transcribe_audio_with_internal_service(
+        if transcribe_call_audio is None:
+            return ""
+        return transcribe_call_audio(
             file_path, 
             stereo_mode=stereo_mode,
             additional_vocab=additional_vocab if additional_vocab else None

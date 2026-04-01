@@ -12,7 +12,8 @@ def default_config_template():
             'thebai_url': '',
             'thebai_model': '',
             'telegram_bot_token': '',
-            'max_access_token': ''
+            'max_access_token': '',
+            'gemini_api_key': '',
         },
         'telegram': {
             'notifications_enabled': True,
@@ -45,6 +46,9 @@ def default_config_template():
         'station_mapping': {},
         'nizh_station_codes': [],
         'transcription': {
+            # internal — внутренний HTTP /transcribe; gemini — Google Gemini (google-genai)
+            'engine': 'internal',
+            'gemini_model': 'gemini-2.0-flash',
             'tbank_stereo_enabled': False,
             # Использовать ли дополнительный словарь при транскрипции
             # По умолчанию включено
@@ -146,6 +150,7 @@ def build_runtime_config(project_config, config_data=None, user_id=None):
         'thebai_model': api_keys_cfg.get('thebai_model') or _fallback('THEBAI_MODEL', 'deepseek-reasoner'),
         'telegram_bot_token': api_keys_cfg.get('telegram_bot_token') or _fallback('TELEGRAM_BOT_TOKEN', ''),
         'max_access_token': api_keys_cfg.get('max_access_token') or _fallback('MAX_ACCESS_TOKEN', ''),
+        'gemini_api_key': api_keys_cfg.get('gemini_api_key') or _fallback('GEMINI_API_KEY', ''),
     }
 
     paths_cfg = config_data.get('paths') or {}
