@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 import mimetypes
 import os
+import re
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -20,6 +21,80 @@ except ImportError:
 
 # Лимит inline-части для multimodal; больше — загрузка через Files API
 _MAX_INLINE_BYTES = 18 * 1024 * 1024
+
+# Совместимость с call_analyzer/exental_alert.py (detect_manager_speaker, имя оператора):
+# внутренний Whisper отдаёт SPEAKER_00:/SPEAKER_01:, Gemini — «Оператор:», «Спикер 1:» и т.д.
+_GEMINI_LABEL_TO_SPEAKER = {
+    # сотрудник / первый спикер в типичных промптах
+    "оператор": "SPEAKER_00",
+    "менеджер": "SPEAKER_00",
+    "консультант": "SPEAKER_00",
+    "агент": "SPEAKER_00",
+    "администратор": "SPEAKER_00",
+    "спикер 1": "SPEAKER_00",
+    "спикер1": "SPEAKER_00",
+    "speaker 1": "SPEAKER_00",
+    "speaker1": "SPEAKER_00",
+    # клиент / второй спикер
+    "клиент": "SPEAKER_01",
+    "абонент": "SPEAKER_01",
+    "звонящий": "SPEAKER_01",
+    "спикер 2": "SPEAKER_01",
+    "спикер2": "SPEAKER_01",
+    "speaker 2": "SPEAKER_01",
+    "speaker2": "SPEAKER_01",
+    "speaker 00": "SPEAKER_00",
+    "speaker 01": "SPEAKER_01",
+}
+
+
+def normalize_gemini_transcript_to_speaker_labels(text: str) -> str:
+    """
+    Однопроходная нормализация строк транскрипта к виду SPEAKER_00:/SPEAKER_01:.
+    Вызывается один раз на файл после ответа Gemini; дешевле, чем менять эвристики во всех местах.
+    """
+    if not text or not text.strip():
+        return text
+    out_lines = []
+    changed = False
+    for line in text.splitlines():
+        raw = line
+        s = raw.strip()
+        if not s:
+            out_lines.append(raw)
+            continue
+        # Уже как у Whisper — не меняем
+        if re.match(r"^\s*SPEAKER_0[01]\s*:", raw, re.IGNORECASE):
+            out_lines.append(raw)
+            continue
+        sep = None
+        idx = -1
+        if ":" in s:
+            idx = s.index(":")
+            sep = ":"
+        elif "：" in s:
+            idx = s.index("：")
+            sep = "："
+        if idx <= 0 or sep is None:
+            out_lines.append(raw)
+            continue
+        label = " ".join(s[:idx].strip().lower().split())
+        rest = s[idx + 1 :].lstrip()
+        if not label:
+            out_lines.append(raw)
+            continue
+        target = _GEMINI_LABEL_TO_SPEAKER.get(label)
+        if not target:
+            out_lines.append(raw)
+            continue
+        lead = raw[: len(raw) - len(raw.lstrip())]
+        out_lines.append(f"{lead}{target}: {rest}")
+        changed = True
+    if changed:
+        logger.debug(
+            "Gemini: префиксы реплик приведены к SPEAKER_00/SPEAKER_01 для совместимости с анализом"
+        )
+    return "\n".join(out_lines)
 
 
 def _mime_for_path(path: Path) -> str:
@@ -42,7 +117,8 @@ def _build_prompt(stereo_mode: bool, additional_vocab) -> str:
     lines = [
         "Ты помогаешь расшифровать запись телефонного разговора (автосервис / контакт-центр).",
         "Верни полную дословную транскрипцию на русском языке.",
-        'Формат: каждая реплика с новой строки, префикс спикера, например: "Спикер 1: …" или "Оператор: …" / "Клиент: …".',
+        'Формат: каждая реплика с новой строки. Обязательно префиксы в точности: "SPEAKER_00:" и "SPEAKER_01:" '
+        '(два участника). Если уместнее по смыслу — можно "Оператор:" / "Клиент:" вместо SPEAKER_*.',
         "Не добавляй вступлений и пояснений, только текст диалога.",
     ]
     if stereo_mode:
@@ -171,6 +247,7 @@ def transcribe_audio_with_gemini(
             if not text:
                 logger.error("Gemini вернул пустой текст для %s", path.name)
                 return None
+            text = normalize_gemini_transcript_to_speaker_labels(text)
             return text
         except Exception as e:
             logger.error("Ошибка Gemini транскрипции: %s", e, exc_info=True)
