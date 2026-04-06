@@ -339,6 +339,22 @@
         }
     }
 
+    /** Подставляет путь к script_prompt_8.yaml, если поле пустое (после reset формы и т.п.). */
+    async function ensureScriptPromptPath() {
+        if ((scriptPromptPath.value || '').trim()) {
+            return;
+        }
+        try {
+            const resp = await fetch('/api/checklists/meta');
+            const data = await resp.json();
+            if (data.script_prompt_file) {
+                scriptPromptPath.value = data.script_prompt_file;
+            }
+        } catch (e) {
+            console.error('ensureScriptPromptPath:', e);
+        }
+    }
+
     formEl.addEventListener('submit', async (e) => {
         e.preventDefault();
         
@@ -361,6 +377,8 @@
             statusText.textContent = 'Выберите файл.';
             return;
         }
+
+        await ensureScriptPromptPath();
 
         const formData = new FormData();
         formData.append('file', file);
@@ -497,8 +515,13 @@
         analyzeStatus.style.display = 'inline';
         
         try {
-            // Загружаем промпты чек-листа для возможности доработки
-            await loadChecklistPrompts();
+            await ensureScriptPromptPath();
+            // Промпты нужны только для блока «Перегенерировать»; сбой не должен блокировать анализ
+            try {
+                await loadChecklistPrompts();
+            } catch (e) {
+                console.error('loadChecklistPrompts:', e);
+            }
             
             const resp = await fetch('/api/checklists/analyze', {
                 method: 'POST',
@@ -617,6 +640,13 @@
             showAlert('Введите дополнительное условие', 'warning');
             conditionInput.focus();
             return;
+        }
+        
+        await ensureScriptPromptPath();
+        try {
+            await loadChecklistPrompts();
+        } catch (e) {
+            console.error('loadChecklistPrompts:', e);
         }
         
         if (!checklistPromptsData || !checklistPromptsData.checklist) {
@@ -973,8 +1003,12 @@
                 return;
             }
             
-            // Загружаем промпты чек-листа для возможности доработки
-            await loadChecklistPrompts();
+            await ensureScriptPromptPath();
+            try {
+                await loadChecklistPrompts();
+            } catch (e) {
+                console.error('loadChecklistPrompts:', e);
+            }
             
             // Заполняем обоснования в уже созданных пунктах чек-листа
             checklistItems.forEach(item => {
@@ -1063,8 +1097,12 @@
         localStorage.removeItem('checklistTestResults');
         localStorage.removeItem('checklistAnalysisResults');
         
-        // Сбрасываем форму
+        // form.reset() сбрасывает и readonly scriptPromptPath к начальному пустому значению — сохраняем пути
+        const savedScriptPath = scriptPromptPath.value;
+        const savedOverride = scriptPromptOverride.value;
         formEl.reset();
+        scriptPromptPath.value = savedScriptPath;
+        scriptPromptOverride.value = savedOverride;
         
         showAlert('Результаты очищены', 'info');
     }

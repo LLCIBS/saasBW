@@ -2725,10 +2725,17 @@ def api_checklists_meta():
     runtime_cfg = build_user_runtime_config()
     stations_dict = runtime_cfg.get('stations', {}) or {}
     stations = [{'code': code, 'name': name} for code, name in stations_dict.items()]
-    script_prompt_path = (
-        runtime_cfg.get('paths', {}).get('script_prompt_file')
-        or str(getattr(project_config, 'SCRIPT_PROMPT_8_PATH', ''))
-    )
+    paths = runtime_cfg.get('paths', {}) or {}
+    script_prompt_path = (paths.get('script_prompt_file') or '').strip()
+    # Fallback: стандартный путь в каталоге пользователя (как в build_runtime_config)
+    if not script_prompt_path:
+        base = (paths.get('base_records_path') or '').strip()
+        uid = getattr(current_user, 'id', None)
+        if uid and base:
+            script_prompt_path = str(Path(base) / 'config' / 'script_prompt_8.yaml')
+    if not script_prompt_path:
+        leg = getattr(project_config, 'SCRIPT_PROMPT_8_PATH', None)
+        script_prompt_path = str(leg).strip() if leg else ''
     return jsonify({
         'script_prompt_file': script_prompt_path,
         'stations': stations
@@ -2869,7 +2876,7 @@ def api_checklists_test():
                     str(transcript_file),
                     station_code=str(station_code),
                     phone_number=phone_number or '',
-                    date_str=call_time.strftime("%Y-%m-%d %H:%M:%S"),
+                    date_str=call_time.strftime("%Y-%m-%d-%H-%M-%S"),
                     operator_station_code=station_code
                 )
                 if isinstance(result, (list, tuple)) and len(result) == 4:
@@ -2934,7 +2941,7 @@ def api_checklists_analyze():
 - Краткое объяснение логики оценки
 - Если пункт НЕ выполнен — что именно отсутствовало
 
-Формат ответа — строго для каждого пункта по порядку:
+Формат ответа — строго для каждого пункта по порядку. Каждый пункт — ОТДЕЛЬНАЯ строка, начинающаяся с «N. » (цифра, точка, пробел), без символов # и ** в начале строки:
 
 1. [Детальное обоснование для пункта 1]
 
@@ -3007,21 +3014,36 @@ def _parse_checklist_explanations(analysis_text):
     
     current_num = None
     current_text = []
+
+    def _match_numbered_heading(raw: str):
+        """LLM иногда возвращает «**1.** текст», «# 1. текст» и т.п."""
+        s = raw.strip()
+        if not s:
+            return None
+        m = re.match(r'^[\s#*_`]*(\d+)[\.\)]\s*[\s*_`]*(.*)$', s, re.DOTALL)
+        if m:
+            return m.group(1), (m.group(2) or '').strip()
+        m = re.match(r'^[\s#*_`]*(\d+)\s*[—\-–:]\s+(.*)$', s, re.DOTALL)
+        if m:
+            return m.group(1), (m.group(2) or '').strip()
+        return None
     
     for line in lines:
         line = line.strip()
-        # Ищем строки вида "1. текст" или "1) текст"
         match = re.match(r'^(\d+)[\.\)]\s*(.*)$', line)
+        item_num, rest = None, ''
         if match:
-            # Сохраняем предыдущий блок
+            item_num, rest = match.group(1), (match.group(2) or '').strip()
+        else:
+            alt = _match_numbered_heading(line)
+            if alt:
+                item_num, rest = alt[0], alt[1]
+        if item_num is not None:
             if current_num is not None and current_text:
                 explanations[str(current_num)] = '\n'.join(current_text).strip()
-            # Начинаем новый блок
-            current_num = match.group(1)
-            rest = match.group(2).strip()
+            current_num = item_num
             current_text = [rest] if rest else []
         elif current_num is not None and line:
-            # Продолжение текущего пункта
             current_text.append(line)
     
     # Сохраняем последний блок
