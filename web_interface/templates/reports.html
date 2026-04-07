@@ -254,6 +254,66 @@
     min-height: 120px;
 }
 
+.reports-kpi-section {
+    margin-bottom: 2rem;
+}
+
+.reports-kpi-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    align-items: center;
+    margin-bottom: 1rem;
+}
+
+.reports-kpi-toolbar .kpi-period-btn {
+    font-size: 0.8125rem;
+}
+
+.reports-kpi-toolbar .kpi-period-btn.active {
+    background: var(--bs-primary, #0d6efd);
+    color: #fff;
+    border-color: var(--bs-primary, #0d6efd);
+}
+
+.reports-kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 1rem;
+}
+
+.reports-kpi-card {
+    background: var(--bg-primary);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-xl);
+    padding: 1.25rem;
+    box-shadow: var(--shadow-sm);
+}
+
+.reports-kpi-value {
+    font-size: 1.75rem;
+    font-weight: 800;
+    color: var(--text-primary);
+    line-height: 1.2;
+}
+
+.reports-kpi-label {
+    font-size: 0.8125rem;
+    color: var(--text-secondary);
+    margin-bottom: 0.5rem;
+}
+
+.reports-kpi-delta {
+    font-size: 0.875rem;
+    font-weight: 600;
+    margin-top: 0.35rem;
+}
+
+.reports-kpi-delta.up { color: #059669; }
+.reports-kpi-delta.down { color: #dc2626; }
+.reports-kpi-delta.flat { color: var(--text-tertiary); }
+.reports-kpi-delta.muted { color: var(--text-tertiary); font-weight: 500; }
+
 /* Responsive */
 @media (max-width: 768px) {
     .reports-grid {
@@ -318,6 +378,46 @@
                 </button>
             </div>
         </div>
+
+        <!-- KPI сводка (Dialecto-style) -->
+        <section class="reports-kpi-section" id="reportsKpiSection" aria-label="Сводные показатели">
+            <div class="reports-kpi-toolbar">
+                <span class="text-muted small align-self-center me-1">Период:</span>
+                <div class="d-flex flex-wrap gap-1" role="group" aria-label="Выбор периода KPI">
+                    <button type="button" class="btn btn-outline-secondary btn-sm kpi-period-btn" data-period="today">Сегодня</button>
+                    <button type="button" class="btn btn-outline-secondary btn-sm kpi-period-btn" data-period="yesterday">Вчера</button>
+                    <button type="button" class="btn btn-outline-secondary btn-sm kpi-period-btn active" data-period="week">Эта неделя</button>
+                    <button type="button" class="btn btn-outline-secondary btn-sm kpi-period-btn" data-period="this_month">Этот месяц</button>
+                    <button type="button" class="btn btn-outline-secondary btn-sm kpi-period-btn" data-period="last_month">Прошлый месяц</button>
+                </div>
+                <select class="form-select form-select-sm ms-md-auto" id="kpi_station_filter" style="max-width: 240px;" title="Фильтр по станции">
+                    <option value="">Все станции</option>
+                </select>
+            </div>
+            <div class="reports-kpi-grid" id="reportsKpiGrid">
+                <div class="reports-kpi-card">
+                    <div class="reports-kpi-label">Всего звонков</div>
+                    <div class="reports-kpi-value" id="kpi_val_total">—</div>
+                    <div class="reports-kpi-delta muted" id="kpi_delta_total">к прошлому периоду</div>
+                </div>
+                <div class="reports-kpi-card">
+                    <div class="reports-kpi-label">Целевых звонков</div>
+                    <div class="reports-kpi-value" id="kpi_val_targeted">—</div>
+                    <div class="reports-kpi-delta muted" id="kpi_delta_targeted">к прошлому периоду</div>
+                </div>
+                <div class="reports-kpi-card">
+                    <div class="reports-kpi-label">Средний балл чек-листа</div>
+                    <div class="reports-kpi-value" id="kpi_val_avg_checklist_score">—</div>
+                    <div class="reports-kpi-delta muted" id="kpi_delta_avg_checklist_score">к прошлому периоду</div>
+                </div>
+                <div class="reports-kpi-card">
+                    <div class="reports-kpi-label">Записей на визит</div>
+                    <div class="reports-kpi-value" id="kpi_val_visit_bookings">—</div>
+                    <div class="reports-kpi-delta muted" id="kpi_delta_visit_bookings">к прошлому периоду</div>
+                </div>
+            </div>
+            <div class="small text-danger mt-2" id="kpi_load_error" style="display:none;"></div>
+        </section>
 
         <!-- Info Alert -->
         <div class="alert alert-info d-flex align-items-start gap-3 mb-4">
@@ -725,6 +825,94 @@
 
 {% block extra_js %}
 <script>
+let reportsKpiPeriod = 'week';
+
+function formatKpiDeltaPct(v) {
+    if (v === null || v === undefined || Number.isNaN(v)) return '—';
+    const sign = v > 0 ? '+' : '';
+    return sign + v + '% к пр. пер.';
+}
+
+function kpiDeltaClass(v) {
+    if (v === null || v === undefined || Number.isNaN(v)) return 'muted';
+    if (v > 0) return 'up';
+    if (v < 0) return 'down';
+    return 'flat';
+}
+
+function setKpiCountCard(key, val, delta) {
+    const vEl = document.getElementById('kpi_val_' + key);
+    const dEl = document.getElementById('kpi_delta_' + key);
+    if (vEl) vEl.textContent = (val === null || val === undefined) ? '—' : String(val);
+    if (dEl) {
+        dEl.textContent = formatKpiDeltaPct(delta);
+        dEl.className = 'reports-kpi-delta ' + kpiDeltaClass(delta);
+    }
+}
+
+async function loadReportsKpi() {
+    const errEl = document.getElementById('kpi_load_error');
+    const stationSel = document.getElementById('kpi_station_filter');
+    const station = stationSel && stationSel.value ? stationSel.value.trim() : '';
+    const params = new URLSearchParams({ period: reportsKpiPeriod });
+    if (station) params.set('station', station);
+    try {
+        const resp = await fetch('/api/reports/summary?' + params.toString());
+        const data = await resp.json();
+        if (!data.success) throw new Error(data.message || 'Не удалось загрузить сводку');
+        if (errEl) errEl.style.display = 'none';
+        const cur = data.current || {};
+        const d = data.delta_pct || {};
+        setKpiCountCard('total', cur.total, d.total);
+        setKpiCountCard('targeted', cur.targeted, d.targeted);
+        setKpiCountCard('visit_bookings', cur.visit_bookings, d.visit_bookings);
+        const avg = cur.avg_checklist_score;
+        const avgEl = document.getElementById('kpi_val_avg_checklist_score');
+        const avgDEl = document.getElementById('kpi_delta_avg_checklist_score');
+        if (avgEl) avgEl.textContent = (avg === null || avg === undefined) ? '—' : (avg + '%');
+        if (avgDEl) {
+            const delAvg = d.avg_checklist_score;
+            if (delAvg === null || delAvg === undefined) {
+                avgDEl.textContent = (avg === null || avg === undefined) ? 'нет разборов с чек-листом' : '—';
+                avgDEl.className = 'reports-kpi-delta muted';
+            } else {
+                avgDEl.textContent = formatKpiDeltaPct(delAvg);
+                avgDEl.className = 'reports-kpi-delta ' + kpiDeltaClass(delAvg);
+            }
+        }
+    } catch (e) {
+        console.error('KPI summary', e);
+        if (errEl) {
+            errEl.textContent = e.message || String(e);
+            errEl.style.display = 'block';
+        }
+    }
+}
+
+async function loadKpiStations() {
+    const sel = document.getElementById('kpi_station_filter');
+    if (!sel) return;
+    const prev = sel.value;
+    try {
+        const resp = await fetch('/api/stations');
+        const list = await resp.json();
+        if (!Array.isArray(list)) return;
+        sel.innerHTML = '<option value="">Все станции</option>';
+        list.forEach(function (s) {
+            if (!s || !s.code) return;
+            const o = document.createElement('option');
+            o.value = s.code;
+            o.textContent = (s.name && String(s.name) !== String(s.code))
+                ? (s.code + ' — ' + s.name)
+                : s.code;
+            sel.appendChild(o);
+        });
+        if (prev) sel.value = prev;
+    } catch (e) {
+        console.warn('Станции для KPI', e);
+    }
+}
+
 // Инициализация при загрузке
 document.addEventListener('DOMContentLoaded', function() {
     const today = new Date();
@@ -754,6 +942,20 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Загружаем расписания
     loadSchedules();
+
+    document.querySelectorAll('.kpi-period-btn').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            document.querySelectorAll('.kpi-period-btn').forEach(function (b) { b.classList.remove('active'); });
+            btn.classList.add('active');
+            reportsKpiPeriod = btn.getAttribute('data-period') || 'week';
+            loadReportsKpi();
+        });
+    });
+    const kpiStation = document.getElementById('kpi_station_filter');
+    if (kpiStation) {
+        kpiStation.addEventListener('change', function () { loadReportsKpi(); });
+    }
+    loadKpiStations().then(function () { return loadReportsKpi(); });
 });
 
 // Переключение карточки отчета

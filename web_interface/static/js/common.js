@@ -123,6 +123,11 @@ function showAlert(message, type = 'info', duration = 5000) {
     return alertDiv;
 }
 
+/** То же поведение, что showAlert (всплывающее уведомление); для страниц, вызывающих showToast. */
+function showToast(message, type = 'info', duration = 4000) {
+    return showAlert(message, type, duration);
+}
+
 // ===== Confirmation Modal =====
 function showConfirm(message, onConfirm, onCancel = null) {
     const modalId = 'confirmModal_' + Date.now();
@@ -542,6 +547,7 @@ window.addEventListener('unhandledrejection', function(event) {
 // ===== Export utilities =====
 window.CallAnalyzerUtils = {
     showAlert,
+    showToast,
     showConfirm,
     formatDate,
     formatRelativeTime,

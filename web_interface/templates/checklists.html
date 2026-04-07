@@ -16,6 +16,18 @@
             </div>
         </div>
 
+        <div class="card mb-4 border-primary border-opacity-25" id="checklistTemplatesCard">
+            <div class="card-body py-3">
+                <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+                    <span class="fw-semibold text-muted text-uppercase small me-2" style="font-size:0.7rem; letter-spacing:0.05em;">Шаблоны</span>
+                    <span class="text-muted small">Быстро подставить готовый чек-лист в профиль (YAML + БД)</span>
+                </div>
+                <div class="d-flex flex-wrap gap-2" id="checklistTemplatesBar">
+                    <span class="text-muted small">Загрузка шаблонов…</span>
+                </div>
+            </div>
+        </div>
+
         <div class="row g-4">
             <!-- Левая колонка: Форма и результаты теста -->
             <div class="col-lg-6">
@@ -1081,6 +1093,69 @@
         }
     }
 
+    async function applyChecklistTemplate(templateId, templateLabel) {
+        const label = templateLabel || templateId;
+        if (!confirm('Заменить текущий чек-лист и основной промпт скрипта шаблоном «' + label + '»? Данные сохранятся в профиль и в файл script_prompt_8.yaml.')) {
+            return;
+        }
+        try {
+            const r = await fetch('/api/checklists/templates/' + encodeURIComponent(templateId));
+            const j = await r.json();
+            if (!j.success) {
+                showAlert(j.message || 'Не удалось загрузить шаблон', 'danger');
+                return;
+            }
+            const d = j.data || {};
+            const saveR = await fetch('/api/script-prompt/save', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    data: {
+                        prompt: d.prompt || '',
+                        checklist: Array.isArray(d.checklist) ? d.checklist : []
+                    }
+                })
+            });
+            const saveJ = await saveR.json();
+            if (saveJ.success) {
+                showAlert('Шаблон применён. Можно запускать тест с аудиофайлом.', 'success');
+            } else {
+                showAlert(saveJ.message || 'Ошибка сохранения', 'danger');
+            }
+        } catch (e) {
+            console.error(e);
+            showAlert('Ошибка применения шаблона', 'danger');
+        }
+    }
+
+    async function loadChecklistTemplatesBar() {
+        const bar = document.getElementById('checklistTemplatesBar');
+        if (!bar) return;
+        try {
+            const r = await fetch('/api/checklists/templates');
+            const j = await r.json();
+            bar.innerHTML = '';
+            if (!j.success || !j.templates || !j.templates.length) {
+                bar.innerHTML = '<span class="text-muted small">Нет доступных шаблонов</span>';
+                return;
+            }
+            j.templates.forEach(function (t) {
+                const b = document.createElement('button');
+                b.type = 'button';
+                b.className = 'btn btn-sm btn-outline-primary';
+                b.textContent = t.label || t.id;
+                if (t.description) b.title = t.description;
+                b.addEventListener('click', function () {
+                    applyChecklistTemplate(t.id, t.label || t.id);
+                });
+                bar.appendChild(b);
+            });
+        } catch (e) {
+            console.error(e);
+            bar.innerHTML = '<span class="text-danger small">Не удалось загрузить шаблоны</span>';
+        }
+    }
+
     function clearResults() {
         resultsCard.style.display = 'none';
         checklistCard.style.display = 'none';
@@ -1110,6 +1185,7 @@
     // Загружаем метаданные при загрузке страницы
     document.addEventListener('DOMContentLoaded', async () => {
         await loadMeta();
+        await loadChecklistTemplatesBar();
         await restoreResultsFromStorage();
     });
 </script>

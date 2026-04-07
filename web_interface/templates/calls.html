@@ -1,0 +1,200 @@
+{% extends "base.html" %}
+
+{% block title %}История звонков - Call Analyzer{% endblock %}
+
+{% block content %}
+{% include 'partials/sidebar.html' %}
+<main class="col-md-9 col-lg-10 main-content">
+    <div class="p-4">
+        <div class="mb-4">
+            <h1 class="h3 mb-1">История звонков</h1>
+            <p class="text-muted mb-0">Статусы пайплайна: получение → транскрипция → разбор по чек-листу → классификация</p>
+        </div>
+
+        <div class="card mb-3">
+            <div class="card-body">
+                <div class="d-flex flex-wrap gap-2 align-items-center mb-3">
+                    <span class="text-muted small me-2">Период:</span>
+                    <button type="button" class="btn btn-sm btn-outline-primary period-btn" data-period="today">Сегодня</button>
+                    <button type="button" class="btn btn-sm btn-outline-primary period-btn" data-period="yesterday">Вчера</button>
+                    <button type="button" class="btn btn-sm btn-primary period-btn active" data-period="week">Неделя</button>
+                    <button type="button" class="btn btn-sm btn-outline-primary period-btn" data-period="month">Месяц</button>
+                    <button type="button" class="btn btn-sm btn-outline-primary period-btn" data-period="all">Все</button>
+                </div>
+                <div class="row g-2 align-items-end">
+                    <div class="col-md-4">
+                        <label class="form-label small mb-1">Поиск (номер / файл)</label>
+                        <input type="text" class="form-control form-control-sm" id="callsSearchQ" placeholder="Номер или часть имени файла">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label small mb-1">Станция</label>
+                        <input type="text" class="form-control form-control-sm" id="callsStation" placeholder="Код станции">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label small mb-1">Статус пайплайна</label>
+                        <select class="form-select form-select-sm" id="callsStatusFilter">
+                            <option value="">Все</option>
+                            <option value="received">Получен</option>
+                            <option value="transcribed">Транскрибирован</option>
+                            <option value="analyzed">Разобран</option>
+                            <option value="classified">Классифицирован</option>
+                            <option value="error">Ошибка</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <button type="button" class="btn btn-sm btn-primary w-100" id="callsApplyFilters">Обновить</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="table-responsive card">
+            <table class="table table-hover table-sm align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Дата и время</th>
+                        <th>Станция</th>
+                        <th>Номер</th>
+                        <th>Длит. (сек)</th>
+                        <th>Статус</th>
+                        <th>Класс</th>
+                        <th>Файл</th>
+                    </tr>
+                </thead>
+                <tbody id="callsTableBody">
+                    <tr><td colspan="7" class="text-center text-muted py-4">Загрузка…</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <div class="d-flex justify-content-between align-items-center mt-3 flex-wrap gap-2">
+            <span class="text-muted small" id="callsPageInfo"></span>
+            <div class="btn-group">
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="callsPrevPage" disabled>Назад</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="callsNextPage" disabled>Вперёд</button>
+            </div>
+        </div>
+    </div>
+</main>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+    let currentPeriod = 'week';
+    let currentPage = 1;
+    const perPage = 20;
+    let total = 0;
+
+    function escapeHtml(text) {
+        if (text === undefined || text === null) return '';
+        const div = document.createElement('div');
+        div.textContent = String(text);
+        return div.innerHTML;
+    }
+
+    function badgeClass(st) {
+        const m = {
+            received: 'bg-secondary',
+            transcribed: 'bg-info text-dark',
+            analyzed: 'bg-success',
+            classified: 'bg-primary',
+            error: 'bg-danger'
+        };
+        return m[st] || 'bg-secondary';
+    }
+
+    function formatDt(iso) {
+        if (!iso) return '—';
+        const d = new Date(iso);
+        return isNaN(d.getTime()) ? iso : d.toLocaleString('ru-RU');
+    }
+
+    async function loadCalls() {
+        const q = document.getElementById('callsSearchQ').value.trim();
+        const station = document.getElementById('callsStation').value.trim();
+        const params = new URLSearchParams({
+            period: currentPeriod,
+            page: String(currentPage),
+            per_page: String(perPage),
+        });
+        if (q) params.set('q', q);
+        if (station) params.set('station', station);
+        const stF = document.getElementById('callsStatusFilter').value;
+        if (stF) params.set('pipeline_status', stF);
+        const tbody = document.getElementById('callsTableBody');
+        tbody.innerHTML = '<tr><td colspan="7" class="text-center py-3">Загрузка…</td></tr>';
+        try {
+            const r = await fetch('/api/calls/history?' + params.toString());
+            const data = await r.json();
+            if (!data.success) {
+                tbody.innerHTML = '<tr><td colspan="7" class="text-danger text-center py-3">' + escapeHtml(data.message || 'Ошибка') + '</td></tr>';
+                return;
+            }
+            total = data.total || 0;
+            const items = data.items || [];
+            document.getElementById('callsPageInfo').textContent =
+                'Всего в периоде: ' + total + ' · страница ' + currentPage;
+            document.getElementById('callsPrevPage').disabled = currentPage <= 1;
+            document.getElementById('callsNextPage').disabled = currentPage * perPage >= total;
+            if (!items.length) {
+                tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-4">Нет записей</td></tr>';
+                return;
+            }
+            tbody.innerHTML = items.map(function (row) {
+                const durCell = row.duration_sec != null ? escapeHtml(String(row.duration_sec)) : '—';
+                const plab = escapeHtml(row.pipeline_label || row.pipeline_status || '—');
+                return '<tr>' +
+                    '<td>' + escapeHtml(formatDt(row.call_time)) + '</td>' +
+                    '<td>' + escapeHtml(row.station_code != null && row.station_code !== '' ? row.station_code : '—') + '</td>' +
+                    '<td>' + escapeHtml(row.phone_number != null && row.phone_number !== '' ? row.phone_number : '—') + '</td>' +
+                    '<td>' + durCell + '</td>' +
+                    '<td><span class="badge ' + badgeClass(row.pipeline_status) + '">' + plab + '</span></td>' +
+                    '<td><small>' + escapeHtml(row.call_class != null && row.call_class !== '' ? row.call_class : '—') + '</small></td>' +
+                    '<td><small class="text-muted text-break">' + escapeHtml((row.filename || '').substring(0, 40)) + '</small></td>' +
+                    '</tr>';
+            }).join('');
+        } catch (e) {
+            console.error(e);
+            tbody.innerHTML = '<tr><td colspan="7" class="text-danger text-center py-3">Ошибка сети</td></tr>';
+        }
+    }
+
+    document.querySelectorAll('.period-btn').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            document.querySelectorAll('.period-btn').forEach(function (b) {
+                b.classList.remove('btn-primary', 'active');
+                b.classList.add('btn-outline-primary');
+            });
+            btn.classList.remove('btn-outline-primary');
+            btn.classList.add('btn-primary', 'active');
+            currentPeriod = btn.getAttribute('data-period');
+            currentPage = 1;
+            loadCalls();
+        });
+    });
+
+    document.getElementById('callsApplyFilters').addEventListener('click', function () {
+        currentPage = 1;
+        loadCalls();
+    });
+    document.getElementById('callsStatusFilter').addEventListener('change', function () {
+        currentPage = 1;
+        loadCalls();
+    });
+    document.getElementById('callsPrevPage').addEventListener('click', function () {
+        if (currentPage > 1) {
+            currentPage--;
+            loadCalls();
+        }
+    });
+    document.getElementById('callsNextPage').addEventListener('click', function () {
+        if (currentPage * perPage < total) {
+            currentPage++;
+            loadCalls();
+        }
+    });
+
+    document.addEventListener('DOMContentLoaded', loadCalls);
+})();
+</script>
+{% endblock %}

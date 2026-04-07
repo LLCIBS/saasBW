@@ -1,0 +1,22 @@
+# Каталог шаблонов чек-листов (отраслевые пресеты)
+templates:
+  - id: universal
+    label: Универсальный
+    description: Базовые вопросы качества разговора для любой линии поддержки или продаж
+    file: universal.yaml
+  - id: autoservice
+    label: Автосервис
+    description: Запись, консультация, скрипт для автосервиса / записи на ремонт
+    file: autoservice.yaml
+  - id: realty
+    label: Недвижимость
+    description: Первичный контакт, квалификация клиента, следующий шаг
+    file: realty.yaml
+  - id: medicine
+    label: Медицина
+    description: Вежливость, запись на приём, сбор симптомов / направление
+    file: medicine.yaml
+  - id: meetings
+    label: Встречи и совещания
+    description: Краткое резюме договорённостей и action items
+    file: meetings.yaml

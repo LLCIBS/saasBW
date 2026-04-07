@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+
+{% block title %}Источники данных - Call Analyzer{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/sources_page.css') }}">
+{% endblock %}
+
+{% block content %}
+{% include 'partials/sidebar.html' %}
+<main class="col-md-9 col-lg-10 main-content">
+    <div class="p-4">
+        <div class="mb-4">
+            <h1 class="h3 mb-1">Источники данных</h1>
+            <p class="text-muted mb-0">Подключайте FTP/SFTP, облачную АТС и CRM для загрузки записей звонков</p>
+        </div>
+
+        <h2 class="h5 text-uppercase text-muted mb-2" style="font-size:0.7rem; letter-spacing:0.06em;">Подключённые источники</h2>
+        <div id="connectedSourcesSummary" class="mb-4"></div>
+
+        <h2 class="h5 text-uppercase text-muted mb-3" style="font-size:0.7rem; letter-spacing:0.06em;">Доступные провайдеры</h2>
+        <div class="ats-operators-grid mb-4">
+            <div class="ats-operator-card">
+                <div class="ats-operator-logo d-flex align-items-center justify-content-center bg-light rounded-circle mx-auto" style="width:80px;height:80px;">
+                    <i class="fas fa-server fa-2x text-primary"></i>
+                </div>
+                <h3 class="ats-operator-name">FTP / SFTP</h3>
+                <p class="ats-operator-desc">Загрузка файлов записей с удалённого сервера по расписанию</p>
+                <button type="button" class="btn btn-primary btn-sm" onclick="openFtpSection()">
+                    <i class="fas fa-cog me-1"></i>Настроить
+                </button>
+            </div>
+            <div class="ats-operator-card">
+                <img class="ats-operator-logo" src="{{ url_for('static', filename='images/ats/rostelecom.svg') }}" alt="Ростелеком">
+                <h3 class="ats-operator-name">Ростелеком</h3>
+                <p class="ats-operator-desc">Облачная АТС — Интеграционный API для получения записей</p>
+                <button type="button" class="btn btn-primary btn-sm" onclick="openRostelecomSection()">
+                    <i class="fas fa-cog me-1"></i>Настроить
+                </button>
+            </div>
+            <div class="ats-operator-card">
+                <div class="ats-operator-logo d-flex align-items-center justify-content-center" style="font-size:2.5rem; font-weight:800; color:var(--primary); background:var(--bg-secondary); border-radius:50%;">S</div>
+                <h3 class="ats-operator-name">StoCRM</h3>
+                <p class="ats-operator-desc">Записи звонков через API get_filtered и get_record</p>
+                <button type="button" class="btn btn-primary btn-sm" onclick="openStocrmSection()">
+                    <i class="fas fa-cog me-1"></i>Настроить
+                </button>
+            </div>
+            <div class="ats-operator-card">
+                <img class="ats-operator-logo" src="{{ url_for('static', filename='images/ats/beeline.svg') }}" alt="Билайн">
+                <h3 class="ats-operator-name">Билайн Бизнес</h3>
+                <p class="ats-operator-desc">Облачная телефония Билайн</p>
+                <button type="button" class="btn btn-outline-primary btn-sm" disabled title="Скоро"><i class="fas fa-cog me-1"></i>Скоро</button>
+            </div>
+            <div class="ats-operator-card">
+                <img class="ats-operator-logo" src="{{ url_for('static', filename='images/ats/megafon.svg') }}" alt="Мегафон">
+                <h3 class="ats-operator-name">МегаФон</h3>
+                <p class="ats-operator-desc">Облачная АТС МегаФон</p>
+                <button type="button" class="btn btn-outline-primary btn-sm" disabled title="Скоро"><i class="fas fa-cog me-1"></i>Скоро</button>
+            </div>
+            <div class="ats-operator-card">
+                <img class="ats-operator-logo" src="{{ url_for('static', filename='images/ats/bitrix.svg') }}" alt="Битрикс24">
+                <h3 class="ats-operator-name">Битрикс24</h3>
+                <p class="ats-operator-desc">Телефония Битрикс24</p>
+                <button type="button" class="btn btn-outline-primary btn-sm" disabled title="Скоро"><i class="fas fa-cog me-1"></i>Скоро</button>
+            </div>
+        </div>
+
+        {% include 'partials/_sources_ftp_section.html' %}
+        {% include 'partials/_sources_ats_section.html' %}
+    </div>
+</main>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/sources_page.js') }}"></script>
+{% endblock %}

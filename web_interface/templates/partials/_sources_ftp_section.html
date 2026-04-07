@@ -1,0 +1,108 @@
+<section id="sources-ftp" class="sources-detail-section mt-5">
+    <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-3">
+        <div>
+            <h2 class="h4 mb-1">FTP / SFTP</h2>
+            <p class="text-muted mb-0 small">Автоматическая загрузка файлов записей с удалённых серверов</p>
+        </div>
+        <button class="btn btn-primary" type="button" onclick="showAddModal()">
+            <i class="fas fa-plus me-2"></i>Добавить подключение
+        </button>
+    </div>
+    <div class="alert alert-info d-flex align-items-start gap-3 mb-4">
+        <i class="fas fa-info-circle mt-1"></i>
+        <div>
+            <strong>FTP/SFTP</strong>
+            <p class="mb-0 small">Периодическая синхронизация файлов звонков. Укажите интервал не менее 60 секунд.</p>
+        </div>
+    </div>
+    <div id="connectionsGrid" class="ftp-connections-grid">
+        <div class="col-12">
+            <div class="text-center py-5">
+                <div class="spinner-border text-primary mb-3" role="status" style="width: 3rem; height: 3rem;">
+                    <span class="visually-hidden">Загрузка...</span>
+                </div>
+                <p class="text-muted">Загрузка подключений...</p>
+            </div>
+        </div>
+    </div>
+</section>
+
+<div class="modal fade" id="connectionModal" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="modalTitle">
+                    <i class="fas fa-server me-2"></i>FTP подключение
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="connectionForm">
+                    <input type="hidden" id="connectionId">
+                    <div class="mb-3">
+                        <label class="form-label">Название подключения *</label>
+                        <input type="text" class="form-control" id="connName" required>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-8 mb-3">
+                            <label class="form-label">Хост (IP или домен) *</label>
+                            <input type="text" class="form-control" id="connHost" required>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Порт *</label>
+                            <input type="number" class="form-control" id="connPort" value="21" required>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Протокол *</label>
+                        <select class="form-select" id="connProtocol" required>
+                            <option value="ftp">FTP</option>
+                            <option value="sftp">SFTP</option>
+                        </select>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Имя пользователя *</label>
+                            <input type="text" class="form-control" id="connUser" required>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">
+                                Пароль <span id="passwordRequired">*</span>
+                                <small class="text-muted" id="passwordHint" style="display:none;">(оставьте пустым, чтобы не менять)</small>
+                            </label>
+                            <input type="password" class="form-control" id="connPassword" required>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Удаленная папка *</label>
+                        <input type="text" class="form-control" id="connRemotePath" value="/" required>
+                        <small class="form-text text-muted">Путь к папке на сервере</small>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Начать обработку с даты</label>
+                            <input type="datetime-local" class="form-control" id="connStartFrom">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Последний обработанный файл</label>
+                            <div class="form-control-plaintext border rounded bg-light py-2 px-3" id="connLastProcessedInfo">—</div>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Интервал синхронизации (секунды) *</label>
+                        <input type="number" class="form-control" id="connSyncInterval" value="300" min="60" required>
+                    </div>
+                    <div class="mb-3 form-check">
+                        <input type="checkbox" class="form-check-input" id="connIsActive" checked>
+                        <label class="form-check-label" for="connIsActive">Активно</label>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal"><i class="fas fa-times me-2"></i>Отмена</button>
+                <button type="button" class="btn btn-primary" onclick="testConnection()"><i class="fas fa-plug me-2"></i>Тест</button>
+                <button type="button" class="btn btn-success" onclick="saveConnection()"><i class="fas fa-save me-2"></i>Сохранить</button>
+            </div>
+        </div>
+    </div>
+</div>

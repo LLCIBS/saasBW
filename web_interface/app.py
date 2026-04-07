@@ -47,6 +47,7 @@ from config.settings import get_config
 from database.models import (
     db,
     User,
+    Call,
     UserSettings,
     UserProfileData,
     FtpConnection,
@@ -1535,6 +1536,66 @@ def api_status():
         'timestamp': datetime.now().isoformat()
     })
 
+
+@app.route('/api/onboarding/status')
+@login_required
+def api_onboarding_status():
+    """Статус шагов быстрого старта для виджета на главной."""
+    uid = current_user.id
+    uc = UserConfig.query.filter_by(user_id=uid).first()
+    step1 = bool(
+        uc
+        and uc.base_records_path
+        and str(uc.base_records_path).strip()
+    )
+    has_ftp = FtpConnection.query.filter_by(user_id=uid).count() > 0
+    has_rt = RostelecomAtsConnection.query.filter_by(user_id=uid).count() > 0
+    has_sto = StocrmConnection.query.filter_by(user_id=uid).count() > 0
+    linked = bool(
+        uc
+        and (
+            uc.ftp_connection_id
+            or uc.rostelecom_ats_connection_id
+            or uc.stocrm_connection_id
+        )
+    )
+    step2 = has_ftp or has_rt or has_sto or linked
+
+    sp = UserScriptPrompt.query.filter_by(user_id=uid).first()
+    checklist_ok = bool(
+        sp
+        and sp.checklist
+        and isinstance(sp.checklist, list)
+        and len(sp.checklist) > 0
+    )
+    prompt_ok = bool(sp and sp.prompt_text and len(sp.prompt_text.strip()) > 80)
+    step3 = checklist_ok or prompt_ok
+
+    step4 = bool(
+        ReportSchedule.query.filter(
+            ReportSchedule.user_id == uid,
+            ReportSchedule.last_run_at.isnot(None),
+        ).first()
+    )
+    if not step4:
+        step4 = bool(
+            Call.query.filter(
+                Call.user_id == uid,
+                Call.processed_at.isnot(None),
+                Call.analysis.isnot(None),
+            ).first()
+        )
+
+    all_done = step1 and step2 and step3 and step4
+    return jsonify({
+        'step1': step1,
+        'step2': step2,
+        'step3': step3,
+        'step4': step4,
+        'all_done': all_done,
+    })
+
+
 @app.route('/api/rescan-current-day', methods=['POST'])
 @login_required
 def api_rescan_current_day():
@@ -2718,6 +2779,158 @@ def checklists_page():
     """Страница настройки чек-листов"""
     return render_template('checklists.html', active_page='checklists')
 
+
+@app.route('/calls')
+@login_required
+def calls_history_page():
+    """История звонков и статусы пайплайна обработки."""
+    return render_template('calls.html', active_page='calls')
+
+
+def _call_pipeline_status(call_row):
+    """Статус обработки записи для UI (как в плане Dialecto)."""
+    meta = call_row.meta_data if isinstance(call_row.meta_data, dict) else {}
+    err = meta.get('pipeline_error') or meta.get('transcription_error') or meta.get('analysis_error')
+    if err:
+        return 'error', 'Ошибка'
+    t = (call_row.transcript or '').strip()
+    a = (call_row.analysis or '').strip()
+    cc = (call_row.call_class or '').strip()
+    if not t:
+        return 'received', 'Получен'
+    if not a:
+        return 'transcribed', 'Транскрибирован'
+    if not cc:
+        return 'analyzed', 'Разобран'
+    return 'classified', 'Классифицирован'
+
+
+def _calls_pipeline_status_sql_filter(pipeline_status: str):
+    """
+    Условие SQL для фильтра по статусу пайплайна, согласованное с _call_pipeline_status.
+    Предполагается PostgreSQL + JSONB (поле meta_data).
+    """
+    from sqlalchemy import and_, not_, or_, func
+
+    st = (pipeline_status or '').strip().lower()
+    allowed = ('error', 'received', 'transcribed', 'analyzed', 'classified')
+    if st not in allowed:
+        return None
+
+    meta = Call.meta_data
+
+    def _meta_err_nonempty(key: str):
+        col = meta[key].astext
+        return and_(col.isnot(None), func.length(func.trim(col)) > 0)
+
+    err_cond = or_(
+        _meta_err_nonempty('pipeline_error'),
+        _meta_err_nonempty('transcription_error'),
+        _meta_err_nonempty('analysis_error'),
+    )
+    not_err = not_(err_cond)
+
+    t_empty = or_(Call.transcript.is_(None), func.length(func.trim(Call.transcript)) == 0)
+    t_ok = and_(Call.transcript.isnot(None), func.length(func.trim(Call.transcript)) > 0)
+    a_empty = or_(Call.analysis.is_(None), func.length(func.trim(Call.analysis)) == 0)
+    a_ok = and_(Call.analysis.isnot(None), func.length(func.trim(Call.analysis)) > 0)
+    cc_empty = or_(Call.call_class.is_(None), func.length(func.trim(Call.call_class)) == 0)
+    cc_ok = and_(Call.call_class.isnot(None), func.length(func.trim(Call.call_class)) > 0)
+
+    if st == 'error':
+        return err_cond
+    if st == 'received':
+        return and_(not_err, t_empty)
+    if st == 'transcribed':
+        return and_(not_err, t_ok, a_empty)
+    if st == 'analyzed':
+        return and_(not_err, t_ok, a_ok, cc_empty)
+    if st == 'classified':
+        return and_(not_err, t_ok, a_ok, cc_ok)
+    return None
+
+
+@app.route('/api/calls/history', methods=['GET'])
+@login_required
+def api_calls_history():
+    """Пагинированная история звонков текущего пользователя с фильтрами."""
+    try:
+        page = max(1, int(request.args.get('page', 1)))
+        per_page = min(100, max(5, int(request.args.get('per_page', 20))))
+        period = (request.args.get('period') or 'week').strip().lower()
+        station = (request.args.get('station') or '').strip()
+        q = (request.args.get('q') or '').strip()
+        pipeline_status = (request.args.get('pipeline_status') or request.args.get('status') or '').strip().lower()
+
+        now = datetime.utcnow()
+        qry = Call.query.filter(Call.user_id == current_user.id)
+
+        if period == 'today':
+            start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+            qry = qry.filter(Call.call_time >= start)
+        elif period == 'yesterday':
+            end = now.replace(hour=0, minute=0, second=0, microsecond=0)
+            start = end - timedelta(days=1)
+            qry = qry.filter(Call.call_time >= start, Call.call_time < end)
+        elif period == 'week':
+            qry = qry.filter(Call.call_time >= now - timedelta(days=7))
+        elif period == 'month':
+            qry = qry.filter(Call.call_time >= now - timedelta(days=31))
+        # period == 'all' или неизвестное — без ограничения по дате
+
+        if station:
+            qry = qry.filter(Call.station_code == station)
+        if q:
+            like = f'%{q}%'
+            from sqlalchemy import or_
+            qry = qry.filter(
+                or_(
+                    Call.phone_number.ilike(like),
+                    Call.filename.ilike(like),
+                )
+            )
+
+        pipe_f = _calls_pipeline_status_sql_filter(pipeline_status)
+        if pipe_f is not None:
+            qry = qry.filter(pipe_f)
+
+        qry = qry.order_by(Call.call_time.desc())
+        total = qry.count()
+        rows = qry.offset((page - 1) * per_page).limit(per_page).all()
+
+        items = []
+        for c in rows:
+            st_key, st_label = _call_pipeline_status(c)
+            dur = None
+            if isinstance(c.meta_data, dict):
+                dur = c.meta_data.get('duration_sec') or c.meta_data.get('duration')
+            items.append({
+                'id': c.id,
+                'call_time': c.call_time.isoformat() + 'Z' if c.call_time else None,
+                'station_code': c.station_code,
+                'phone_number': c.phone_number,
+                'filename': c.filename,
+                'call_type': c.call_type,
+                'call_class': c.call_class,
+                'call_result': c.call_result,
+                'processed_at': c.processed_at.isoformat() + 'Z' if c.processed_at else None,
+                'pipeline_status': st_key,
+                'pipeline_label': st_label,
+                'duration_sec': dur,
+                'has_analysis': bool((c.analysis or '').strip()),
+            })
+
+        return jsonify({
+            'success': True,
+            'items': items,
+            'total': total,
+            'page': page,
+            'per_page': per_page,
+        })
+    except Exception as e:
+        app.logger.error('api_calls_history: %s', e)
+        return jsonify({'success': False, 'message': str(e)}), 500
+
 @app.route('/api/checklists/meta')
 @login_required
 def api_checklists_meta():
@@ -2740,6 +2953,77 @@ def api_checklists_meta():
         'script_prompt_file': script_prompt_path,
         'stations': stations
     })
+
+
+def _checklist_templates_dir() -> Path:
+    return PROJECT_ROOT / 'web_interface' / 'static' / 'checklist_templates'
+
+
+@app.route('/api/checklists/templates', methods=['GET'])
+@login_required
+def api_checklists_templates_list():
+    """Список отраслевых шаблонов чек-листа (файлы в static/checklist_templates/)."""
+    try:
+        idx_path = _checklist_templates_dir() / 'index.yaml'
+        if not idx_path.is_file():
+            return jsonify({'success': True, 'templates': []})
+        with idx_path.open('r', encoding='utf-8') as fh:
+            raw = yaml.safe_load(fh) or {}
+        items = raw.get('templates') if isinstance(raw, dict) else None
+        if not isinstance(items, list):
+            items = []
+        out = []
+        for row in items:
+            if not isinstance(row, dict):
+                continue
+            tid = (row.get('id') or '').strip()
+            if not tid:
+                continue
+            out.append({
+                'id': tid,
+                'label': row.get('label') or tid,
+                'description': row.get('description') or '',
+                'file': row.get('file') or f'{tid}.yaml',
+            })
+        return jsonify({'success': True, 'templates': out})
+    except Exception as e:
+        app.logger.error('api_checklists_templates_list: %s', e)
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+
+@app.route('/api/checklists/templates/<template_id>', methods=['GET'])
+@login_required
+def api_checklists_templates_get(template_id):
+    """Содержимое шаблона: prompt + checklist (как для script_prompt)."""
+    import re
+    if not re.match(r'^[a-z0-9_-]+$', template_id or ''):
+        return jsonify({'success': False, 'message': 'Некорректный идентификатор'}), 400
+    try:
+        idx_path = _checklist_templates_dir() / 'index.yaml'
+        if not idx_path.is_file():
+            return jsonify({'success': False, 'message': 'Каталог шаблонов не найден'}), 404
+        with idx_path.open('r', encoding='utf-8') as fh:
+            raw = yaml.safe_load(fh) or {}
+        items = raw.get('templates') if isinstance(raw, dict) else None
+        if not isinstance(items, list):
+            items = []
+        file_name = None
+        for row in items:
+            if isinstance(row, dict) and (row.get('id') or '').strip() == template_id:
+                file_name = (row.get('file') or '').strip() or f'{template_id}.yaml'
+                break
+        if not file_name:
+            return jsonify({'success': False, 'message': 'Шаблон не найден'}), 404
+        path = (_checklist_templates_dir() / file_name).resolve()
+        base = _checklist_templates_dir().resolve()
+        if not str(path).startswith(str(base)) or not path.is_file():
+            return jsonify({'success': False, 'message': 'Файл шаблона недоступен'}), 404
+        data = load_script_prompt_file(user=None, custom_path=str(path))
+        return jsonify({'success': True, 'id': template_id, 'data': data})
+    except Exception as e:
+        app.logger.error('api_checklists_templates_get: %s', e)
+        return jsonify({'success': False, 'message': str(e)}), 500
+
 
 @app.route('/api/checklists/test', methods=['POST'])
 @login_required
@@ -4075,6 +4359,183 @@ def api_reports_progress():
     """API для получения прогресса генерации отчетов"""
     return jsonify(report_generation_progress)
 
+
+def _is_target_call_marker(analysis_text: str) -> bool:
+    """Совпадает с логикой call_handler.is_target_call: целевой / первичный по якорному анализу."""
+    if not analysis_text:
+        return False
+    upper_text = analysis_text.upper().replace(' ', '')
+    return '[ТИПЗВОНКА:ЦЕЛЕВОЙ]' in upper_text or 'ПЕРВИЧНЫЙ' in upper_text
+
+
+def _checklist_score_percent_from_analysis(text: str):
+    """
+    Доля «ДА» по маркерам чек-листа [ОТВЕТ: ДА] / [ОТВЕТ: НЕТ] в тексте анализа.
+    Возвращает float 0..100 или None, если маркеров нет.
+    """
+    if not text:
+        return None
+    da = len(re.findall(r'\[ОТВЕТ:\s*ДА\]', text, flags=re.IGNORECASE))
+    net = len(re.findall(r'\[ОТВЕТ:\s*НЕТ\]', text, flags=re.IGNORECASE))
+    n = da + net
+    if n == 0:
+        return None
+    return round(da / n * 100.0, 1)
+
+
+def _is_visit_booking_call(c: Call) -> bool:
+    """Грубая эвристика «запись на визит» по полям классификации и тексту анализа."""
+    cc = (c.call_class or '').strip()
+    cr = (c.call_result or '').strip()
+    if cc:
+        cl = cc.lower()
+        if cl.startswith('2') or 'запись' in cl or 'book' in cl:
+            return True
+    cru = cr.upper()
+    if 'BOOK' in cru or 'ЗАПИСЬ' in (c.call_result or '').upper():
+        return True
+    a = (c.analysis or '').upper()
+    if 'ЗАПИСЬ НА СЕРВИС' in a.replace(' ', '') or 'IN.BOOK' in cru or 'OUT.BOOK' in cru:
+        return True
+    return False
+
+
+def _call_summary_for_range(user_id: int, start: datetime, end: datetime, station_code: str | None):
+    """Агрегаты по звонкам за полуинтервал [start, end)."""
+    q = Call.query.filter(
+        Call.user_id == user_id,
+        Call.call_time >= start,
+        Call.call_time < end,
+    )
+    if station_code:
+        q = q.filter(Call.station_code == station_code)
+    rows = q.all()
+    total = len(rows)
+    with_transcript = sum(1 for c in rows if (c.transcript or '').strip())
+    with_analysis = sum(1 for c in rows if (c.analysis or '').strip())
+    classified = sum(1 for c in rows if (c.call_class or '').strip())
+    targeted = sum(1 for c in rows if _is_target_call_marker(c.analysis or ''))
+    visit_bookings = sum(1 for c in rows if _is_visit_booking_call(c))
+    score_samples = []
+    for c in rows:
+        p = _checklist_score_percent_from_analysis(c.analysis or '')
+        if p is not None:
+            score_samples.append(p)
+    avg_checklist_score = round(sum(score_samples) / len(score_samples), 1) if score_samples else None
+    return {
+        'total': total,
+        'with_transcript': with_transcript,
+        'with_analysis': with_analysis,
+        'classified': classified,
+        'targeted': targeted,
+        'visit_bookings': visit_bookings,
+        'avg_checklist_score': avg_checklist_score,
+    }
+
+
+def _delta_pct(cur_v: int, prev_v: int) -> float:
+    if prev_v == 0:
+        return 0.0 if cur_v == 0 else 100.0
+    return round((cur_v - prev_v) / prev_v * 100.0, 1)
+
+
+def _delta_pct_optional_avg(cur_avg, prev_avg):
+    """Дельта для среднего балла чек-листа (% к прошлому периоду)."""
+    if cur_avg is None or prev_avg is None:
+        return None
+    if prev_avg == 0:
+        return 0.0 if cur_avg == 0 else 100.0
+    return round((cur_avg - prev_avg) / prev_avg * 100.0, 1)
+
+
+def _reports_summary_period_windows(period: str, now: datetime):
+    """Возвращает (cur_start, cur_end, prev_start, prev_end) как UTC, полуинтервалы [start, end)."""
+    if period == 'today':
+        cur_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        cur_end = now
+        prev_end = cur_start
+        prev_start = prev_end - timedelta(days=1)
+        return cur_start, cur_end, prev_start, prev_end
+    if period == 'yesterday':
+        cur_end = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        cur_start = cur_end - timedelta(days=1)
+        prev_end = cur_start
+        prev_start = prev_end - timedelta(days=1)
+        return cur_start, cur_end, prev_start, prev_end
+    if period == 'week':
+        cur_end = now
+        cur_start = cur_end - timedelta(days=7)
+        span = cur_end - cur_start
+        prev_end = cur_start
+        prev_start = prev_end - span
+        return cur_start, cur_end, prev_start, prev_end
+    if period == 'this_month':
+        cur_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        cur_end = now
+        span = max(timedelta(days=1), cur_end - cur_start)
+        prev_end = cur_start
+        prev_start = prev_end - span
+        return cur_start, cur_end, prev_start, prev_end
+    if period == 'last_month':
+        first_this = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        cur_end = first_this
+        last_prev = first_this - timedelta(days=1)
+        cur_start = last_prev.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        prev_end = cur_start
+        prev_last = prev_end - timedelta(days=1)
+        prev_start = prev_last.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        return cur_start, cur_end, prev_start, prev_end
+    # default: как week
+    cur_end = now
+    cur_start = cur_end - timedelta(days=7)
+    span = cur_end - cur_start
+    return cur_start, cur_end, cur_start - span, cur_start
+
+
+@app.route('/api/reports/summary', methods=['GET'])
+@login_required
+def api_reports_summary():
+    """KPI сводка по звонкам за период и сравнение с предыдущим периодом (виджеты на странице отчётов)."""
+    try:
+        period = (request.args.get('period') or 'week').strip().lower()
+        if period not in ('today', 'yesterday', 'week', 'this_month', 'last_month'):
+            period = 'week'
+        station = (request.args.get('station') or '').strip() or None
+        now = datetime.utcnow()
+        cur_start, cur_end, prev_start, prev_end = _reports_summary_period_windows(period, now)
+
+        uid = current_user.id
+        cur = _call_summary_for_range(uid, cur_start, cur_end, station)
+        prev = _call_summary_for_range(uid, prev_start, prev_end, station)
+
+        return jsonify({
+            'success': True,
+            'period': period,
+            'current': cur,
+            'previous': prev,
+            'delta_pct': {
+                'total': _delta_pct(cur['total'], prev['total']),
+                'targeted': _delta_pct(cur['targeted'], prev['targeted']),
+                'avg_checklist_score': _delta_pct_optional_avg(
+                    cur.get('avg_checklist_score'), prev.get('avg_checklist_score')),
+                'visit_bookings': _delta_pct(cur['visit_bookings'], prev['visit_bookings']),
+                'with_analysis': _delta_pct(cur['with_analysis'], prev['with_analysis']),
+                'classified': _delta_pct(cur['classified'], prev['classified']),
+            },
+            'labels': {
+                'total': 'Всего звонков',
+                'targeted': 'Целевых звонков',
+                'avg_checklist_score': 'Средний балл чек-листа',
+                'visit_bookings': 'Записей на визит',
+                'with_analysis': 'С разбором чек-листа',
+                'classified': 'С классификацией',
+            },
+        })
+    except Exception as e:
+        app.logger.error('api_reports_summary: %s', e)
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+
 # API для управления расписаниями отчетов
 def _schedule_to_dict(s: ReportSchedule):
     """Преобразовать модель расписания в словарь для JSON"""
@@ -4738,8 +5199,8 @@ def _parse_datetime_field(value):
 @app.route('/ats')
 @login_required
 def ats_page():
-    """Страница интеграций с АТС"""
-    return render_template('ats.html', active_page='ats')
+    """Редирект на единую страницу источников (совместимость со старыми ссылками)."""
+    return redirect(url_for('sources_page') + '#sources-ats')
 
 
 def _process_rostelecom_recording(conn_id, user_id, session_id, from_number, request_number, request_pin, call_type, timestamp_str):
@@ -5289,8 +5750,15 @@ def api_stocrm_delete(conn_id):
 @app.route('/ftp')
 @login_required
 def ftp_page():
-    """Страница управления FTP подключениями"""
-    return render_template('ftp.html', active_page='ftp')
+    """Редирект на единую страницу источников (совместимость со старыми ссылками)."""
+    return redirect(url_for('sources_page') + '#sources-ftp')
+
+
+@app.route('/sources')
+@login_required
+def sources_page():
+    """Единый каталог источников данных: FTP/SFTP, АТС, CRM."""
+    return render_template('sources.html', active_page='sources')
 
 @app.route('/api/ftp/connections', methods=['GET'])
 @login_required

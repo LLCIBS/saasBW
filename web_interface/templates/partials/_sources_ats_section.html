@@ -1,0 +1,150 @@
+<section id="sources-ats" class="sources-detail-section mt-5">
+    <h2 class="h4 mb-3">Облачные АТС и CRM</h2>
+    <div class="rostelecom-panel" id="rostelecomPanel" style="display: none;">
+        <h5 class="mb-3" id="sources-rostelecom"><i class="fas fa-plug me-2 text-primary"></i>Ростелеком — Интеграционный API</h5>
+        <div class="alert alert-success mb-4">
+            <strong>Режим без webhook.</strong> Подключите услугу «Интеграционный API» в <a href="https://numbers.cloudpbx.rt.ru" target="_blank" rel="noopener">ЛК Ростелеком</a>.
+        </div>
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h6 class="mb-0">Подключения</h6>
+            <button type="button" class="btn btn-primary btn-sm" onclick="showRostelecomModal()"><i class="fas fa-plus me-1"></i>Добавить</button>
+        </div>
+        <div id="rostelecomConnectionsList"></div>
+        <div id="rostelecomEmpty" class="text-muted text-center py-4" style="display: none;">Нет подключений.</div>
+    </div>
+
+    <div class="stocrm-panel mt-4" id="stocrmPanel" style="display: none;">
+        <h5 class="mb-3" id="sources-stocrm"><i class="fas fa-plug me-2 text-primary"></i>StoCRM — API записей</h5>
+        <div class="alert alert-info mb-4">
+            <strong>Периодический опрос.</strong> SID-ключ в «Настройки → API ключи» StoCRM.
+            <a href="https://stocrm.ru/wiki/article/WIKI-A-627/" target="_blank" rel="noopener">Документация</a>.
+        </div>
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h6 class="mb-0">Подключения</h6>
+            <button type="button" class="btn btn-primary btn-sm" onclick="showStocrmModal()"><i class="fas fa-plus me-1"></i>Добавить</button>
+        </div>
+        <div id="stocrmConnectionsList"></div>
+        <div id="stocrmEmpty" class="text-muted text-center py-4" style="display: none;">Нет подключений.</div>
+    </div>
+</section>
+
+<div class="modal fade" id="rostelecomModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Подключение Ростелеком</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="rostelecomConnId">
+                <div class="mb-3">
+                    <label class="form-label">Название</label>
+                    <input type="text" class="form-control" id="rostelecomName" value="Ростелеком">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Адрес API <span class="text-danger">*</span></label>
+                    <input type="text" class="form-control" id="rostelecomApiUrl" value="https://api.cloudpbx.rt.ru">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">X-Client-ID <span class="text-danger">*</span></label>
+                    <input type="text" class="form-control" id="rostelecomClientId">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">X-Client-Sign <span class="text-danger">*</span></label>
+                    <input type="password" class="form-control" id="rostelecomSignKey">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Направления</label>
+                    <div class="d-flex flex-wrap gap-3">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="rostelecomDirIncoming" value="incoming">
+                            <label class="form-check-label" for="rostelecomDirIncoming">Входящие</label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="rostelecomDirOutbound" value="outbound">
+                            <label class="form-check-label" for="rostelecomDirOutbound">Исходящие</label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="rostelecomDirInternal" value="internal">
+                            <label class="form-check-label" for="rostelecomDirInternal">Внутренние</label>
+                        </div>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Собирать звонки с даты</label>
+                    <input type="datetime-local" class="form-control" id="rostelecomStartFrom">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Интервал синхронизации (минут)</label>
+                    <input type="number" class="form-control" id="rostelecomSyncInterval" min="0" max="1440" value="60">
+                </div>
+                <div class="form-check mb-3">
+                    <input class="form-check-input" type="checkbox" id="rostelecomActive" checked>
+                    <label class="form-check-label" for="rostelecomActive">Активно</label>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                <button type="button" class="btn btn-primary" onclick="saveRostelecomConnection()">Сохранить</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="stocrmModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Подключение StoCRM</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="stocrmConnId">
+                <div class="mb-3">
+                    <label class="form-label">Название</label>
+                    <input type="text" class="form-control" id="stocrmName" value="StoCRM">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Поддомен <span class="text-danger">*</span></label>
+                    <div class="input-group">
+                        <input type="text" class="form-control" id="stocrmDomain" placeholder="mycompany">
+                        <span class="input-group-text">.stocrm.ru</span>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">SID <span class="text-danger">*</span></label>
+                    <input type="password" class="form-control" id="stocrmSid">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Направления</label>
+                    <div class="d-flex flex-wrap gap-3">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="stocrmDirIn" value="IN">
+                            <label class="form-check-label" for="stocrmDirIn">Входящие (IN)</label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="stocrmDirOut" value="OUT">
+                            <label class="form-check-label" for="stocrmDirOut">Исходящие (OUT)</label>
+                        </div>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Собирать звонки с даты</label>
+                    <input type="datetime-local" class="form-control" id="stocrmStartFrom">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Интервал синхронизации (минут)</label>
+                    <input type="number" class="form-control" id="stocrmSyncInterval" min="0" max="1440" value="60">
+                </div>
+                <div class="form-check mb-3">
+                    <input class="form-check-input" type="checkbox" id="stocrmActive" checked>
+                    <label class="form-check-label" for="stocrmActive">Активно</label>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                <button type="button" class="btn btn-primary" onclick="saveStocrmConnection()">Сохранить</button>
+            </div>
+        </div>
+    </div>
+</div>
