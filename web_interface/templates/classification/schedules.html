@@ -83,7 +83,12 @@
                         </div>
                         <div class="mb-3">
                             <label class="form-label" for="notifyTelegramBotToken">Bot token</label>
-                            <input type="password" class="form-control" id="notifyTelegramBotToken" autocomplete="off" placeholder="от @BotFather">
+                            <div class="input-group">
+                                <input type="password" class="form-control" id="notifyTelegramBotToken" autocomplete="off" placeholder="от @BotFather">
+                                <button type="button" class="btn btn-outline-secondary" id="notifyTelegramBotTokenToggle" onclick="toggleNotifyTokenVisibility('notifyTelegramBotToken', this)" title="Показать или скрыть токен" aria-label="Показать или скрыть токен">
+                                    <i class="fas fa-eye" aria-hidden="true"></i>
+                                </button>
+                            </div>
                         </div>
                         <div class="mb-0">
                             <label class="form-label" for="notifyTelegramChatId">Chat ID</label>
@@ -98,7 +103,12 @@
                         </div>
                         <div class="mb-3">
                             <label class="form-label" for="notifyMaxAccessToken">Токен бота</label>
-                            <input type="password" class="form-control" id="notifyMaxAccessToken" autocomplete="off" placeholder="из раздела «Чат-боты → Интеграция»">
+                            <div class="input-group">
+                                <input type="password" class="form-control" id="notifyMaxAccessToken" autocomplete="off" placeholder="из раздела «Чат-боты → Интеграция»">
+                                <button type="button" class="btn btn-outline-secondary" id="notifyMaxAccessTokenToggle" onclick="toggleNotifyTokenVisibility('notifyMaxAccessToken', this)" title="Показать или скрыть токен" aria-label="Показать или скрыть токен">
+                                    <i class="fas fa-eye" aria-hidden="true"></i>
+                                </button>
+                            </div>
                         </div>
                         <div class="mb-0">
                             <label class="form-label" for="notifyMaxChatId">chat_id (число)</label>
@@ -230,8 +240,6 @@
 </div>
     </div>
 </main>
-    </div>
-</main>
 {% endblock %}
 
 {% block extra_js %}
@@ -257,6 +265,26 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('scheduleType').addEventListener('change', updateScheduleConfig);
 });
 
+function escapeHtml(str) {
+    if (str == null || str === '') return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+}
+
+function toggleNotifyTokenVisibility(inputId, btn) {
+    const input = document.getElementById(inputId);
+    if (!input || !btn) return;
+    const show = input.type === 'password';
+    input.type = show ? 'text' : 'password';
+    const icon = btn.querySelector('i');
+    if (icon) {
+        icon.className = show ? 'fas fa-eye-slash' : 'fas fa-eye';
+    }
+}
+
 function loadNotifySettings() {
     fetch('/classification/api/notify-settings')
         .then(r => r.json())
@@ -269,6 +297,17 @@ function loadNotifySettings() {
             document.getElementById('notifyMaxEnabled').checked = s.max_enabled === '1';
             document.getElementById('notifyMaxAccessToken').value = s.max_access_token || '';
             document.getElementById('notifyMaxChatId').value = s.max_chat_id || '';
+            ['notifyTelegramBotToken', 'notifyMaxAccessToken'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.type = 'password';
+            });
+            [['notifyTelegramBotTokenToggle', 'notifyTelegramBotToken'], ['notifyMaxAccessTokenToggle', 'notifyMaxAccessToken']].forEach(([bid, iid]) => {
+                const b = document.getElementById(bid);
+                const inp = document.getElementById(iid);
+                if (b && inp && b.querySelector('i')) {
+                    b.querySelector('i').className = inp.type === 'password' ? 'fas fa-eye' : 'fas fa-eye-slash';
+                }
+            });
         })
         .catch(() => {});
 }
@@ -571,7 +610,7 @@ function saveSchedule() {
     .then(result => {
         if (result.success) {
             showAlert('success', 'Расписание создано успешно');
-            bootstrap.Modal.getInstance(document.getElementById('addScheduleModal')).hide();
+            bootstrap.Modal.getOrCreateInstance(document.getElementById('addScheduleModal')).hide();
             loadSchedules();
         } else {
             showAlert('error', 'Ошибка создания расписания: ' + result.message);
@@ -616,48 +655,57 @@ function getScheduleConfig() {
 
 // Редактирование расписания
 function editSchedule(scheduleId) {
-    const schedule = schedules.find(s => s.id === scheduleId);
+    const schedule = schedules.find(s => s.id == scheduleId);
     if (!schedule) return;
-    
-    // Заполняем форму редактирования
-    document.getElementById('editScheduleId').value = scheduleId;
-    
-    // Создаем форму редактирования (упрощенная версия)
+
     const editForm = document.getElementById('editScheduleForm');
+    const sid = escapeHtml(String(schedule.id));
+    const nm = escapeHtml(schedule.name);
+    const desc = escapeHtml(schedule.description || '');
+    const folder = escapeHtml(schedule.input_folder);
+    const ctx = parseInt(schedule.context_days, 10);
+    const ctxVal = Number.isFinite(ctx) ? ctx : 0;
+
     editForm.innerHTML = `
+        <input type="hidden" id="editScheduleId" name="id" value="${sid}">
         <div class="mb-3">
             <label class="form-label">Название</label>
-            <input type="text" class="form-control" name="name" value="${schedule.name}">
+            <input type="text" class="form-control" name="name" value="${nm}">
         </div>
         <div class="mb-3">
             <label class="form-label">Описание</label>
-            <textarea class="form-control" name="description" rows="2">${schedule.description || ''}</textarea>
+            <textarea class="form-control" name="description" rows="2">${desc}</textarea>
         </div>
         <div class="mb-3">
             <label class="form-label">Папка</label>
-            <input type="text" class="form-control" name="input_folder" value="${schedule.input_folder}" readonly>
+            <input type="text" class="form-control" name="input_folder" value="${folder}" readonly>
         </div>
         <div class="mb-3">
             <label class="form-label">Период контекста (дни)</label>
-            <input type="number" class="form-control" name="context_days" value="${schedule.context_days}" min="0" max="90">
+            <input type="number" class="form-control" name="context_days" value="${ctxVal}" min="0" max="90">
         </div>
         <div class="mb-3">
             <div class="form-check">
-                <input class="form-check-input" type="checkbox" name="is_active" ${schedule.is_active ? 'checked' : ''}>
-                <label class="form-check-label">Активно</label>
+                <input class="form-check-input" type="checkbox" name="is_active" id="editScheduleActive" ${schedule.is_active ? 'checked' : ''}>
+                <label class="form-check-label" for="editScheduleActive">Активно</label>
             </div>
         </div>
     `;
-    
-    bootstrap.Modal.getInstance(document.getElementById('editScheduleModal')).show();
+
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('editScheduleModal')).show();
 }
 
 // Обновление расписания
 function updateSchedule() {
     const form = document.getElementById('editScheduleForm');
     const formData = new FormData(form);
-    const scheduleId = document.getElementById('editScheduleId').value;
-    
+    const idEl = document.getElementById('editScheduleId');
+    if (!idEl || !String(idEl.value).trim()) {
+        showAlert('error', 'Не удалось определить расписание. Откройте редактирование ещё раз.');
+        return;
+    }
+    const scheduleId = idEl.value;
+
     const data = {
         name: formData.get('name'),
         description: formData.get('description'),
@@ -677,7 +725,7 @@ function updateSchedule() {
     .then(result => {
         if (result.success) {
             showAlert('success', 'Расписание обновлено успешно');
-            bootstrap.Modal.getInstance(document.getElementById('editScheduleModal')).hide();
+            bootstrap.Modal.getOrCreateInstance(document.getElementById('editScheduleModal')).hide();
             loadSchedules();
         } else {
             showAlert('error', 'Ошибка обновления расписания: ' + result.message);
@@ -850,7 +898,7 @@ function updateProgressIndicator(scheduleId, data) {
 
 // Удаление расписания
 function deleteSchedule(scheduleId) {
-    const schedule = schedules.find(s => s.id === scheduleId);
+    const schedule = schedules.find(s => s.id == scheduleId);
     if (!schedule) return;
     
     if (!confirm(`Удалить расписание "${schedule.name}"?`)) return;
