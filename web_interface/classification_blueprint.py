@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 import threading
 import time
@@ -10,6 +11,7 @@ from pathlib import Path
 from typing import Dict, List, Tuple
 
 import pandas as pd
+import requests
 from flask import (
     Blueprint,
     current_app,
@@ -26,6 +28,7 @@ from werkzeug.utils import secure_filename
 
 from classification_module.classification_engine import CallClassificationEngine
 from classification_module.classification_rules import ClassificationRulesManager
+from classification_module.max_notify import send_excel_report_to_max
 from classification_module.self_learning_system import SelfLearningSystem
 from classification_module.training_examples import TrainingExamplesManager
 from database.models import User, UserConfig, UserStation, UserStationMapping
@@ -495,6 +498,52 @@ def _engine_for_user() -> Tuple[CallClassificationEngine, str]:
     return engine, training_db_path
 
 
+def _try_send_schedule_excel_notifications(
+    flask_app,
+    rules_manager: ClassificationRulesManager,
+    output_path: Path,
+    total_calls: int,
+) -> None:
+    """
+    Отправка Excel после успешного прогона по расписанию (настройки из classification_rules.db).
+    Совпадает по смыслу с ClassificationScheduler._run_scheduled_classification.
+    """
+    path_str = str(output_path)
+    if not os.path.isfile(path_str):
+        return
+    base_name = os.path.basename(path_str)
+    caption = f"Запланированный отчет: {base_name} ({total_calls} звонков)"
+
+    with flask_app.app_context():
+        try:
+            telegram_enabled = rules_manager.get_setting("telegram_enabled", "0") == "1"
+            bot_token = rules_manager.get_setting("telegram_bot_token", "") or ""
+            chat_id = rules_manager.get_setting("telegram_chat_id", "") or ""
+            if telegram_enabled and bot_token.strip() and str(chat_id).strip():
+                url = f"https://api.telegram.org/bot{bot_token}/sendDocument"
+                with open(path_str, "rb") as f:
+                    files = {
+                        "document": (
+                            base_name,
+                            f,
+                            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        )
+                    }
+                    data = {"chat_id": chat_id, "caption": caption}
+                    requests.post(url, data=data, files=files, timeout=30)
+        except Exception as te:
+            flask_app.logger.warning("Отчёт по расписанию: не удалось отправить в Telegram: %s", te)
+
+        try:
+            max_enabled = rules_manager.get_setting("max_enabled", "0") == "1"
+            max_token = (rules_manager.get_setting("max_access_token", "") or "").strip()
+            max_chat = (rules_manager.get_setting("max_chat_id", "") or "").strip()
+            if max_enabled and max_token and max_chat:
+                send_excel_report_to_max(max_token, max_chat, path_str, caption)
+        except Exception as me:
+            flask_app.logger.warning("Отчёт по расписанию: не удалось отправить в MAX: %s", me)
+
+
 def _run_classification_task(
     flask_app,
     task_id,
@@ -591,6 +640,9 @@ def _run_classification_task(
         )
         if schedule_rm is not None and schedule_id is not None:
             schedule_rm.update_schedule_run_stats(int(schedule_id), success=True)
+            _try_send_schedule_excel_notifications(
+                flask_app, schedule_rm, output_path, int(total_calls)
+            )
     except Exception as exc:
         with _tasks_lock:
             if task_id in _classification_tasks:
