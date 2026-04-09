@@ -467,6 +467,10 @@ class UserStation(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
     code = db.Column(db.String(20), nullable=False)  # код станции
     name = db.Column(db.String(500), nullable=False)  # название станции
+    # Краткое имя для колонок Excel (классификация и сводные); если NULL — используется name
+    report_name = db.Column(db.String(200), nullable=True)
+    # Порядок на вкладке «Станции» и в отчётах (меньше — левее)
+    sort_order = db.Column(db.Integer, default=0, nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
     

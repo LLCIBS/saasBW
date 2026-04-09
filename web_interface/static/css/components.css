@@ -686,6 +686,27 @@
     box-shadow: var(--shadow-xl);
 }
 
+.station-sortable-card.dragging {
+    opacity: 0.65;
+    cursor: grabbing;
+}
+
+.station-sortable-card.drag-over {
+    border-color: var(--primary, #6366f1);
+    box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.25);
+}
+
+.station-sortable-card .drag-handle {
+    color: var(--text-muted, #64748b);
+    cursor: grab;
+    padding: 0.25rem 0.35rem;
+    user-select: none;
+}
+
+.station-sortable-card .drag-handle:active {
+    cursor: grabbing;
+}
+
 .station-header {
     border-bottom: 2px solid var(--border-light);
     padding-bottom: var(--space-4);

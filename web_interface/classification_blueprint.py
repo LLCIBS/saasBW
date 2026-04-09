@@ -456,21 +456,33 @@ def _resolve_schedule_input_folder(user_id: int, schedule: Dict) -> Path | None:
     return path
 
 
-def _engine_for_user() -> Tuple[CallClassificationEngine, str]:
-    rules_db_path = str(_rules_db_path())
-    training_db_path = str(_training_db_path())
-
+def _station_engine_kwargs_for_user(user_id: int) -> Tuple[
+    Dict[str, str],
+    Dict[str, List[str]],
+    Dict[str, str],
+    List[str],
+]:
+    """Станции пользователя: отображаемые имена, маппинг подстанций, имена для отчёта и порядок карточек."""
     stations_rows = (
-        UserStation.query.filter_by(user_id=current_user.id)
-        .order_by(UserStation.id.asc())
+        UserStation.query.filter_by(user_id=int(user_id))
+        .order_by(UserStation.sort_order.asc(), UserStation.id.asc())
         .all()
     )
-    mapping_rows = UserStationMapping.query.filter_by(user_id=current_user.id).all()
+    mapping_rows = UserStationMapping.query.filter_by(user_id=int(user_id)).all()
     station_names = {
         str(row.code): str(row.name)
         for row in stations_rows
         if row.code and row.name
     }
+    station_report_names: Dict[str, str] = {}
+    for row in stations_rows:
+        if not row.code:
+            continue
+        code = str(row.code).strip()
+        rnv = (getattr(row, "report_name", None) or "").strip()
+        nm = str(row.name or "").strip()
+        station_report_names[code] = rnv or nm or code
+    station_report_order = [str(row.code).strip() for row in stations_rows if row.code]
 
     station_mapping: Dict[str, List[str]] = {}
     for row in mapping_rows:
@@ -481,6 +493,17 @@ def _engine_for_user() -> Tuple[CallClassificationEngine, str]:
         station_mapping.setdefault(main_code, [])
         if sub_code not in station_mapping[main_code]:
             station_mapping[main_code].append(sub_code)
+
+    return station_names, station_mapping, station_report_names, station_report_order
+
+
+def _engine_for_user() -> Tuple[CallClassificationEngine, str]:
+    rules_db_path = str(_rules_db_path())
+    training_db_path = str(_training_db_path())
+
+    station_names, station_mapping, station_report_names, station_report_order = _station_engine_kwargs_for_user(
+        current_user.id
+    )
 
     cfg = UserConfig.query.filter_by(user_id=current_user.id).first()
     _sync_filename_settings_to_rules(ClassificationRulesManager(db_path=rules_db_path), cfg)
@@ -494,6 +517,8 @@ def _engine_for_user() -> Tuple[CallClassificationEngine, str]:
         rules_db_path=rules_db_path,
         station_names=station_names,
         station_mapping=station_mapping,
+        station_report_names=station_report_names,
+        station_report_order=station_report_order,
     )
     return engine, training_db_path
 
@@ -556,6 +581,8 @@ def _run_classification_task(
     context_days,
     station_names,
     station_mapping,
+    station_report_names,
+    station_report_order,
     llm_api_key,
     llm_base_url,
     llm_model,
@@ -607,6 +634,8 @@ def _run_classification_task(
             rules_db_path=rules_db_path,
             station_names=station_names or {},
             station_mapping=station_mapping or {},
+            station_report_names=station_report_names or {},
+            station_report_order=station_report_order or [],
         )
         _, _, total_calls = engine.process_folder(
             input_folder=input_folder,
@@ -708,27 +737,9 @@ def _enqueue_classification_task_for_user(
             "schedule_id": schedule_id,
         }
 
-    stations_rows = (
-        UserStation.query.filter_by(user_id=int(user_id))
-        .order_by(UserStation.id.asc())
-        .all()
+    station_names, station_mapping, station_report_names, station_report_order = _station_engine_kwargs_for_user(
+        int(user_id)
     )
-    mapping_rows = UserStationMapping.query.filter_by(user_id=int(user_id)).all()
-    station_names = {
-        str(row.code): str(row.name)
-        for row in stations_rows
-        if row.code and row.name
-    }
-
-    station_mapping = {}
-    for row in mapping_rows:
-        main_code = str(row.main_station_code or "").strip()
-        sub_code = str(row.sub_station_code or "").strip()
-        if not main_code or not sub_code:
-            continue
-        station_mapping.setdefault(main_code, [])
-        if sub_code not in station_mapping[main_code]:
-            station_mapping[main_code].append(sub_code)
 
     cfg = UserConfig.query.filter_by(user_id=int(user_id)).first()
     _sync_filename_settings_to_rules(rules, cfg)
@@ -758,6 +769,8 @@ def _enqueue_classification_task_for_user(
             context_days,
             station_names,
             station_mapping,
+            station_report_names,
+            station_report_order,
             llm_api_key,
             llm_base_url,
             llm_model,

@@ -23,6 +23,25 @@ import json
 import shutil
 import tempfile
 
+# Если у пользователя нет станций в ЛК — порядок колонок по умолчанию (автосервис BW)
+FALLBACK_REPORT_STATIONS_ORDER = (
+    "Чон",
+    "Чон К",
+    "Сах",
+    "Род",
+    "Брн",
+    "Кмн",
+    "Кбш",
+    "Дзр",
+    "Меч",
+    "Тгн",
+    "Влд",
+    "КзнИ",
+    "КзнС",
+    "Рдн",
+)
+
+
 class CallClassificationEngine:
     """Движок классификации звонков с дообучением"""
     
@@ -35,6 +54,8 @@ class CallClassificationEngine:
         rules_db_path="classification_rules.db",
         station_names=None,
         station_mapping=None,
+        station_report_names=None,
+        station_report_order=None,
     ):
         """
         Инициализация движка классификации.
@@ -107,9 +128,6 @@ class CallClassificationEngine:
         # Хлз  - Хальзовская
         # Рпб  - Республиканская
         self.EXCLUDED_STATIONS = ['Арз', 'Хлз', 'Рпб']
-        
-        # Все станции в правильном порядке (без исключенных)
-        self.ALL_STATIONS = ['Чон', 'Чон К', 'Сах', 'Род', 'Брн', 'Кмн', 'Кбш', 'Дзр', 'Меч', 'Тгн', 'Влд', 'КзнИ', 'КзнС', 'Рдн']
 
         # Привязка подстанций к основным станциям пользователя.
         if isinstance(station_mapping, dict):
@@ -123,17 +141,69 @@ class CallClassificationEngine:
                     if sub_code_s:
                         self.STATION_CODES[sub_code_s] = main_name
 
-        # Для пользовательских профилей убираем legacy-исключения и формируем порядок станций.
+        # Для пользовательских профилей убираем legacy-исключения (Арз/Хлз/Рпб)
         if user_station_codes:
-            station_order = []
-            seen = set()
-            for _, station_name in sorted(user_station_codes.items(), key=lambda item: item[0]):
-                if station_name not in seen:
-                    seen.add(station_name)
-                    station_order.append(station_name)
-            if station_order:
-                self.ALL_STATIONS = station_order
             self.EXCLUDED_STATIONS = []
+
+        # Порядок и подписи колонок «Станция» в Excel — из ЛК (Название для отчётов + порядок карточек)
+        sn = dict(station_names or {})
+        srn = dict(station_report_names or {}) if station_report_names else {}
+        sro = list(station_report_order or []) if station_report_order else []
+
+        self._station_display_by_code = {str(k): str(v) for k, v in sn.items()}
+        self._report_label_by_code = {}
+        labels_order = []
+
+        for code in sro:
+            cs = str(code).strip()
+            if not cs or cs not in sn:
+                continue
+            lbl = (srn.get(cs) or sn.get(cs) or cs).strip()
+            if not lbl:
+                continue
+            self._report_label_by_code[cs] = lbl
+            if lbl not in labels_order:
+                labels_order.append(lbl)
+
+        for cs in sorted(sn.keys(), key=lambda x: str(x)):
+            if cs in self._report_label_by_code:
+                continue
+            lbl = (srn.get(cs) or sn.get(cs) or cs).strip()
+            self._report_label_by_code[cs] = lbl
+            if lbl not in labels_order:
+                labels_order.append(lbl)
+
+        if isinstance(station_mapping, dict):
+            for main_code, sub_codes in station_mapping.items():
+                main_s = str(main_code).strip()
+                ml = self._report_label_by_code.get(main_s)
+                if not ml:
+                    continue
+                for sub_code in (sub_codes or []):
+                    sc = str(sub_code).strip()
+                    if sc:
+                        self._report_label_by_code[sc] = ml
+
+        if labels_order:
+            self.ALL_STATIONS = labels_order
+        else:
+            self.ALL_STATIONS = list(FALLBACK_REPORT_STATIONS_ORDER)
+
+        self._report_label_by_display = {}
+        for code, lbl in self._report_label_by_code.items():
+            disp = str(self.STATION_CODES.get(code, "")).strip()
+            if disp:
+                self._report_label_by_display[disp] = lbl
+        for code, nm in self._station_display_by_code.items():
+            nm_clean = str(nm).strip()
+            if nm_clean:
+                lbl = self._report_label_by_code.get(code)
+                if lbl:
+                    self._report_label_by_display[nm_clean] = lbl
+        for lbl in self.ALL_STATIONS:
+            self._report_label_by_display[lbl] = lbl
+
+        self._has_user_station_list = bool(self._station_display_by_code)
         
         # Новая схема категорий согласно Google Sheets
         # Новая схема категорий согласно ТЗ v1.0
@@ -813,19 +883,76 @@ class CallClassificationEngine:
 
         return category_num, None
 
+    def _normalize_station_for_report(self, station_number, station_display):
+        """
+        Подпись станции для сводных таблиц и колонки «Станция» в Excel.
+        Берётся из настроек ЛК («Название для отчётов» и порядок карточек);
+        при отсутствии настроек — встроенные краткие имена из STATION_CODES.
+        """
+        c = str(station_number or "").strip()
+        d = str(station_display or "").strip()
+
+        if c in getattr(self, "_report_label_by_code", {}):
+            return self._report_label_by_code[c]
+
+        d_clean = d.strip()
+        if d_clean in getattr(self, "_report_label_by_display", {}):
+            return self._report_label_by_display[d_clean]
+
+        if c and c not in ("Не распознан", "не распознан") and c in self.STATION_CODES:
+            disp = str(self.STATION_CODES[c]).strip()
+            if disp in getattr(self, "_report_label_by_display", {}):
+                return self._report_label_by_display[disp]
+
+        if d_clean in self.ALL_STATIONS:
+            return d_clean
+
+        if c and c not in ("Не распознан", "не распознан") and c in self.STATION_CODES:
+            if not self._has_user_station_list:
+                return self.STATION_CODES[c]
+            return "Прочие"
+
+        return "Прочие"
+
+    def _call_type_from_result(self, category_num, fallback_call_type):
+        """
+        Колонка «Тип звонка» в отчёте должна совпадать с направлением в «Результат» (IN.* / OUT.*).
+        Имя файла нередко однозначно не различает направление, а классификация — различает.
+        """
+        c = str(category_num or "").strip()
+        if c.startswith("IN."):
+            return "Входящий"
+        if c.startswith("OUT."):
+            return "Исходящий"
+        return fallback_call_type
+
     def safe_save_excel(self, results, output_file):
         """Безопасное сохранение Excel файла с обработкой случая, когда файл открыт"""
         df = pd.DataFrame(results)
         
-        # Убираем из результатов исключенные станции
+        # Краткие названия для отчёта (по коду станции из файла — не зависят от полных имён в ЛК)
+        if not df.empty and 'Станция' in df.columns:
+            num_col = 'Номер станции' if 'Номер станции' in df.columns else None
+            if num_col:
+                df['Станция'] = df.apply(
+                    lambda r: self._normalize_station_for_report(r.get(num_col), r.get('Станция')),
+                    axis=1,
+                )
+            else:
+                df['Станция'] = df['Станция'].apply(
+                    lambda d: self._normalize_station_for_report('', d)
+                )
+        
+        # Убираем исключённые станции (Арз / Хлз / Рпб) уже по кратким именам
         if not df.empty and 'Станция' in df.columns:
             df = df[~df['Станция'].isin(self.EXCLUDED_STATIONS)]
         
-        # Определяем список станций для сводных таблиц
         if not df.empty and 'Станция' in df.columns:
-            stations_order = sorted(df['Станция'].unique())
+            stations_order = list(self.ALL_STATIONS)
+            if (df['Станция'] == 'Прочие').any() and 'Прочие' not in stations_order:
+                stations_order = list(stations_order) + ['Прочие']
         else:
-            stations_order = self.ALL_STATIONS
+            stations_order = list(self.ALL_STATIONS)
         
         # Создаем сводные таблицы
         target_summary_df = self.create_summary_table(df, stations_order)
@@ -1126,6 +1253,8 @@ class CallClassificationEngine:
             target_status = self.get_target_status(category_num)
             recorded_status = self.get_recorded_status(category_num)
 
+            report_call_type = self._call_type_from_result(category_num, call_type)
+
             # Добавляем задержку между запросами
             time.sleep(1)
 
@@ -1136,7 +1265,7 @@ class CallClassificationEngine:
                 'Время': call_time,
                 'Номер станции': station_number,
                 'Станция': station_name,
-                'Тип звонка': call_type,
+                'Тип звонка': report_call_type,
                 'Результат': category_num,
                 'Категория': category_desc,
                 'Целевой/Не целевой': target_status,

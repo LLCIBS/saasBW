@@ -330,8 +330,19 @@ def get_user_config_data(user=None):
     if 'business_profile' not in config_data:
         config_data['business_profile'] = 'autoservice'
 
-    # Stations
-    stations = {s.code: s.name for s in UserStation.query.filter_by(user_id=actual_user.id).all()}
+    # Stations (порядок — sort_order, затем id)
+    station_rows = (
+        UserStation.query.filter_by(user_id=actual_user.id)
+        .order_by(UserStation.sort_order.asc(), UserStation.id.asc())
+        .all()
+    )
+    stations = {s.code: s.name for s in station_rows}
+    station_report_names = {
+        str(s.code): (str(s.report_name).strip() if getattr(s, "report_name", None) else str(s.name))
+        for s in station_rows
+        if s.code
+    }
+    station_order = [str(s.code) for s in station_rows if s.code]
     station_chat_ids = {}
     for row in UserStationChatId.query.filter_by(user_id=actual_user.id).all():
         station_chat_ids.setdefault(row.station_code, []).append(row.chat_id)
@@ -347,6 +358,8 @@ def get_user_config_data(user=None):
     }
 
     config_data['stations'] = stations
+    config_data['station_report_names'] = station_report_names
+    config_data['station_order'] = station_order
     config_data['station_chat_ids'] = station_chat_ids
     config_data['station_max_chat_ids'] = station_max_chat_ids
     config_data['station_mapping'] = station_mapping
@@ -446,9 +459,40 @@ def save_user_config_data(config_data, user=None):
     UserEmployeeExtension.query.filter_by(user_id=actual_user.id).delete()
 
     stations = config_data.get('stations') or {}
-    for code, name in stations.items():
-        if code:
-            db.session.add(UserStation(user_id=actual_user.id, code=str(code), name=str(name or code)))
+    station_order = list(config_data.get('station_order') or [])
+    station_report_names = dict(config_data.get('station_report_names') or {})
+
+    def _ordered_station_codes():
+        seen = set()
+        out = []
+        for c in station_order:
+            cs = str(c).strip()
+            if cs and cs in stations and cs not in seen:
+                seen.add(cs)
+                out.append(cs)
+        for c in stations.keys():
+            cs = str(c).strip()
+            if cs and cs not in seen:
+                seen.add(cs)
+                out.append(cs)
+        return out
+
+    for idx, code in enumerate(_ordered_station_codes()):
+        name = stations.get(code)
+        if not code or name is None:
+            continue
+        rn = station_report_names.get(code)
+        if rn is not None:
+            rn = str(rn).strip() or None
+        db.session.add(
+            UserStation(
+                user_id=actual_user.id,
+                code=str(code),
+                name=str(name or code),
+                report_name=rn,
+                sort_order=int(idx),
+            )
+        )
 
     station_chat_ids = config_data.get('station_chat_ids') or {}
     for code, chat_list in station_chat_ids.items():
@@ -1985,19 +2029,32 @@ def api_stations():
     """API ??? ????????? ?????? ??????? ????????????."""
     config_data = get_user_config_data()
     stations = config_data.get('stations', {})
+    station_order = list(config_data.get('station_order') or [])
+    station_report_names = config_data.get('station_report_names') or {}
     station_chat_ids = config_data.get('station_chat_ids', {})
     station_max_chat_ids = config_data.get('station_max_chat_ids', {})
     station_mapping = config_data.get('station_mapping', {})
 
+    ordered_codes = [c for c in station_order if c in stations]
+    for c in stations.keys():
+        if c not in ordered_codes:
+            ordered_codes.append(c)
+
     result = []
-    for code, name in stations.items():
-        result.append({
-            'code': code,
-            'name': name,
-            'chat_ids': station_chat_ids.get(code, []),
-            'max_chat_ids': station_max_chat_ids.get(code, []),
-            'sub_stations': station_mapping.get(code, [])
-        })
+    for code in ordered_codes:
+        name = stations.get(code)
+        if not name:
+            continue
+        result.append(
+            {
+                'code': code,
+                'name': name,
+                'report_name': (station_report_names.get(code) or name or '').strip() or name,
+                'chat_ids': station_chat_ids.get(code, []),
+                'max_chat_ids': station_max_chat_ids.get(code, []),
+                'sub_stations': station_mapping.get(code, []),
+            }
+        )
 
     return jsonify(result)
 
@@ -2013,6 +2070,8 @@ def api_stations_save():
         station_chat_ids = dict(config_data.get('station_chat_ids') or {})
         station_max_chat_ids = dict(config_data.get('station_max_chat_ids') or {})
         station_mapping = dict(config_data.get('station_mapping') or {})
+        station_report_names = dict(config_data.get('station_report_names') or {})
+        station_order = list(config_data.get('station_order') or [])
 
         stations_payload = data.get('stations')
         if stations_payload is not None:
@@ -2021,6 +2080,13 @@ def api_stations_save():
                 for item in stations_payload
                 if item.get('code')
             }
+            for item in stations_payload:
+                c = item.get('code')
+                if not c or c not in stations:
+                    continue
+                if item.get('report_name') is not None:
+                    rn = (item.get('report_name') or '').strip()
+                    station_report_names[str(c)] = rn or stations.get(c) or str(c)
 
         chat_ids_payload = data.get('station_chat_ids')
         if chat_ids_payload is not None:
@@ -2034,6 +2100,8 @@ def api_stations_save():
                     station_chat_ids.pop(code, None)
                     station_max_chat_ids.pop(code, None)
                     station_mapping.pop(code, None)
+                    station_report_names.pop(str(code), None)
+                    station_order = [c for c in station_order if str(c) != str(code)]
                     continue
 
                 name = (payload.get('name') or '').strip()
@@ -2041,6 +2109,10 @@ def api_stations_save():
                     stations[code] = name
                 elif code not in stations:
                     stations[code] = code
+
+                if 'report_name' in payload:
+                    rnv = (payload.get('report_name') or '').strip()
+                    station_report_names[str(code)] = rnv or stations.get(str(code), str(code))
 
                 if 'chat_ids' in payload:
                     station_chat_ids[code] = payload.get('chat_ids') or []
@@ -2051,10 +2123,26 @@ def api_stations_save():
                 if 'sub_stations' in payload:
                     station_mapping[code] = payload.get('sub_stations') or []
 
+        if data.get('station_order') is not None:
+            station_order = [str(c) for c in data['station_order'] if c]
+
+        # Порядок только по существующим станциям; новые — в конец
+        station_order = [c for c in station_order if c in stations]
+        for c in stations.keys():
+            if c not in station_order:
+                station_order.append(c)
+
+        station_report_names = {k: v for k, v in station_report_names.items() if k in stations}
+        for c, nm in stations.items():
+            if c not in station_report_names:
+                station_report_names[c] = nm
+
         if 'nizh_station_codes' in data:
             config_data['nizh_station_codes'] = data.get('nizh_station_codes') or []
 
         config_data['stations'] = stations
+        config_data['station_order'] = station_order
+        config_data['station_report_names'] = station_report_names
         config_data['station_chat_ids'] = station_chat_ids
         config_data['station_max_chat_ids'] = station_max_chat_ids
         config_data['station_mapping'] = station_mapping
