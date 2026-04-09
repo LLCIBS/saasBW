@@ -525,13 +525,16 @@ def _engine_for_user() -> Tuple[CallClassificationEngine, str]:
 
 def _try_send_schedule_excel_notifications(
     flask_app,
-    rules_manager: ClassificationRulesManager,
     output_path: Path,
     total_calls: int,
+    user_id: int,
 ) -> None:
     """
-    Отправка Excel после успешного прогона по расписанию (настройки из classification_rules.db).
-    Совпадает по смыслу с ClassificationScheduler._run_scheduled_classification.
+    Отправка Excel после успешного прогона по расписанию.
+
+    Настройки каналов берём из профиля пользователя в PostgreSQL (как в ЛК), а не только из
+    classification_rules.db: SQLite мог устареть после смены токена/чата в интерфейсе без полного
+    прохода save_user_config_data, из‑за чего в Telegram уходило, а в MAX — нет.
     """
     path_str = str(output_path)
     if not os.path.isfile(path_str):
@@ -540,11 +543,21 @@ def _try_send_schedule_excel_notifications(
     caption = f"Запланированный отчет: {base_name} ({total_calls} звонков)"
 
     with flask_app.app_context():
+        from web_interface.app import get_user_config_data
+
+        user = User.query.get(int(user_id))
+        if not user:
+            return
+        config_data = get_user_config_data(user=user)
+        telegram = config_data.get("telegram") or {}
+        max_c = config_data.get("max") or {}
+        api_keys = config_data.get("api_keys") or {}
+
         try:
-            telegram_enabled = rules_manager.get_setting("telegram_enabled", "0") == "1"
-            bot_token = rules_manager.get_setting("telegram_bot_token", "") or ""
-            chat_id = rules_manager.get_setting("telegram_chat_id", "") or ""
-            if telegram_enabled and bot_token.strip() and str(chat_id).strip():
+            telegram_on = bool(telegram.get("notifications_enabled", True))
+            bot_token = (api_keys.get("telegram_bot_token") or "").strip()
+            chat_id = (telegram.get("reports_chat_id") or telegram.get("alert_chat_id") or "").strip()
+            if telegram_on and bot_token and chat_id:
                 url = f"https://api.telegram.org/bot{bot_token}/sendDocument"
                 with open(path_str, "rb") as f:
                     files = {
@@ -560,10 +573,10 @@ def _try_send_schedule_excel_notifications(
             flask_app.logger.warning("Отчёт по расписанию: не удалось отправить в Telegram: %s", te)
 
         try:
-            max_enabled = rules_manager.get_setting("max_enabled", "0") == "1"
-            max_token = (rules_manager.get_setting("max_access_token", "") or "").strip()
-            max_chat = (rules_manager.get_setting("max_chat_id", "") or "").strip()
-            if max_enabled and max_token and max_chat:
+            max_on = bool(max_c.get("notifications_enabled", True))
+            max_token = (api_keys.get("max_access_token") or "").strip()
+            max_chat = (max_c.get("reports_chat_id") or max_c.get("alert_chat_id") or "").strip()
+            if max_on and max_token and max_chat:
                 send_excel_report_to_max(max_token, max_chat, path_str, caption)
         except Exception as me:
             flask_app.logger.warning("Отчёт по расписанию: не удалось отправить в MAX: %s", me)
@@ -670,7 +683,7 @@ def _run_classification_task(
         if schedule_rm is not None and schedule_id is not None:
             schedule_rm.update_schedule_run_stats(int(schedule_id), success=True)
             _try_send_schedule_excel_notifications(
-                flask_app, schedule_rm, output_path, int(total_calls)
+                flask_app, output_path, int(total_calls), int(user_id)
             )
     except Exception as exc:
         with _tasks_lock:
