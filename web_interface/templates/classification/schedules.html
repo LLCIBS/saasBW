@@ -204,7 +204,7 @@
                     </div>
                     
                     <!-- Конфигурация расписания -->
-                    <div id="scheduleConfig">
+                    <div id="scheduleConfig" class="js-schedule-config-panel">
                         <!-- Будет заполнено JavaScript -->
                     </div>
                 </form>
@@ -217,7 +217,7 @@
     </div>
 </div>
 
-<!-- Модальное окно редактирования расписания -->
+<!-- Модальное окно редактирования расписания (та же структура, что и при создании) -->
 <div class="modal fade" id="editScheduleModal" tabindex="-1">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
@@ -228,7 +228,65 @@
             <div class="modal-body">
                 <form id="editScheduleForm">
                     <input type="hidden" id="editScheduleId" name="id">
-                    <!-- Форма будет заполнена JavaScript -->
+                    <input type="hidden" id="editScheduleInputFolder" name="input_folder" value="__DYNAMIC__">
+
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="editScheduleName" class="form-label">Название расписания *</label>
+                                <input type="text" class="form-control" id="editScheduleName" name="name" required>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="editScheduleType" class="form-label">Тип расписания *</label>
+                                <select class="form-select" id="editScheduleType" name="schedule_type" required>
+                                    <option value="">Выберите тип...</option>
+                                    <option value="daily">Ежедневно</option>
+                                    <option value="weekly">Еженедельно</option>
+                                    <option value="monthly">Ежемесячно</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="editScheduleDescription" class="form-label">Описание</label>
+                        <textarea class="form-control" id="editScheduleDescription" name="description" rows="2"></textarea>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label">День данных *</label>
+                                <div class="input-group">
+                                    <select class="form-select" id="editDynamicDayMode" name="dynamic_day_mode" required>
+                                        <option value="today">Текущий день (на момент запуска)</option>
+                                        <option value="offset">N дней назад</option>
+                                    </select>
+                                    <input type="number" class="form-control" id="editDynamicDayOffset" name="dynamic_day_offset" value="1" min="1" style="display:none; max-width:140px" placeholder="Дней">
+                                </div>
+                                <div class="form-text">Папка будет выбрана автоматически по дате запуска</div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="editScheduleContextDays" class="form-label">Период контекста (дни)</label>
+                                <input type="number" class="form-control" id="editScheduleContextDays" name="context_days" value="7" min="0" max="90">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="editScheduleConfig" class="js-schedule-config-panel">
+                    </div>
+
+                    <div class="mb-0">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" name="is_active" id="editScheduleActive" value="on">
+                            <label class="form-check-label" for="editScheduleActive">Расписание активно</label>
+                        </div>
+                        <div class="form-text">Снятая галочка отключает автозапуск по расписанию (без удаления).</div>
+                    </div>
                 </form>
             </div>
             <div class="modal-footer">
@@ -255,24 +313,19 @@ document.addEventListener('DOMContentLoaded', function() {
     loadNotifySettings();
     // Проверяем запущенные задачи каждые 5 секунд
     setInterval(checkRunningSchedules, 5000);
-    // Управляем полем смещения
+    // Управляем полем смещения (создание и редактирование)
     document.getElementById('dynamicDayMode').addEventListener('change', function() {
         const isOffset = this.value === 'offset';
         document.getElementById('dynamicDayOffset').style.display = isOffset ? 'block' : 'none';
     });
-    
-    // Обработчик изменения типа расписания
-    document.getElementById('scheduleType').addEventListener('change', updateScheduleConfig);
-});
+    document.getElementById('editDynamicDayMode').addEventListener('change', function() {
+        const isOffset = this.value === 'offset';
+        document.getElementById('editDynamicDayOffset').style.display = isOffset ? 'block' : 'none';
+    });
 
-function escapeHtml(str) {
-    if (str == null || str === '') return '';
-    return String(str)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;');
-}
+    document.getElementById('scheduleType').addEventListener('change', () => updateScheduleConfig(false));
+    document.getElementById('editScheduleType').addEventListener('change', () => updateScheduleConfig(true));
+});
 
 function toggleNotifyTokenVisibility(inputId, btn) {
     const input = document.getElementById(inputId);
@@ -490,13 +543,16 @@ function displaySchedules(schedules) {
     container.innerHTML = schedulesHtml;
 }
 
-// Обновление конфигурации расписания
-function updateScheduleConfig() {
-    const scheduleType = document.getElementById('scheduleType').value;
-    const configContainer = document.getElementById('scheduleConfig');
-    
+// Обновление блока «время / дни» (одинаково для создания и редактирования)
+function updateScheduleConfig(isEdit) {
+    const typeEl = document.getElementById(isEdit ? 'editScheduleType' : 'scheduleType');
+    const configContainer = document.getElementById(isEdit ? 'editScheduleConfig' : 'scheduleConfig');
+    if (!typeEl || !configContainer) return;
+    const scheduleType = typeEl.value;
+    const dayId = (n) => (isEdit ? 'editDay' + n : 'day' + n);
+
     let configHtml = '';
-    
+
     if (scheduleType === 'daily') {
         configHtml = `
             <div class="mb-3">
@@ -518,34 +574,34 @@ function updateScheduleConfig() {
                 <div class="row">
                     <div class="col-6">
                         <div class="form-check">
-                            <input class="form-check-input" type="checkbox" name="days" value="1" id="day1">
-                            <label class="form-check-label" for="day1">Понедельник</label>
+                            <input class="form-check-input" type="checkbox" name="days" value="1" id="${dayId(1)}">
+                            <label class="form-check-label" for="${dayId(1)}">Понедельник</label>
                         </div>
                         <div class="form-check">
-                            <input class="form-check-input" type="checkbox" name="days" value="2" id="day2">
-                            <label class="form-check-label" for="day2">Вторник</label>
+                            <input class="form-check-input" type="checkbox" name="days" value="2" id="${dayId(2)}">
+                            <label class="form-check-label" for="${dayId(2)}">Вторник</label>
                         </div>
                         <div class="form-check">
-                            <input class="form-check-input" type="checkbox" name="days" value="3" id="day3">
-                            <label class="form-check-label" for="day3">Среда</label>
+                            <input class="form-check-input" type="checkbox" name="days" value="3" id="${dayId(3)}">
+                            <label class="form-check-label" for="${dayId(3)}">Среда</label>
                         </div>
                         <div class="form-check">
-                            <input class="form-check-input" type="checkbox" name="days" value="4" id="day4">
-                            <label class="form-check-label" for="day4">Четверг</label>
+                            <input class="form-check-input" type="checkbox" name="days" value="4" id="${dayId(4)}">
+                            <label class="form-check-label" for="${dayId(4)}">Четверг</label>
                         </div>
                     </div>
                     <div class="col-6">
                         <div class="form-check">
-                            <input class="form-check-input" type="checkbox" name="days" value="5" id="day5">
-                            <label class="form-check-label" for="day5">Пятница</label>
+                            <input class="form-check-input" type="checkbox" name="days" value="5" id="${dayId(5)}">
+                            <label class="form-check-label" for="${dayId(5)}">Пятница</label>
                         </div>
                         <div class="form-check">
-                            <input class="form-check-input" type="checkbox" name="days" value="6" id="day6">
-                            <label class="form-check-label" for="day6">Суббота</label>
+                            <input class="form-check-input" type="checkbox" name="days" value="6" id="${dayId(6)}">
+                            <label class="form-check-label" for="${dayId(6)}">Суббота</label>
                         </div>
                         <div class="form-check">
-                            <input class="form-check-input" type="checkbox" name="days" value="7" id="day7">
-                            <label class="form-check-label" for="day7">Воскресенье</label>
+                            <input class="form-check-input" type="checkbox" name="days" value="7" id="${dayId(7)}">
+                            <label class="form-check-label" for="${dayId(7)}">Воскресенье</label>
                         </div>
                     </div>
                 </div>
@@ -581,22 +637,52 @@ function updateScheduleConfig() {
             </div>
         `;
     }
-    
+
     configContainer.innerHTML = configHtml;
+}
+
+function applyScheduleConfigToPanel(form, scheduleType, cfg) {
+    if (!form || !cfg) return;
+    const panel = form.querySelector('.js-schedule-config-panel');
+    if (!panel || !scheduleType) return;
+    const hour = cfg.hour != null ? cfg.hour : 9;
+    const minute = cfg.minute != null ? cfg.minute : 0;
+    if (scheduleType === 'daily') {
+        const hi = panel.querySelector('input[name="hour"]');
+        const mi = panel.querySelector('input[name="minute"]');
+        if (hi) hi.value = hour;
+        if (mi) mi.value = minute;
+    } else if (scheduleType === 'weekly') {
+        const days = Array.isArray(cfg.days) && cfg.days.length ? cfg.days : [1];
+        panel.querySelectorAll('input[name="days"]').forEach(function(cb) {
+            cb.checked = days.indexOf(parseInt(cb.value, 10)) !== -1;
+        });
+        const hi = panel.querySelector('input[name="hour"]');
+        const mi = panel.querySelector('input[name="minute"]');
+        if (hi) hi.value = hour;
+        if (mi) mi.value = minute;
+    } else if (scheduleType === 'monthly') {
+        const di = panel.querySelector('input[name="day"]');
+        const hi = panel.querySelector('input[name="hour"]');
+        const mi = panel.querySelector('input[name="minute"]');
+        if (di) di.value = cfg.day != null ? cfg.day : 1;
+        if (hi) hi.value = hour;
+        if (mi) mi.value = minute;
+    }
 }
 
 // Сохранение расписания
 function saveSchedule() {
     const form = document.getElementById('addScheduleForm');
     const formData = new FormData(form);
-    
+
     const data = {
         name: formData.get('name'),
         description: formData.get('description'),
         input_folder: '__DYNAMIC__',
-        context_days: parseInt(formData.get('context_days')),
+        context_days: parseInt(formData.get('context_days'), 10) || 0,
         schedule_type: formData.get('schedule_type'),
-        schedule_config: JSON.stringify(getScheduleConfig())
+        schedule_config: JSON.stringify(getScheduleConfig(form))
     };
     
     fetch('/classification/api/schedules', {
@@ -622,75 +708,82 @@ function saveSchedule() {
     });
 }
 
-// Получение конфигурации расписания
-function getScheduleConfig() {
-    const scheduleType = document.getElementById('scheduleType').value;
+// Сбор schedule_config из указанной формы (создание или редактирование)
+function getScheduleConfig(form) {
+    if (!form || !form.elements['schedule_type']) return {};
+    const scheduleType = form.elements['schedule_type'].value;
     const config = {};
-    
-    // Динамический день (авто-выбор папки)
-    const mode = document.getElementById('dynamicDayMode').value;
+
+    const mode = form.elements['dynamic_day_mode'].value;
     if (mode === 'offset') {
-        config.dynamic_day = { mode: 'offset', offset_days: parseInt(document.getElementById('dynamicDayOffset').value) || 1 };
+        config.dynamic_day = { mode: 'offset', offset_days: parseInt(form.elements['dynamic_day_offset'].value, 10) || 1 };
     } else {
         config.dynamic_day = { mode: 'today', offset_days: 0 };
     }
 
+    const panel = form.querySelector('.js-schedule-config-panel');
+
     if (scheduleType === 'daily') {
-        config.hour = parseInt(document.querySelector('input[name="hour"]').value) || 9;
-        config.minute = parseInt(document.querySelector('input[name="minute"]').value) || 0;
+        const hi = panel && panel.querySelector('input[name="hour"]');
+        const mi = panel && panel.querySelector('input[name="minute"]');
+        config.hour = hi ? (parseInt(hi.value, 10) || 9) : 9;
+        config.minute = mi ? (parseInt(mi.value, 10) || 0) : 0;
     } else if (scheduleType === 'weekly') {
-        const checkedDays = Array.from(document.querySelectorAll('input[name="days"]:checked'))
-            .map(cb => parseInt(cb.value));
+        const checkedDays = panel
+            ? Array.from(panel.querySelectorAll('input[name="days"]:checked')).map(cb => parseInt(cb.value, 10))
+            : [];
         config.days = checkedDays.length > 0 ? checkedDays : [1];
-        config.hour = parseInt(document.querySelector('input[name="hour"]').value) || 9;
-        config.minute = parseInt(document.querySelector('input[name="minute"]').value) || 0;
+        const hi = panel && panel.querySelector('input[name="hour"]');
+        const mi = panel && panel.querySelector('input[name="minute"]');
+        config.hour = hi ? (parseInt(hi.value, 10) || 9) : 9;
+        config.minute = mi ? (parseInt(mi.value, 10) || 0) : 0;
     } else if (scheduleType === 'monthly') {
-        config.day = parseInt(document.querySelector('input[name="day"]').value) || 1;
-        config.hour = parseInt(document.querySelector('input[name="hour"]').value) || 9;
-        config.minute = parseInt(document.querySelector('input[name="minute"]').value) || 0;
+        const di = panel && panel.querySelector('input[name="day"]');
+        const hi = panel && panel.querySelector('input[name="hour"]');
+        const mi = panel && panel.querySelector('input[name="minute"]');
+        config.day = di ? (parseInt(di.value, 10) || 1) : 1;
+        config.hour = hi ? (parseInt(hi.value, 10) || 9) : 9;
+        config.minute = mi ? (parseInt(mi.value, 10) || 0) : 0;
     }
-    
+
     return config;
 }
 
-// Редактирование расписания
+// Редактирование расписания (та же форма, что при создании)
 function editSchedule(scheduleId) {
     const schedule = schedules.find(s => s.id == scheduleId);
     if (!schedule) return;
 
-    const editForm = document.getElementById('editScheduleForm');
-    const sid = escapeHtml(String(schedule.id));
-    const nm = escapeHtml(schedule.name);
-    const desc = escapeHtml(schedule.description || '');
-    const folder = escapeHtml(schedule.input_folder);
-    const ctx = parseInt(schedule.context_days, 10);
-    const ctxVal = Number.isFinite(ctx) ? ctx : 0;
+    const form = document.getElementById('editScheduleForm');
+    document.getElementById('editScheduleId').value = schedule.id;
+    document.getElementById('editScheduleName').value = schedule.name || '';
+    document.getElementById('editScheduleDescription').value = schedule.description || '';
+    const folder = (schedule.input_folder || '').trim() || '__DYNAMIC__';
+    document.getElementById('editScheduleInputFolder').value = folder;
 
-    editForm.innerHTML = `
-        <input type="hidden" id="editScheduleId" name="id" value="${sid}">
-        <div class="mb-3">
-            <label class="form-label">Название</label>
-            <input type="text" class="form-control" name="name" value="${nm}">
-        </div>
-        <div class="mb-3">
-            <label class="form-label">Описание</label>
-            <textarea class="form-control" name="description" rows="2">${desc}</textarea>
-        </div>
-        <div class="mb-3">
-            <label class="form-label">Папка</label>
-            <input type="text" class="form-control" name="input_folder" value="${folder}" readonly>
-        </div>
-        <div class="mb-3">
-            <label class="form-label">Период контекста (дни)</label>
-            <input type="number" class="form-control" name="context_days" value="${ctxVal}" min="0" max="90">
-        </div>
-        <div class="mb-3">
-            <div class="form-check">
-                <input class="form-check-input" type="checkbox" name="is_active" id="editScheduleActive" ${schedule.is_active ? 'checked' : ''}>
-                <label class="form-check-label" for="editScheduleActive">Активно</label>
-            </div>
-        </div>
-    `;
+    const ctx = parseInt(schedule.context_days, 10);
+    document.getElementById('editScheduleContextDays').value = Number.isFinite(ctx) ? ctx : 7;
+    document.getElementById('editScheduleActive').checked = !!schedule.is_active;
+
+    let cfg = {};
+    try {
+        const raw = schedule.schedule_config;
+        cfg = typeof raw === 'string' ? JSON.parse(raw || '{}') : (raw || {});
+    } catch (e) {
+        cfg = {};
+    }
+
+    const st = schedule.schedule_type || 'daily';
+    document.getElementById('editScheduleType').value = st;
+
+    const dd = cfg.dynamic_day || { mode: 'today', offset_days: 1 };
+    document.getElementById('editDynamicDayMode').value = dd.mode === 'offset' ? 'offset' : 'today';
+    const offEl = document.getElementById('editDynamicDayOffset');
+    offEl.value = dd.offset_days != null ? dd.offset_days : 1;
+    offEl.style.display = dd.mode === 'offset' ? 'block' : 'none';
+
+    updateScheduleConfig(true);
+    applyScheduleConfigToPanel(form, st, cfg);
 
     bootstrap.Modal.getOrCreateInstance(document.getElementById('editScheduleModal')).show();
 }
@@ -706,12 +799,20 @@ function updateSchedule() {
     }
     const scheduleId = idEl.value;
 
+    const scheduleType = form.elements['schedule_type'].value;
+    if (!scheduleType) {
+        showAlert('error', 'Выберите тип расписания');
+        return;
+    }
+
     const data = {
-        name: formData.get('name'),
-        description: formData.get('description'),
-        input_folder: formData.get('input_folder'),
-        context_days: parseInt(formData.get('context_days')),
-        is_active: formData.get('is_active') === 'on'
+        name: (formData.get('name') || '').trim(),
+        description: (formData.get('description') || '').trim(),
+        input_folder: (formData.get('input_folder') || '__DYNAMIC__').trim() || '__DYNAMIC__',
+        context_days: parseInt(formData.get('context_days'), 10) || 0,
+        schedule_type: scheduleType,
+        schedule_config: JSON.stringify(getScheduleConfig(form)),
+        is_active: document.getElementById('editScheduleActive').checked
     };
     
     fetch(`/classification/api/schedules/${scheduleId}`, {
