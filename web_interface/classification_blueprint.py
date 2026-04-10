@@ -523,6 +523,61 @@ def _engine_for_user() -> Tuple[CallClassificationEngine, str]:
     return engine, training_db_path
 
 
+_NOTIFY_SETTING_KEYS = (
+    "telegram_enabled",
+    "telegram_bot_token",
+    "telegram_chat_id",
+    "max_enabled",
+    "max_access_token",
+    "max_chat_id",
+)
+
+
+def _resolve_schedule_notify_telegram(
+    rules_rm: ClassificationRulesManager, config_data: dict
+) -> Tuple[bool, str, str]:
+    """
+    Приоритет: настройки страницы «Расписания» (classification_rules.db),
+    иначе профиль ЛК (PostgreSQL).
+    """
+    te = (rules_rm.get_setting("telegram_enabled", "") or "").strip()
+    tt = (rules_rm.get_setting("telegram_bot_token", "") or "").strip()
+    tc = (rules_rm.get_setting("telegram_chat_id", "") or "").strip()
+    if te == "1" and tt and tc:
+        return True, tt, tc
+
+    telegram = config_data.get("telegram") or {}
+    api_keys = config_data.get("api_keys") or {}
+    if not bool(telegram.get("notifications_enabled", True)):
+        return False, "", ""
+    pt = (api_keys.get("telegram_bot_token") or "").strip()
+    pc = (telegram.get("reports_chat_id") or telegram.get("alert_chat_id") or "").strip()
+    if pt and pc:
+        return True, pt, pc
+    return False, "", ""
+
+
+def _resolve_schedule_notify_max(
+    rules_rm: ClassificationRulesManager, config_data: dict
+) -> Tuple[bool, str, str]:
+    """Тот же приоритет, что и для Telegram."""
+    me = (rules_rm.get_setting("max_enabled", "") or "").strip()
+    mt = (rules_rm.get_setting("max_access_token", "") or "").strip()
+    mc = (rules_rm.get_setting("max_chat_id", "") or "").strip()
+    if me == "1" and mt and mc:
+        return True, mt, mc
+
+    max_c = config_data.get("max") or {}
+    api_keys = config_data.get("api_keys") or {}
+    if not bool(max_c.get("notifications_enabled", True)):
+        return False, "", ""
+    pt = (api_keys.get("max_access_token") or "").strip()
+    pc = (max_c.get("reports_chat_id") or max_c.get("alert_chat_id") or "").strip()
+    if pt and pc:
+        return True, pt, pc
+    return False, "", ""
+
+
 def _try_send_schedule_excel_notifications(
     flask_app,
     output_path: Path,
@@ -532,9 +587,8 @@ def _try_send_schedule_excel_notifications(
     """
     Отправка Excel после успешного прогона по расписанию.
 
-    Настройки каналов берём из профиля пользователя в PostgreSQL (как в ЛК), а не только из
-    classification_rules.db: SQLite мог устареть после смены токена/чата в интерфейсе без полного
-    прохода save_user_config_data, из‑за чего в Telegram уходило, а в MAX — нет.
+    Сначала используются настройки из блока «Отправка Excel после расписания»
+    (classification_rules.db → system_settings), при неполных данных — профиль ЛК (PostgreSQL).
     """
     path_str = str(output_path)
     if not os.path.isfile(path_str):
@@ -549,15 +603,11 @@ def _try_send_schedule_excel_notifications(
         if not user:
             return
         config_data = get_user_config_data(user=user)
-        telegram = config_data.get("telegram") or {}
-        max_c = config_data.get("max") or {}
-        api_keys = config_data.get("api_keys") or {}
+        rules_rm = ClassificationRulesManager(db_path=str(_rules_db_path_for(int(user_id))))
 
+        send_tg, bot_token, chat_id = _resolve_schedule_notify_telegram(rules_rm, config_data)
         try:
-            telegram_on = bool(telegram.get("notifications_enabled", True))
-            bot_token = (api_keys.get("telegram_bot_token") or "").strip()
-            chat_id = (telegram.get("reports_chat_id") or telegram.get("alert_chat_id") or "").strip()
-            if telegram_on and bot_token and chat_id:
+            if send_tg and bot_token and chat_id:
                 url = f"https://api.telegram.org/bot{bot_token}/sendDocument"
                 with open(path_str, "rb") as f:
                     files = {
@@ -568,15 +618,19 @@ def _try_send_schedule_excel_notifications(
                         )
                     }
                     data = {"chat_id": chat_id, "caption": caption}
-                    requests.post(url, data=data, files=files, timeout=30)
+                    resp = requests.post(url, data=data, files=files, timeout=30)
+                if resp.status_code != 200:
+                    flask_app.logger.warning(
+                        "Отчёт по расписанию: Telegram API %s: %s",
+                        resp.status_code,
+                        (resp.text or "")[:800],
+                    )
         except Exception as te:
             flask_app.logger.warning("Отчёт по расписанию: не удалось отправить в Telegram: %s", te)
 
+        send_mx, max_token, max_chat = _resolve_schedule_notify_max(rules_rm, config_data)
         try:
-            max_on = bool(max_c.get("notifications_enabled", True))
-            max_token = (api_keys.get("max_access_token") or "").strip()
-            max_chat = (max_c.get("reports_chat_id") or max_c.get("alert_chat_id") or "").strip()
-            if max_on and max_token and max_chat:
+            if send_mx and max_token and max_chat:
                 send_excel_report_to_max(max_token, max_chat, path_str, caption)
         except Exception as me:
             flask_app.logger.warning("Отчёт по расписанию: не удалось отправить в MAX: %s", me)
@@ -1985,16 +2039,6 @@ def api_schedule_status(schedule_id: int):
             "duration": task.get("duration", ""),
         }
     )
-
-
-_NOTIFY_SETTING_KEYS = (
-    "telegram_enabled",
-    "telegram_bot_token",
-    "telegram_chat_id",
-    "max_enabled",
-    "max_access_token",
-    "max_chat_id",
-)
 
 
 @classification_bp.route("/api/notify-settings", methods=["GET", "PUT"])
