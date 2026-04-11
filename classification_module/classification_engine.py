@@ -1289,32 +1289,31 @@ class CallClassificationEngine:
                 transcription, call_history_context, training_examples_context, call_type
             )
 
-            # КРИТИЧЕСКАЯ ПРОВЕРКА: Повторные звонки ВСЕГДА переклассифицируем
-            # Проверяем ВСЮ историю (включая внешнюю историю за период контекста)
-            client_all_previous_calls = [call for call in combined_history
-                                       if call['Номер телефона'] == phone_number and call['Файл'] != filename]
-            
-            if client_all_previous_calls and phone_number and phone_number != "Не распознан":
-                # Если есть история (внешняя + текущая сессия) - проверяем, нужно ли переклассифицировать
-                if category_num not in ['IN.FU.BOOK', 'OUT.FU.BOOK', 'IN.INFO.FU.NOBOOK', 'OUT.INFO.FU.NOBOOK', 'IN.NE', 'OUT.NE']:
-                    # Определяем направление из текущей категории
-                    direction_prefix = 'IN.' if category_num.startswith('IN.') or (category_num.isdigit() and int(category_num) <= 13) else 'OUT.'
-                    
-                    # Проверяем, была ли ЗАПИСЬ в истории
-                    has_previous_record = any(
-                        call.get('Результат') in ['IN.BOOK', 'OUT.BOOK', 'IN.FU.BOOK', 'OUT.FU.BOOK', '2', '15'] 
-                        for call in client_all_previous_calls
-                    )
-                    
-                    # Если AI классифицировал как новую запись (BOOK)
-                    if category_num in ['IN.BOOK', 'OUT.BOOK']:
-                        if has_previous_record:
-                            category_num = f'{direction_prefix}INFO.FU.NOBOOK'
-                        else:
-                            category_num = f'{direction_prefix}FU.BOOK'
-                    else:
-                        # Любая консультация/уточнение при наличии истории
-                        category_num = f'{direction_prefix}INFO.FU.NOBOOK'
+            # Дополнительная валидация с учетом всей истории (внешняя история + текущая сессия).
+            # Здесь применяется логика, которая уже умеет:
+            # - отличать последующий контакт С записью от БЕЗ записи
+            # - учитывать, что машина уже в сервисе / клиент уже записан
+            # - не допускать "последующий контакт" для первого звонка клиента
+            validated_category, correction_reason = self.validate_classification_with_context(
+                category_num,
+                phone_number,
+                filename,
+                combined_history,
+                transcription,
+                reasoning,
+            )
+            if validated_category != category_num:
+                self._append_debug_log(
+                    "context_validation_correction",
+                    {
+                        "filename": filename,
+                        "phone_number": phone_number,
+                        "old_category": category_num,
+                        "new_category": validated_category,
+                        "reason": correction_reason,
+                    },
+                )
+                category_num = validated_category
 
             # Получаем описание категории
             category_desc = self.get_category_description(category_num)
