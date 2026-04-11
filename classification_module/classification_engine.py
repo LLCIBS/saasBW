@@ -673,6 +673,49 @@ class CallClassificationEngine:
             cleaned = re.sub(r"\s*```$", "", cleaned).strip()
         return cleaned
 
+    def _normalize_reasoning_text(self, text):
+        """
+        Приводит сырое обоснование LLM к короткому читабельному виду для Excel:
+        убирает теги/служебные подписи/markdown и оставляет сам смысл.
+        """
+        cleaned = self._clean_llm_text(text)
+        if not cleaned:
+            return ""
+
+        cleaned = cleaned.replace("\r\n", "\n").replace("\r", "\n")
+
+        # Приоритет: если модель вернула явный тег [РЕЗУЛЬТАТ: ...], берем только его содержимое.
+        tag_match = re.search(r"\[\s*РЕЗУЛЬТАТ\s*:\s*(.*?)\s*\]", cleaned, re.IGNORECASE | re.DOTALL)
+        if tag_match:
+            cleaned = tag_match.group(1).strip()
+        else:
+            label_patterns = [
+                r"(?:обоснование|reasoning|explanation|пояснение|comment|комментарий|why|here['’]s why)\s*[:\-]\s*(.+)$",
+                r"(?:итог|summary|вывод)\s*[:\-]\s*(.+)$",
+            ]
+            for pattern in label_patterns:
+                match = re.search(pattern, cleaned, re.IGNORECASE | re.DOTALL)
+                if match:
+                    cleaned = match.group(1).strip()
+                    break
+
+        # Удаляем типовые служебные блоки, которые модель иногда пишет перед самим объяснением.
+        cleaned = re.sub(
+            r"(?is)\b(?:классификация звонка|classification(?: of the call)?|тип звонка|call type|"
+            r"целевой звонок\??|target call\??|категория|category)\b\s*[:\-]\s*.*?(?=(?:\b(?:обоснование|"
+            r"reasoning|explanation|пояснение|comment|комментарий|why|here['’]s why)\b\s*[:\-])|$)",
+            " ",
+            cleaned,
+        )
+
+        # Очищаем markdown и лишние маркеры списков.
+        cleaned = cleaned.replace("**", " ").replace("__", " ").replace("`", " ")
+        cleaned = re.sub(r"(?m)^\s*[-*•]\s*", "", cleaned)
+        cleaned = re.sub(r"\s+", " ", cleaned).strip()
+        cleaned = re.sub(r"\s+([,.;:!?])", r"\1", cleaned)
+
+        return cleaned
+
     def _extract_category_from_text(self, text):
         if not text:
             return None
@@ -693,7 +736,8 @@ class CallClassificationEngine:
             left, right = text.split("|", 1)
             cat = self._extract_category_from_text(left.strip()) or left.strip()
             if cat in self.NEW_CATEGORIES:
-                return cat, right.strip() or text
+                reasoning = self._normalize_reasoning_text(right.strip() or text)
+                return cat, reasoning or self._clean_llm_text(text)
 
         # Формат 2: JSON
         try:
@@ -715,7 +759,8 @@ class CallClassificationEngine:
                 )
                 cat = self._extract_category_from_text(str(cat_raw))
                 if cat in self.NEW_CATEGORIES:
-                    return cat, str(reasoning or text).strip()
+                    normalized = self._normalize_reasoning_text(str(reasoning or text).strip())
+                    return cat, normalized or self._clean_llm_text(text)
         except Exception:
             pass
 
@@ -724,16 +769,20 @@ class CallClassificationEngine:
         if cat_match:
             cat = self._extract_category_from_text(cat_match.group(1))
             if cat in self.NEW_CATEGORIES:
-                return cat, text
+                normalized = self._normalize_reasoning_text(text)
+                return cat, normalized or self._clean_llm_text(text)
 
         # Формат 4: код где-то в тексте
         cat = self._extract_category_from_text(text)
         if cat in self.NEW_CATEGORIES:
-            return cat, text
+            normalized = self._normalize_reasoning_text(text)
+            return cat, normalized or self._clean_llm_text(text)
 
         # Фолбэк: не роняем классификацию на "формате", выбираем безопасную категорию.
         fallback_cat = "IN.CONS.OTHER" if str(call_type).startswith("Вход") else "OUT.CONS.OTHER"
-        return fallback_cat, f"{text}\n\n[auto_fallback: формат ответа не распознан]"
+        normalized = self._normalize_reasoning_text(text)
+        suffix = "[auto_fallback: формат ответа не распознан]"
+        return fallback_cat, f"{normalized or self._clean_llm_text(text)} {suffix}".strip()
 
     def classify_call_with_reasoning(self, transcription, call_history_context="", training_examples_context="", call_type="Не определен"):
         """Классификация звонка с получением обоснования, учетом контекста и обучающих примеров"""
