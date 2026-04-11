@@ -84,6 +84,7 @@ try:
         load_additional_vocab,
         save_transcript_analysis,
         parse_filename,
+        is_target_call,
     )
     from call_analyzer.internal_transcription import transcribe_call_audio
     from call_analyzer.exental_alert import run_exental_alert
@@ -93,6 +94,7 @@ except ImportError:
     load_additional_vocab = None
     save_transcript_analysis = None
     parse_filename = None
+    is_target_call = None
     transcribe_call_audio = None
     run_exental_alert = None
 
@@ -3220,11 +3222,10 @@ def api_checklists_test():
             if not prompt_text:
                 prompt_text = "Проанализируй звонок и определи результат разговора."
 
-            analysis_text = thebai_analyze(transcript_text, prompt_text)
+            analysis_text = thebai_analyze(transcript_text, prompt_text, strict_anchor_format=True)
             
             # Определяем целевой ли звонок (по аналогии с call_handler.py)
-            analysis_clean = analysis_text.upper().replace(" ", "")
-            is_target = "[ТИПЗВОНКА:ЦЕЛЕВОЙ]" in analysis_clean or "ПЕРВИЧНЫЙ" in analysis_clean
+            is_target = is_target_call(analysis_text) if is_target_call else False
 
             # Сохраняем транскрипцию и анализ в отдельную тестовую папку,
             # не используя стандартный путь transcriptions, чтобы не мешать рабочим данным
@@ -4450,6 +4451,8 @@ def api_reports_progress():
 
 def _is_target_call_marker(analysis_text: str) -> bool:
     """Совпадает с логикой call_handler.is_target_call: целевой / первичный по якорному анализу."""
+    if is_target_call:
+        return is_target_call(analysis_text)
     if not analysis_text:
         return False
     upper_text = analysis_text.upper().replace(' ', '')

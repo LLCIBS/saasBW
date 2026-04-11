@@ -79,6 +79,9 @@ from threading import Lock
 _processed_files_lock = Lock()
 _processed_files = set()
 
+_ANCHOR_TYPE_RE = re.compile(r"\[\s*ТИП\s*ЗВОНКА\s*:\s*([^\]]+)\]", re.IGNORECASE)
+_ANCHOR_RESULT_RE = re.compile(r"\[\s*РЕЗУЛЬТАТ\s*:\s*([^\]]+)\]", re.IGNORECASE)
+
 
 def ensure_daily_folder(target_date: datetime | None = None) -> Path:
     """Гарантирует наличие каталога BASE_RECORDS_PATH/YYYY/MM/DD и возвращает его Path."""
@@ -185,7 +188,7 @@ def transcribe_and_analyze(file_path: Path, station_code: str, original_station_
     # Используем динамическую загрузку промптов для применения изменений без перезапуска
     station_prompts_current = get_station_prompts()
     station_prompt = station_prompts_current.get(station_code, station_prompts_current.get("default", "Определи результат разговора."))
-    analysis_text = thebai_analyze(transcript_text, station_prompt)
+    analysis_text = thebai_analyze(transcript_text, station_prompt, strict_anchor_format=True)
     analysis_upper = analysis_text.upper()
 
     # 4. Сохраняем результат
@@ -718,18 +721,48 @@ def parse_datetime_from_string(date_str: str) -> datetime:
     return datetime.strptime(date_str, "%Y-%m-%d-%H-%M-%S")
 
 
-def thebai_analyze(transcript: str, prompt: str) -> str:
-    """
-    Отправляем запрос к TheB.ai
-    """
-    if not transcript.strip():
-        return "Пустой транскрипт, нет анализа."
+def _extract_thebai_content(resp) -> str:
+    try:
+        data = resp.json()
+        return (data["choices"][0]["message"]["content"] or "").strip()
+    except Exception as e:
+        logger.error(f"Ошибка парсинга ответа TheB.ai: {e}")
+        return "Ошибка анализа"
 
+
+def _has_structured_anchor_tags(text: str) -> bool:
+    if not text:
+        return False
+    return bool(_ANCHOR_TYPE_RE.search(text) and _ANCHOR_RESULT_RE.search(text))
+
+
+def _build_strict_anchor_prompt(prompt: str) -> str:
+    strict_suffix = """
+
+ВАЖНО. Ответ должен быть строго на русском языке и строго в следующем формате:
+[ТИПЗВОНКА:ЦЕЛЕВОЙ] или [ТИПЗВОНКА:НЕЦЕЛЕВОЙ]
+[КЛАСС:A] / [КЛАСС:B] / [КЛАСС:C] (если класс применим)
+[РЕЗУЛЬТАТ:...]
+
+После тегов дай краткое объяснение на 2-4 предложения.
+Запрещено:
+- писать ответ на английском языке
+- писать вводные фразы вроде "This is a transcription", "Here's a breakdown", "Summary"
+- пропускать теги [ТИПЗВОНКА:...] и [РЕЗУЛЬТАТ:...]
+- использовать markdown-заголовки и списки вместо тегов
+
+Сначала выведи теги, потом краткое объяснение.
+"""
+    return f"{prompt.rstrip()}\n{strict_suffix}"
+
+
+def _post_thebai(messages, temperature=None):
     payload = {
         "model": config.THEBAI_MODEL,
-        "messages": [{"role": "user", "content": f"{prompt}\n\nВот диалог:\n{transcript}"}],
-        #"stream": False
+        "messages": messages,
     }
+    if temperature is not None:
+        payload["temperature"] = temperature
     headers = {
         "Authorization": f"Bearer {config.THEBAI_API_KEY}",
         "Content-Type": "application/json"
@@ -742,13 +775,59 @@ def thebai_analyze(transcript: str, prompt: str) -> str:
     if not resp or resp.status_code != 200:
         logger.error(f"TheB.ai анализ ошибка: {resp.status_code if resp else 'No resp'}, {resp.text if resp else ''}")
         return "Ошибка анализа"
+    return _extract_thebai_content(resp)
 
-    try:
-        data = resp.json()
-        return data["choices"][0]["message"]["content"]
-    except Exception as e:
-        logger.error(f"Ошибка парсинга ответа TheB.ai: {e}")
-        return "Ошибка анализа"
+
+def thebai_analyze(transcript: str, prompt: str, strict_anchor_format: bool = False) -> str:
+    """
+    Отправляем запрос к TheB.ai
+    """
+    if not transcript.strip():
+        return "Пустой транскрипт, нет анализа."
+
+    effective_prompt = _build_strict_anchor_prompt(prompt) if strict_anchor_format else prompt
+    messages = [{"role": "user", "content": f"{effective_prompt}\n\nВот диалог:\n{transcript}"}]
+    analysis_text = _post_thebai(messages, temperature=0 if strict_anchor_format else None)
+
+    if strict_anchor_format and not _has_structured_anchor_tags(analysis_text):
+        logger.warning(
+            "Якорный анализ вернулся без обязательных тегов. Пробуем repair-форматирование. Ответ: %s",
+            (analysis_text or "")[:300]
+        )
+        repair_messages = [
+            {
+                "role": "system",
+                "content": (
+                    "Ты исправляешь формат ответа классификации звонка. "
+                    "Верни ответ строго на русском языке. "
+                    "Обязательны теги [ТИПЗВОНКА:...], [РЕЗУЛЬТАТ:...]. "
+                    "Если класс применим, сохрани тег [КЛАСС:...]. "
+                    "Никаких вводных слов, markdown и английского текста."
+                ),
+            },
+            {"role": "user", "content": f"{effective_prompt}\n\nВот диалог:\n{transcript}"},
+            {"role": "assistant", "content": analysis_text},
+            {
+                "role": "user",
+                "content": (
+                    "Переформатируй предыдущий ответ строго так:\n"
+                    "[ТИПЗВОНКА:...]\n"
+                    "[КЛАСС:...]\n"
+                    "[РЕЗУЛЬТАТ:...]\n\n"
+                    "Далее 2-4 предложения объяснения на русском языке.\n"
+                    "Если класс не применим, строку [КЛАСС:...] можно опустить."
+                ),
+            },
+        ]
+        repaired_text = _post_thebai(repair_messages, temperature=0)
+        if _has_structured_anchor_tags(repaired_text):
+            return repaired_text
+        logger.warning(
+            "Repair-форматирование якорного анализа тоже не дало обязательных тегов. Ответ: %s",
+            (repaired_text or "")[:300]
+        )
+
+    return analysis_text
 
 
 def get_result_file_path(file_path: Path) -> Path:
@@ -832,6 +911,7 @@ def is_target_call(analysis_text: str) -> bool:
     """
     if not analysis_text:
         return False
-    # Убираем пробелы и переводим в верхний регистр для надежности сравнения
-    upper_text = analysis_text.upper().replace(" ", "")
-    return "[ТИПЗВОНКА:ЦЕЛЕВОЙ]" in upper_text or "ПЕРВИЧНЫЙ" in upper_text
+    type_match = _ANCHOR_TYPE_RE.search(analysis_text)
+    if type_match and "ЦЕЛЕВОЙ" in type_match.group(1).upper():
+        return True
+    return "ПЕРВИЧНЫЙ" in analysis_text.upper()
