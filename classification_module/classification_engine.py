@@ -714,6 +714,7 @@ class CallClassificationEngine:
         # Очищаем markdown и лишние маркеры списков.
         cleaned = cleaned.replace("**", " ").replace("__", " ").replace("`", " ")
         cleaned = re.sub(r"(?m)^\s*[-*•]\s*", "", cleaned)
+        cleaned = re.sub(r"(?i)^\s*(?:in|out)(?:\.[a-z0-9_]+)+\s+", "", cleaned)
         cleaned = re.sub(
             r"(?i)\b(?:in|out)(?:\.[a-z0-9_]+)+\b\s*(?=(?:обоснование|reasoning|explanation|объяснение|why)\s*:)",
             " ",
