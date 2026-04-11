@@ -47,6 +47,37 @@ _NAME_STOPWORDS = set([
     "авто", "центр", "контур", "сервис",
 ])
 
+_SPEAKER_LABEL_TO_CANONICAL = {
+    "speaker_00": "SPEAKER_00",
+    "speaker_0": "SPEAKER_00",
+    "speaker 00": "SPEAKER_00",
+    "speaker 0": "SPEAKER_00",
+    "speaker_01": "SPEAKER_01",
+    "speaker_1": "SPEAKER_01",
+    "speaker 01": "SPEAKER_01",
+    "speaker 1": "SPEAKER_01",
+    "оператор": "SPEAKER_00",
+    "менеджер": "SPEAKER_00",
+    "консультант": "SPEAKER_00",
+    "сотрудник": "SPEAKER_00",
+    "агент": "SPEAKER_00",
+    "администратор": "SPEAKER_00",
+    "мастер приемщик": "SPEAKER_00",
+    "мастер-приемщик": "SPEAKER_00",
+    "спикер 1": "SPEAKER_00",
+    "спикер1": "SPEAKER_00",
+    "клиент": "SPEAKER_01",
+    "абонент": "SPEAKER_01",
+    "звонящий": "SPEAKER_01",
+    "спикер 2": "SPEAKER_01",
+    "спикер2": "SPEAKER_01",
+}
+
+_GREETING_PATTERN = re.compile(
+    r"\b(?:добрый\s+(?:день|вечер|утро)|доброе\s+утро|здравствуйте)\b",
+    re.IGNORECASE,
+)
+
 def _is_probable_russian_name(token: str) -> bool:
     """Возвращает True, если token похож на русское имя (простая эвристика)."""
     if not token:
@@ -63,6 +94,71 @@ def _is_probable_russian_name(token: str) -> bool:
         return False
     return True
 
+
+def _normalize_dialog_speaker_labels(dialog_text: str) -> str:
+    """
+    Приводит альтернативные метки спикеров к формату SPEAKER_00:/SPEAKER_01:.
+    Это нужно для совместимости со старыми эвристиками анализа, которые ожидают
+    только SPEAKER_* в начале строк.
+    """
+    if not dialog_text or not dialog_text.strip():
+        return dialog_text
+
+    out_lines = []
+    changed = False
+    for raw_line in dialog_text.splitlines():
+        match = re.match(r"^(\s*)([^:：]{1,40})([:：])\s*(.*)$", raw_line)
+        if not match:
+            out_lines.append(raw_line)
+            continue
+
+        indent, label, _, text = match.groups()
+        label_key = " ".join(label.strip().lower().replace("_", " ").split())
+        target_label = _SPEAKER_LABEL_TO_CANONICAL.get(label_key)
+        if not target_label:
+            out_lines.append(raw_line)
+            continue
+
+        normalized_line = f"{indent}{target_label}: {text}".rstrip()
+        out_lines.append(normalized_line)
+        changed = changed or normalized_line != raw_line
+
+    if changed:
+        logger.debug(
+            "[exental_alert] Метки спикеров нормализованы к SPEAKER_00/SPEAKER_01."
+        )
+    return "\n".join(out_lines)
+
+
+def _extract_name_from_tokens(text: str, reverse: bool = False) -> str:
+    """Ищет первое правдоподобное имя среди слов фрагмента."""
+    if not text:
+        return None
+
+    tokens = re.findall(r"[А-ЯЁа-яё]{3,}", text)
+    iterable = reversed(tokens) if reverse else tokens
+    for token in iterable:
+        candidate = token.capitalize()
+        if _is_probable_russian_name(candidate):
+            return candidate
+    return None
+
+
+def _extract_name_before_greeting(text: str) -> str:
+    """
+    Ищет имя в естественных представлениях вида:
+    "АБС, Александр. Добрый день." / "Александр, добрый день".
+    """
+    if not text:
+        return None
+
+    match = _GREETING_PATTERN.search(text)
+    if not match:
+        return None
+
+    context_before = text[:match.start()]
+    return _extract_name_from_tokens(context_before, reverse=True)
+
 def detect_manager_speaker(dialog_text: str) -> str:
     """
     Автоматически определяет, какой спикер является менеджером.
@@ -78,7 +174,8 @@ def detect_manager_speaker(dialog_text: str) -> str:
     """
     if not dialog_text:
         return "SPEAKER_01"  # По умолчанию
-    
+
+    dialog_text = _normalize_dialog_speaker_labels(dialog_text)
     lines = dialog_text.splitlines()
     speaker_00_score = 0
     speaker_01_score = 0
@@ -380,7 +477,8 @@ def extract_operator_name_from_transcript(dialog_text: str, station_code: str = 
     """
     if not dialog_text:
         return None
-    
+
+    dialog_text = _normalize_dialog_speaker_labels(dialog_text)
     # Автоматически определяем менеджера
     manager_speaker = detect_manager_speaker(dialog_text)
     
@@ -426,9 +524,9 @@ def extract_operator_name_from_transcript(dialog_text: str, station_code: str = 
         (r'([А-ЯЁ][а-яё]{2,})\s+слушаю\s+вас', 1, True),
         (r'([А-ЯЁ][а-яё]{2,})\s+слушаю', 1, True),
         # "[Имя] здравствуйте" - имя в начале реплики
-        (r'^([А-ЯЁ][а-яё]{2,})\s+здравствуйте', 1, True),
+        (r'^([А-ЯЁ][а-яё]{2,})[\s,.:!-]+здравствуйте', 1, True),
         # "[Имя] добрый день/вечер" - имя в начале реплики
-        (r'^([А-ЯЁ][а-яё]{2,})\s+добрый\s+(?:день|вечер)', 1, True),
+        (r'^([А-ЯЁ][а-яё]{2,})[\s,.:!-]+добрый\s+(?:день|вечер)', 1, True),
         # "я [Имя]" (в контексте представления, но не в середине предложения)
         (r'^я\s+([А-ЯЁ][а-яё]+)', 1, True),
         # "это [Имя]" (в начале разговора)
@@ -449,31 +547,17 @@ def extract_operator_name_from_transcript(dialog_text: str, station_code: str = 
                 if _is_probable_russian_name(extracted_name):
                     logger.info(f"[exental_alert] Извлечено имя оператора из транскрипции: {extracted_name}")
                     return extracted_name
-    
-    # Дополнительная проверка: ищем последнее слово перед приветствиями (формат: "... имя добрый вечер")
-    # Это нужно для случаев типа "магазин рено пежо малышева евгения добрый вечер"
-    greeting_patterns = [
-        r'([А-ЯЁ][а-яё]{2,})\s+добрый\s+(?:день|вечер|утро)',
-        r'([А-ЯЁ][а-яё]{2,})\s+здравствуйте',
-    ]
-    for greeting_pattern in greeting_patterns:
-        matches = re.finditer(greeting_pattern, first_text_original, re.IGNORECASE)
-        for match in matches:
-            # Берем слово перед приветствием
-            word_before = match.group(1)
-            if word_before:
-                extracted_name = word_before.capitalize()
-                # Валидируем, что это похоже на имя (не название магазина/адрес)
-                if _is_probable_russian_name(extracted_name):
-                    # Дополнительная проверка: не должно быть частью названия магазина
-                    # Проверяем контекст - если перед именем есть слова типа "магазин", "рено" и т.д., это может быть имя
-                    start_pos = match.start()
-                    context_before = first_text_original[max(0, start_pos-50):start_pos].lower()
-                    # Если в контексте есть слова магазина, но имя валидно - принимаем
-                    if extracted_name.lower() not in ['малышева', 'рено', 'пежо', 'фокус', 'крауля']:
-                        logger.info(f"[exental_alert] Извлечено имя оператора из транскрипции (перед приветствием): {extracted_name}")
-                        return extracted_name
-    
+
+    # Дополнительная эвристика для естественных форм представления:
+    # "АБС, Александр. Добрый день." / "Александр, добрый день."
+    greeting_name = _extract_name_before_greeting(first_text_original)
+    if greeting_name:
+        logger.info(
+            "[exental_alert] Извлечено имя оператора из транскрипции "
+            f"(из контекста перед приветствием): {greeting_name}"
+        )
+        return greeting_name
+
     # Если не найдено, логируем для отладки (только если есть реплики)
     if manager_first_lines:
         logger.debug(f"[exental_alert] Имя оператора не найдено в транскрипции. Первые реплики: {first_text[:200] if first_text else 'пусто'}")
@@ -494,7 +578,8 @@ def get_operator_name(dialog_text: str = None, station_code: str = None) -> str:
     """
     # Проверяем настройку автоматического определения имени оператора
     auto_detect = getattr(config, 'AUTO_DETECT_OPERATOR_NAME', True)
-    
+
+    dialog_text = _normalize_dialog_speaker_labels(dialog_text) if dialog_text else dialog_text
     # Если автоматическое определение включено, пытаемся извлечь из транскрипции
     if auto_detect and dialog_text:
         name_from_transcript = extract_operator_name_from_transcript(dialog_text, station_code)
@@ -593,6 +678,7 @@ def parse_answers_and_form_message(analysis_text: str, station_code: str, phone_
     # ===== Точечные эвристики лишь для П3 (выявление потребностей) и П11 (инициативность) =====
     try:
         if dialog_text and checklist_titles:
+            dialog_text = _normalize_dialog_speaker_labels(dialog_text)
             text_lower = dialog_text.lower()
             # Реплики менеджера (используем определенного спикера)
             manager_lines = []
