@@ -684,13 +684,16 @@ class CallClassificationEngine:
 
         cleaned = cleaned.replace("\r\n", "\n").replace("\r", "\n")
 
-        # Приоритет: если модель вернула явный тег [РЕЗУЛЬТАТ: ...], берем только его содержимое.
-        tag_match = re.search(r"\[\s*РЕЗУЛЬТАТ\s*:\s*(.*?)\s*\]", cleaned, re.IGNORECASE | re.DOTALL)
+        # Приоритет: если модель вернула явный тег [ОБОСНОВАНИЕ: ...] или [РЕЗУЛЬТАТ: ...],
+        # берем только его содержимое.
+        tag_match = re.search(r"\[\s*ОБОСНОВАНИЕ\s*:\s*(.*?)\s*\]", cleaned, re.IGNORECASE | re.DOTALL)
+        if not tag_match:
+            tag_match = re.search(r"\[\s*РЕЗУЛЬТАТ\s*:\s*(.*?)\s*\]", cleaned, re.IGNORECASE | re.DOTALL)
         if tag_match:
             cleaned = tag_match.group(1).strip()
         else:
             label_patterns = [
-                r"(?:обоснование|reasoning|explanation|пояснение|comment|комментарий|why|here['’]s why)\s*[:\-]\s*(.+)$",
+                r"(?:обоснование|reasoning|explanation|explain|объяснение|пояснение|comment|комментарий|why|here['’]s why)\s*[:\-]\s*(.+)$",
                 r"(?:итог|summary|вывод)\s*[:\-]\s*(.+)$",
             ]
             for pattern in label_patterns:
@@ -703,7 +706,7 @@ class CallClassificationEngine:
         cleaned = re.sub(
             r"(?is)\b(?:классификация звонка|classification(?: of the call)?|тип звонка|call type|"
             r"целевой звонок\??|target call\??|категория|category)\b\s*[:\-]\s*.*?(?=(?:\b(?:обоснование|"
-            r"reasoning|explanation|пояснение|comment|комментарий|why|here['’]s why)\b\s*[:\-])|$)",
+            r"reasoning|explanation|explain|объяснение|пояснение|comment|комментарий|why|here['’]s why)\b\s*[:\-])|$)",
             " ",
             cleaned,
         )
@@ -711,6 +714,12 @@ class CallClassificationEngine:
         # Очищаем markdown и лишние маркеры списков.
         cleaned = cleaned.replace("**", " ").replace("__", " ").replace("`", " ")
         cleaned = re.sub(r"(?m)^\s*[-*•]\s*", "", cleaned)
+        cleaned = re.sub(
+            r"(?i)\b(?:in|out)(?:\.[a-z0-9_]+)+\b\s*(?=(?:обоснование|reasoning|explanation|объяснение|why)\s*:)",
+            " ",
+            cleaned,
+        )
+        cleaned = re.sub(r"(?is)\b(?:this conversation|based on the provided|the transcript shows|the call is)\b.*", " ", cleaned)
         cleaned = re.sub(r"\s+", " ", cleaned).strip()
         cleaned = re.sub(r"\s+([,.;:!?])", r"\1", cleaned)
 
@@ -730,6 +739,14 @@ class CallClassificationEngine:
         text = self._clean_llm_text(raw_text)
         if not text:
             return None, None
+
+        # Формат 0: тегированный ответ [КАТЕГОРИЯ:...] + [ОБОСНОВАНИЕ:...]
+        tag_cat_match = re.search(r"\[\s*КАТЕГОРИЯ\s*:\s*([^\]]+)\]", text, re.IGNORECASE)
+        if tag_cat_match:
+            cat = self._extract_category_from_text(tag_cat_match.group(1))
+            if cat in self.NEW_CATEGORIES:
+                normalized = self._normalize_reasoning_text(text)
+                return cat, normalized or self._clean_llm_text(text)
 
         # Формат 1: CODE|reasoning
         if "|" in text:
@@ -978,6 +995,9 @@ class CallClassificationEngine:
     def safe_save_excel(self, results, output_file):
         """Безопасное сохранение Excel файла с обработкой случая, когда файл открыт"""
         df = pd.DataFrame(results)
+
+        if not df.empty and 'Обоснование' in df.columns:
+            df['Обоснование'] = df['Обоснование'].apply(self._normalize_reasoning_text)
         
         # Краткие названия для отчёта (по коду станции из файла — не зависят от полных имён в ЛК)
         if not df.empty and 'Станция' in df.columns:
