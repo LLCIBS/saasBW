@@ -22,6 +22,21 @@ logger = logging.getLogger(__name__)
 MAX_API = "https://platform-api.max.ru"
 
 
+def _file_multipart_mime(path: str) -> str:
+    """
+    MIME для поля multipart при загрузке ``type=file`` на CDN MAX.
+    Для .xlsx/.xls задаём явно — иначе клиент может показать вложение как generic file.
+    См. https://dev.max.ru/docs-api/methods/POST/uploads (multipart, поле ``data``).
+    """
+    ext = os.path.splitext(path)[1].lower()
+    if ext == ".xlsx":
+        return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    if ext == ".xls":
+        return "application/vnd.ms-excel"
+    g = mimetypes.guess_type(path)[0]
+    return g or "application/octet-stream"
+
+
 def _audio_multipart_mime(path: str) -> str:
     """
     MIME для поля multipart при загрузке аудио на CDN MAX.
@@ -108,6 +123,16 @@ def _extract_upload_token(upload_response_body: Any) -> str:
     raise ValueError(f"Не удалось извлечь token из ответа загрузки: {upload_response_body!r}")
 
 
+def _post_file_multipart(upload_url: str, path: str, mime_type: str, timeout_upload: int) -> requests.Response:
+    filename = os.path.basename(path)
+    with open(path, "rb") as f:
+        return requests.post(
+            upload_url,
+            files={"data": (filename, f, mime_type)},
+            timeout=timeout_upload,
+        )
+
+
 def _upload_to_slot(
     access_token: str,
     upload_url: str,
@@ -115,33 +140,22 @@ def _upload_to_slot(
     timeout_upload: int = 300,
 ) -> str:
     """
-    Загрузка файла на fu.oneme.ru (type=file, clientType=10).
-    CDN принимает resumable upload: raw binary + Content-Range.
-    Multipart даёт 403 «There is no file in request» на этом CDN.
+    Загрузка файла для ``POST /uploads?type=file``.
+
+    По документации MAX загрузка делается multipart с полем ``data`` (как curl ``-F data=@file``).
+    Ранее использовался raw + ``Content-Disposition: filename="..."`` — в клиенте имя
+    отображалось в кавычках, Excel не распознавался как таблица.
     """
     path = os.path.abspath(file_path)
-    filename = os.path.basename(path)
-    with open(path, "rb") as f:
-        data = f.read()
-    size = len(data)
-    r2 = requests.post(
-        upload_url,
-        data=data,
-        headers={
-            "Content-Type": "application/octet-stream",
-            "Content-Disposition": f'attachment; filename="{filename}"',
-            "Content-Length": str(size),
-            "Content-Range": f"bytes 0-{size - 1}/{size}",
-        },
-        timeout=timeout_upload,
-    )
+    mime_type = _file_multipart_mime(path)
+    r2 = _post_file_multipart(upload_url, path, mime_type, timeout_upload)
     if not r2.ok:
-        logger.warning("MAX upload to slot: %s %s", r2.status_code, r2.text[:500])
+        logger.warning("MAX upload file multipart: %s %s", r2.status_code, r2.text[:500])
         r2.raise_for_status()
     try:
         body = r2.json()
     except json.JSONDecodeError as e:
-        raise ValueError(f"MAX: не JSON после загрузки: {r2.text[:500]}") from e
+        raise ValueError(f"MAX: не JSON после загрузки файла: {r2.text[:500]}") from e
     return _extract_upload_token(body)
 
 
@@ -381,9 +395,19 @@ def send_excel_report_to_max(
     file_path: str,
     caption: str,
 ) -> None:
+    """
+    Отчёт Excel (.xlsx) в MAX: ``POST /uploads?type=file`` + multipart поле ``data``
+    и корректный MIME для таблиц (см. ``_file_multipart_mime``), затем ``POST /messages``.
+    """
     chat_id = int(str(chat_id_raw).strip())
     file_token = upload_file_get_token(access_token, file_path)
-    time.sleep(1.0)
+    logger.info(
+        "MAX: отчёт загружен на CDN, token получен (chat=%s, file=%s)",
+        chat_id,
+        os.path.basename(file_path),
+    )
+    # Документация MAX: после загрузки подождать — иначе attachment.not.ready на крупных файлах
+    time.sleep(2.0)
     send_message_with_file(access_token, chat_id, file_token, caption)
 
 
