@@ -755,6 +755,15 @@
                         </div>
                     </div>
                     <div class="row g-2 mb-2">
+                        <div class="col-md-12">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="empMapVerifySsl" checked>
+                                <label class="form-check-label" for="empMapVerifySsl">Проверять SSL-сертификат</label>
+                            </div>
+                            <div class="small text-muted">Отключайте только для доверенных HTTPS-адресов по IP или с самоподписанным сертификатом.</div>
+                        </div>
+                    </div>
+                    <div class="row g-2 mb-2">
                         <div class="col-md-3">
                             <label class="form-label">Путь к массиву (items_path)</label>
                             <input type="text" class="form-control form-control-sm" id="empMapItemsPath" placeholder="напр. data.items или пусто">
@@ -1149,6 +1158,7 @@ function defaultEmployeeMappingSource() {
             params: {},
             json_body: null,
             timeout_sec: 30,
+            verify_ssl: true,
             auth_type: 'none',
             auth_token: '',
             auth_username: '',
@@ -1302,6 +1312,7 @@ function loadEmployeeMappingFields() {
     const jbr = document.getElementById('empMapJsonBodyRow');
     if (jbr) jbr.classList.toggle('d-none', mth !== 'POST');
     document.getElementById('empMapTimeout').value = req.timeout_sec || 30;
+    document.getElementById('empMapVerifySsl').checked = req.verify_ssl !== false;
     document.getElementById('empMapItemsPath').value = map.items_path || '';
     document.getElementById('empMapExtField').value = map.extension_field || 'extension';
     document.getElementById('empMapEmpField').value = map.employee_field || 'employee';
@@ -1350,6 +1361,7 @@ function gatherEmployeeMappingPayloadFromDom() {
         req.json_body = null;
     }
     req.timeout_sec = parseInt(document.getElementById('empMapTimeout').value, 10) || 30;
+    req.verify_ssl = document.getElementById('empMapVerifySsl').checked;
     req.auth_type = document.getElementById('empMapAuthType').value;
     req.auth_token = document.getElementById('empMapToken').value;
     req.auth_username = document.getElementById('empMapBasicUser').value;

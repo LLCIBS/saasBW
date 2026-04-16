@@ -52,6 +52,7 @@ def default_config_template():
                 'params': {},
                 'json_body': None,
                 'timeout_sec': 30,
+                'verify_ssl': True,
                 'auth_type': 'none',
                 'auth_token': '',
                 'auth_username': '',

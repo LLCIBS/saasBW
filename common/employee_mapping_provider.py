@@ -11,6 +11,7 @@ import re
 from typing import Any, Dict, List, Optional, Tuple
 
 import requests
+from requests.packages.urllib3.exceptions import InsecureRequestWarning
 
 logger = logging.getLogger(__name__)
 
@@ -88,6 +89,7 @@ def fetch_generic_rest_json(
 
     timeout = int(request_config.get('timeout_sec') or DEFAULT_TIMEOUT)
     timeout = max(5, min(timeout, 120))
+    verify_ssl = bool(request_config.get('verify_ssl', True))
 
     headers = dict(request_config.get('headers') or {})
     params = dict(request_config.get('params') or {})
@@ -111,9 +113,11 @@ def fetch_generic_rest_json(
         auth = (str(u), str(p))
 
     try:
+        if not verify_ssl:
+            requests.packages.urllib3.disable_warnings(category=InsecureRequestWarning)
         if method == 'GET':
             resp = requests.get(
-                url, headers=headers, params=params, timeout=timeout, auth=auth,
+                url, headers=headers, params=params, timeout=timeout, auth=auth, verify=verify_ssl,
             )
         else:
             resp = requests.post(
@@ -123,6 +127,7 @@ def fetch_generic_rest_json(
                 json=json_body if json_body is not None else None,
                 timeout=timeout,
                 auth=auth,
+                verify=verify_ssl,
             )
     except requests.RequestException as exc:
         logger.warning('employee_mapping HTTP error: %s', exc)
