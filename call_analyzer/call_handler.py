@@ -141,6 +141,16 @@ def transcribe_and_analyze(file_path: Path, station_code: str, original_station_
         logger.info(f"Файл {filename} уже обработан (результат: {result_file}). Пропускаем обработку.")
         return
 
+    # 0.1 Актуальная привязка номеров (TTL + перечитать из БД в память профиля)
+    try:
+        try:
+            from call_analyzer.employee_mapping_refresh import refresh_employee_mapping_if_needed
+        except ImportError:
+            from employee_mapping_refresh import refresh_employee_mapping_if_needed
+        refresh_employee_mapping_if_needed()
+    except Exception as _emp_exc:
+        logger.debug("refresh_employee_mapping_if_needed: %s", _emp_exc)
+
     # 1. Сразу парсим phone_number, station_code_parsed, call_time
     phone_number, station_code_parsed, call_time = parse_filename(filename)
 

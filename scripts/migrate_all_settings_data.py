@@ -223,7 +223,8 @@ def migrate_all_settings_data():
                         emp_ext = UserEmployeeExtension(
                             user_id=user.id,
                             extension=str(extension),
-                            employee=str(employee)
+                            employee=str(employee),
+                            origin_type='manual',
                         )
                         db.session.add(emp_ext)
                         stats['employee_extensions'] += 1

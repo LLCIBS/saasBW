@@ -704,8 +704,128 @@
                     <i class="fas fa-user-tag"></i>
                     <span>Привязка внутренних номеров к сотрудникам</span>
                 </div>
+
+                <div class="p-3 border rounded mb-3 bg-light" id="employeeMappingSourceWrap">
+                    <div class="form-card-title mb-2" style="font-size:1rem;">
+                        <i class="fas fa-plug"></i> Внешний источник (REST / JSON)
+                    </div>
+                    <div class="row g-2 mb-2">
+                        <div class="col-md-4">
+                            <label class="form-label">Режим</label>
+                            <select class="form-select form-select-sm" id="empMapMode">
+                                <option value="manual">Только вручную</option>
+                                <option value="sync_replace">Из источника (полная замена таблицы)</option>
+                                <option value="sync_merge_manual_priority">Источник + свои строки (ручные не перезаписываются)</option>
+                                <option value="sync_only">Только источник (таблица только для просмотра)</option>
+                            </select>
+                        </div>
+                        <div class="col-md-2 d-flex align-items-end">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="empMapEnabled">
+                                <label class="form-check-label" for="empMapEnabled">Включить запросы</label>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Интервал обновления (TTL), сек</label>
+                            <input type="number" class="form-control form-control-sm" id="empMapTtl" min="60" max="86400" value="300">
+                        </div>
+                        <div class="col-md-3 small text-muted d-flex align-items-end" id="empMapStatusLine"></div>
+                    </div>
+                    <div class="row g-2 mb-2 d-none" id="empMapJsonBodyRow">
+                        <div class="col-md-12">
+                            <label class="form-label">Тело POST (JSON, опционально)</label>
+                            <textarea class="form-control form-control-sm font-monospace" id="empMapJsonBody" rows="2" placeholder='{"filter":"all"}'></textarea>
+                        </div>
+                    </div>
+                    <div class="row g-2 mb-2">
+                        <div class="col-md-8">
+                            <label class="form-label">URL</label>
+                            <input type="text" class="form-control form-control-sm" id="empMapUrl" placeholder="https://...">
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label">Метод</label>
+                            <select class="form-select form-select-sm" id="empMapMethod">
+                                <option value="GET">GET</option>
+                                <option value="POST">POST</option>
+                            </select>
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label">Таймаут, сек</label>
+                            <input type="number" class="form-control form-control-sm" id="empMapTimeout" min="5" max="120" value="30">
+                        </div>
+                    </div>
+                    <div class="row g-2 mb-2">
+                        <div class="col-md-3">
+                            <label class="form-label">Путь к массиву (items_path)</label>
+                            <input type="text" class="form-control form-control-sm" id="empMapItemsPath" placeholder="напр. data.items или пусто">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Поле добавочного</label>
+                            <input type="text" class="form-control form-control-sm" id="empMapExtField" value="extension">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Поле ФИО</label>
+                            <input type="text" class="form-control form-control-sm" id="empMapEmpField" value="employee">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Авторизация</label>
+                            <select class="form-select form-select-sm" id="empMapAuthType">
+                                <option value="none">Нет</option>
+                                <option value="bearer">Bearer token</option>
+                                <option value="basic">Basic</option>
+                                <option value="header">Заголовок</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="row g-2 mb-2" id="empMapAuthBearer">
+                        <div class="col-md-8">
+                            <label class="form-label">Токен (не показывается после сохранения)</label>
+                            <input type="password" class="form-control form-control-sm" id="empMapToken" placeholder="" autocomplete="off">
+                        </div>
+                    </div>
+                    <div class="row g-2 mb-2 d-none" id="empMapAuthBasic">
+                        <div class="col-md-4">
+                            <label class="form-label">Логин</label>
+                            <input type="text" class="form-control form-control-sm" id="empMapBasicUser">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Пароль</label>
+                            <input type="password" class="form-control form-control-sm" id="empMapBasicPass" autocomplete="off">
+                        </div>
+                    </div>
+                    <div class="row g-2 mb-2 d-none" id="empMapAuthHeader">
+                        <div class="col-md-4">
+                            <label class="form-label">Имя заголовка</label>
+                            <input type="text" class="form-control form-control-sm" id="empMapHdrName" placeholder="X-API-Key">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Значение</label>
+                            <input type="password" class="form-control form-control-sm" id="empMapHdrVal" autocomplete="off">
+                        </div>
+                    </div>
+                    <div class="row g-2 mb-2">
+                        <div class="col-md-12">
+                            <label class="form-label">Оставить только цифры в добавочном</label>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="empMapStripDigits">
+                                <label class="form-check-label" for="empMapStripDigits">strip_non_digits (для телефонов в поле добавочного)</label>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="d-flex flex-wrap gap-2">
+                        <button type="button" class="btn btn-sm btn-outline-secondary" id="btnEmpMapTest">
+                            <i class="fas fa-vial"></i> Проверить подключение
+                        </button>
+                        <button type="button" class="btn btn-sm btn-primary" id="btnEmpMapSync">
+                            <i class="fas fa-sync"></i> Синхронизировать сейчас
+                        </button>
+                    </div>
+                    <div class="small text-muted mt-2" id="empMapHelp">
+                        Перед разбором звонка воркер обновляет кэш по TTL (если источник включён). При ошибке API используется последний успешный набор привязок.
+                    </div>
+                </div>
                 
-                <div class="row g-2 align-items-end mb-3">
+                <div class="row g-2 align-items-end mb-3" id="empManualAddRow">
                     <div class="col-md-4">
                         <label class="form-label">Код станции/подстанции</label>
                         <input type="text" id="extCode" class="form-control" placeholder="например: 202 или 403">
@@ -715,7 +835,7 @@
                         <input type="text" id="extEmployee" class="form-control" placeholder="например: Иванов">
                     </div>
                     <div class="col-md-2">
-                        <button class="btn btn-outline-primary w-100" type="button" onclick="addExtension()">
+                        <button class="btn btn-outline-primary w-100" type="button" id="btnAddExtension">
                             <i class="fas fa-plus"></i> Добавить
                         </button>
                     </div>
@@ -917,7 +1037,10 @@ document.addEventListener('DOMContentLoaded', async function() {
         // Загружаем коды станций
         loadStationCodes(configData.nizh_station_codes || []);
         // Привязки сотрудников
-        renderExtensions(configData.employee_by_extension || {});
+        initEmployeeExtensionsFromConfig();
+        renderExtensions();
+        loadEmployeeMappingFields();
+        bindEmployeeMappingUI();
         
     } catch (error) {
         console.error('Ошибка загрузки конфигурации:', error);
@@ -1013,46 +1136,307 @@ function removeStationCode(code) {
     loadStationCodes(configData.nizh_station_codes);
 }
 
-function renderExtensions(map) {
+function defaultEmployeeMappingSource() {
+    return {
+        mode: 'manual',
+        provider_type: 'generic_rest_json',
+        enabled: false,
+        refresh_ttl_seconds: 300,
+        request_config: {
+            url: '',
+            method: 'GET',
+            headers: {},
+            params: {},
+            json_body: null,
+            timeout_sec: 30,
+            auth_type: 'none',
+            auth_token: '',
+            auth_username: '',
+            auth_password: '',
+            auth_header_name: '',
+            auth_header_value: ''
+        },
+        mapping_config: {
+            items_path: '',
+            extension_field: 'extension',
+            employee_field: 'employee'
+        },
+        normalize_config: {
+            strip_non_digits: false,
+            max_extension_len: 20
+        }
+    };
+}
+
+function initEmployeeExtensionsFromConfig() {
+    const m = configData.employee_by_extension || {};
+    if (!configData.employee_extensions_detail || configData.employee_extensions_detail.length === 0) {
+        configData.employee_extensions_detail = Object.keys(m).map(k => ({
+            extension: k,
+            employee: m[k],
+            origin_type: 'manual'
+        }));
+    }
+    if (!configData.employee_mapping_source) {
+        configData.employee_mapping_source = defaultEmployeeMappingSource();
+    }
+    rebuildEmployeeByExtensionFromDetail();
+}
+
+function rebuildEmployeeByExtensionFromDetail() {
+    const d = configData.employee_extensions_detail || [];
+    const map = {};
+    d.forEach(r => {
+        if (r.extension && r.employee) map[r.extension] = r.employee;
+    });
     configData.employee_by_extension = map;
+}
+
+function getEmployeeMappingMode() {
+    return (configData.employee_mapping_source && configData.employee_mapping_source.mode) || 'manual';
+}
+
+function renderExtensions() {
+    rebuildEmployeeByExtensionFromDetail();
     const container = document.getElementById('extensionsContainer');
-    const entries = Object.entries(map);
-    if (entries.length === 0) {
+    const mode = getEmployeeMappingMode();
+    const rows = configData.employee_extensions_detail || [];
+    if (rows.length === 0) {
         container.innerHTML = '<div class="text-muted">Пока нет привязок</div>';
+        updateExtensionAddRowVisibility();
         return;
     }
-    let html = '<table class="table table-sm table-bordered align-middle"><thead><tr><th>Код</th><th>Сотрудник</th><th style="width:80px"></th></tr></thead><tbody>';
-    for (const [ext, name] of entries) {
+    let html = '<table class="table table-sm table-bordered align-middle"><thead><tr><th>Код</th><th>Сотрудник</th><th>Источник</th><th style="width:90px"></th></tr></thead><tbody>';
+    rows.forEach((row, idx) => {
+        const origin = row.origin_type || 'manual';
+        const ro = (mode === 'sync_only' || mode === 'sync_replace') || (mode === 'sync_merge_manual_priority' && origin === 'sync');
+        const esc = (s) => String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
         html += `<tr>
-            <td><input class="form-control form-control-sm" value="${ext}" disabled></td>
-            <td><input class="form-control form-control-sm" value="${name}" data-ext="${ext}" onchange="onEmployeeChange(this)"></td>
-            <td><button class="btn btn-sm btn-outline-danger" onclick="removeExtension('${ext}')"><i class="fas fa-trash"></i></button></td>
+            <td><input class="form-control form-control-sm" value="${esc(row.extension)}" disabled></td>
+            <td><input class="form-control form-control-sm emp-name-input" data-idx="${idx}" value="${esc(row.employee)}" ${ro ? 'disabled' : ''}></td>
+            <td><span class="badge ${origin === 'manual' ? 'bg-secondary' : 'bg-info'}">${origin === 'manual' ? 'ручная' : 'синхр.'}</span></td>
+            <td>${ro ? '' : `<button type="button" class="btn btn-sm btn-outline-danger" data-remove-idx="${idx}"><i class="fas fa-trash"></i></button>`}</td>
         </tr>`;
-    }
+    });
     html += '</tbody></table>';
     container.innerHTML = html;
+    container.querySelectorAll('.emp-name-input').forEach(inp => {
+        inp.addEventListener('change', function() {
+            const i = parseInt(this.getAttribute('data-idx'), 10);
+            if (configData.employee_extensions_detail[i]) {
+                configData.employee_extensions_detail[i].employee = this.value;
+                rebuildEmployeeByExtensionFromDetail();
+            }
+        });
+    });
+    container.querySelectorAll('[data-remove-idx]').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const i = parseInt(this.getAttribute('data-remove-idx'), 10);
+            removeExtensionByIndex(i);
+        });
+    });
+    updateExtensionAddRowVisibility();
+}
+
+function updateExtensionAddRowVisibility() {
+    const mode = getEmployeeMappingMode();
+    const row = document.getElementById('empManualAddRow');
+    if (!row) return;
+    if (mode === 'sync_only' || mode === 'sync_replace') {
+        row.classList.add('d-none');
+    } else {
+        row.classList.remove('d-none');
+    }
 }
 
 function addExtension() {
+    const mode = getEmployeeMappingMode();
+    if (mode === 'sync_only') {
+        showAlert('В режиме «Только источник» добавление строк вручную отключено.', 'warning');
+        return;
+    }
     const code = document.getElementById('extCode').value.trim();
     const emp = document.getElementById('extEmployee').value.trim();
     if (!code || !emp) return;
-    if (!configData.employee_by_extension) configData.employee_by_extension = {};
-    configData.employee_by_extension[code] = emp;
+    if (!configData.employee_extensions_detail) configData.employee_extensions_detail = [];
+    const exists = configData.employee_extensions_detail.some(r => r.extension === code);
+    if (exists) {
+        showAlert('Такой код уже есть', 'warning');
+        return;
+    }
+    configData.employee_extensions_detail.push({ extension: code, employee: emp, origin_type: 'manual' });
     document.getElementById('extCode').value = '';
     document.getElementById('extEmployee').value = '';
-    renderExtensions(configData.employee_by_extension);
+    renderExtensions();
 }
 
-function onEmployeeChange(input) {
-    const code = input.getAttribute('data-ext');
-    configData.employee_by_extension[code] = input.value;
+function removeExtensionByIndex(idx) {
+    const mode = getEmployeeMappingMode();
+    if (!configData.employee_extensions_detail || idx < 0) return;
+    const row = configData.employee_extensions_detail[idx];
+    if (!row) return;
+    if (mode === 'sync_merge_manual_priority' && row.origin_type === 'sync') {
+        showAlert('Строка из источника удаляется только повторной синхронизацией (или сменой режима).', 'info');
+        return;
+    }
+    configData.employee_extensions_detail.splice(idx, 1);
+    renderExtensions();
 }
 
-function removeExtension(code) {
-    if (!configData.employee_by_extension) return;
-    delete configData.employee_by_extension[code];
-    renderExtensions(configData.employee_by_extension);
+function loadEmployeeMappingFields() {
+    const s = configData.employee_mapping_source || defaultEmployeeMappingSource();
+    const req = s.request_config || {};
+    const map = s.mapping_config || {};
+    const norm = s.normalize_config || {};
+    document.getElementById('empMapMode').value = s.mode || 'manual';
+    document.getElementById('empMapEnabled').checked = !!s.enabled;
+    document.getElementById('empMapTtl').value = s.refresh_ttl_seconds || 300;
+    document.getElementById('empMapUrl').value = req.url || '';
+    const mth = (req.method || 'GET').toUpperCase() === 'POST' ? 'POST' : 'GET';
+    document.getElementById('empMapMethod').value = mth;
+    const jb = req.json_body;
+    const jbEl = document.getElementById('empMapJsonBody');
+    if (jbEl) {
+        jbEl.value = jb ? (typeof jb === 'string' ? jb : JSON.stringify(jb, null, 0)) : '';
+    }
+    const jbr = document.getElementById('empMapJsonBodyRow');
+    if (jbr) jbr.classList.toggle('d-none', mth !== 'POST');
+    document.getElementById('empMapTimeout').value = req.timeout_sec || 30;
+    document.getElementById('empMapItemsPath').value = map.items_path || '';
+    document.getElementById('empMapExtField').value = map.extension_field || 'extension';
+    document.getElementById('empMapEmpField').value = map.employee_field || 'employee';
+    document.getElementById('empMapAuthType').value = req.auth_type || 'none';
+    document.getElementById('empMapToken').value = '';
+    document.getElementById('empMapBasicUser').value = req.auth_username || '';
+    document.getElementById('empMapBasicPass').value = '';
+    document.getElementById('empMapHdrName').value = req.auth_header_name || '';
+    document.getElementById('empMapHdrVal').value = '';
+    document.getElementById('empMapStripDigits').checked = !!norm.strip_non_digits;
+    const st = document.getElementById('empMapStatusLine');
+    if (st) {
+        const ok = s.last_sync_ok;
+        const err = s.last_sync_error || '';
+        const cnt = s.last_records_count;
+        let t = '';
+        if (s.last_success_at) t += 'Последний успех: ' + s.last_success_at + '. ';
+        if (ok === false && err) t += 'Ошибка: ' + err + '. ';
+        if (cnt != null) t += 'Записей: ' + cnt + '.';
+        st.textContent = t;
+    }
+    updateAuthPanels();
+    updateExtensionAddRowVisibility();
+}
+
+function updateAuthPanels() {
+    const t = document.getElementById('empMapAuthType').value;
+    document.getElementById('empMapAuthBearer').classList.toggle('d-none', t !== 'bearer');
+    document.getElementById('empMapAuthBasic').classList.toggle('d-none', t !== 'basic');
+    document.getElementById('empMapAuthHeader').classList.toggle('d-none', t !== 'header');
+}
+
+function gatherEmployeeMappingPayloadFromDom() {
+    const s = configData.employee_mapping_source || defaultEmployeeMappingSource();
+    const req = { ...(s.request_config || {}) };
+    req.url = document.getElementById('empMapUrl').value.trim();
+    req.method = document.getElementById('empMapMethod').value;
+    const jbRaw = (document.getElementById('empMapJsonBody') || {}).value;
+    if (req.method === 'POST' && jbRaw && String(jbRaw).trim()) {
+        try {
+            req.json_body = JSON.parse(String(jbRaw).trim());
+        } catch (e) {
+            req.json_body = null;
+        }
+    } else {
+        req.json_body = null;
+    }
+    req.timeout_sec = parseInt(document.getElementById('empMapTimeout').value, 10) || 30;
+    req.auth_type = document.getElementById('empMapAuthType').value;
+    req.auth_token = document.getElementById('empMapToken').value;
+    req.auth_username = document.getElementById('empMapBasicUser').value;
+    req.auth_password = document.getElementById('empMapBasicPass').value;
+    req.auth_header_name = document.getElementById('empMapHdrName').value.trim();
+    req.auth_header_value = document.getElementById('empMapHdrVal').value;
+    return {
+        mode: document.getElementById('empMapMode').value,
+        provider_type: 'generic_rest_json',
+        enabled: document.getElementById('empMapEnabled').checked,
+        refresh_ttl_seconds: parseInt(document.getElementById('empMapTtl').value, 10) || 300,
+        request_config: req,
+        mapping_config: {
+            items_path: document.getElementById('empMapItemsPath').value.trim(),
+            extension_field: document.getElementById('empMapExtField').value.trim() || 'extension',
+            employee_field: document.getElementById('empMapEmpField').value.trim() || 'employee'
+        },
+        normalize_config: {
+            strip_non_digits: document.getElementById('empMapStripDigits').checked,
+            max_extension_len: 20
+        }
+    };
+}
+
+function bindEmployeeMappingUI() {
+    const btnAdd = document.getElementById('btnAddExtension');
+    if (btnAdd) btnAdd.addEventListener('click', () => addExtension());
+    const modeEl = document.getElementById('empMapMode');
+    if (modeEl) {
+        modeEl.addEventListener('change', function() {
+            if (!configData.employee_mapping_source) configData.employee_mapping_source = defaultEmployeeMappingSource();
+            configData.employee_mapping_source.mode = this.value;
+            renderExtensions();
+        });
+    }
+    const methodEl = document.getElementById('empMapMethod');
+    if (methodEl) {
+        methodEl.addEventListener('change', function() {
+            const jbr = document.getElementById('empMapJsonBodyRow');
+            if (jbr) jbr.classList.toggle('d-none', this.value !== 'POST');
+        });
+    }
+    const authEl = document.getElementById('empMapAuthType');
+    if (authEl) authEl.addEventListener('change', updateAuthPanels);
+    const btnTest = document.getElementById('btnEmpMapTest');
+    if (btnTest) btnTest.addEventListener('click', testEmployeeMapping);
+    const btnSync = document.getElementById('btnEmpMapSync');
+    if (btnSync) btnSync.addEventListener('click', syncEmployeeMappingNow);
+}
+
+async function testEmployeeMapping() {
+    try {
+        const payload = gatherEmployeeMappingPayloadFromDom();
+        const res = await fetch('/api/config/employee_mapping/test', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ employee_mapping_source: payload })
+        });
+        const data = await res.json();
+        if (data.success) {
+            showAlert('Проверка OK, разобрано записей: ' + data.total, 'success');
+            console.log('sample', data.sample);
+        } else {
+            showAlert('Ошибка: ' + (data.error || 'неизвестно'), 'danger');
+        }
+    } catch (e) {
+        showAlert('Ошибка: ' + e.message, 'danger');
+    }
+}
+
+async function syncEmployeeMappingNow() {
+    try {
+        const res = await fetch('/api/config/employee_mapping/sync', { method: 'POST' });
+        const data = await res.json();
+        if (data.success) {
+            showAlert('Синхронизировано записей: ' + (data.count || 0), 'success');
+            const r2 = await fetch('/api/config/load');
+            configData = await r2.json();
+            initEmployeeExtensionsFromConfig();
+            renderExtensions();
+            loadEmployeeMappingFields();
+        } else {
+            showAlert(data.message || 'Ошибка синхронизации', 'danger');
+        }
+    } catch (e) {
+        showAlert('Ошибка: ' + e.message, 'danger');
+    }
 }
 
 function updateFilenameUI() {
@@ -1255,6 +1639,15 @@ async function saveAllConfig() {
             : document.getElementById('baseRecordsPath').value;
 
         ensureFilenameConfig();
+        configData.employee_mapping_source = gatherEmployeeMappingPayloadFromDom();
+        rebuildEmployeeByExtensionFromDetail();
+        const manualOnly = {};
+        const emMode = configData.employee_mapping_source?.mode;
+        if (emMode === 'sync_merge_manual_priority') {
+            (configData.employee_extensions_detail || []).forEach(r => {
+                if (r.origin_type === 'manual') manualOnly[r.extension] = r.employee;
+            });
+        }
         
         // Собираем все данные в один объект
         const fullPayload = {
@@ -1309,7 +1702,9 @@ async function saveAllConfig() {
                 station_chat_ids: configData.station_chat_ids,
                 station_mapping: configData.station_mapping
             },
-            employee_by_extension: configData.employee_by_extension || {}
+            employee_by_extension: configData.employee_by_extension || {},
+            employee_mapping_source: configData.employee_mapping_source || null,
+            employee_manual_by_extension: emMode === 'sync_merge_manual_priority' ? manualOnly : undefined
         };
 
         const response = await fetch('/api/config/save_all', {

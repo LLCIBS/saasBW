@@ -548,6 +548,39 @@ class UserStationMaxChatId(db.Model):
         return f'<UserStationMaxChatId user_id={self.user_id} station={self.station_code} chat_id={self.chat_id}>'
 
 
+class UserEmployeeMappingSource(db.Model):
+    """Настройки внешнего источника привязки внутренних номеров к сотрудникам (REST/JSON)."""
+    __tablename__ = 'user_employee_mapping_sources'
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), unique=True, nullable=False, index=True)
+
+    # manual | sync_replace | sync_merge_manual_priority | sync_only
+    mode = db.Column(db.String(40), nullable=False, default='manual')
+    provider_type = db.Column(db.String(40), nullable=False, default='generic_rest_json')
+    enabled = db.Column(db.Boolean, default=False, nullable=False)
+    refresh_ttl_seconds = db.Column(db.Integer, nullable=False, default=300)
+
+    # URL, method, headers, query, timeout, auth (JSON)
+    request_config = db.Column(JSONB, nullable=True)
+    mapping_config = db.Column(JSONB, nullable=True)
+    normalize_config = db.Column(JSONB, nullable=True)
+
+    last_success_at = db.Column(db.DateTime, nullable=True)
+    last_attempt_at = db.Column(db.DateTime, nullable=True)
+    last_sync_ok = db.Column(db.Boolean, nullable=True)
+    last_sync_error = db.Column(db.String(500), nullable=True)
+    last_records_count = db.Column(db.Integer, nullable=True)
+
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    user = db.relationship('User', backref=db.backref('employee_mapping_source', uselist=False, cascade='all, delete-orphan'))
+
+    def __repr__(self):
+        return f'<UserEmployeeMappingSource user_id={self.user_id} mode={self.mode} enabled={self.enabled}>'
+
+
 class UserEmployeeExtension(db.Model):
     """Модель для маппинга расширений к сотрудникам"""
     __tablename__ = 'user_employee_extensions'
@@ -556,6 +589,10 @@ class UserEmployeeExtension(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
     extension = db.Column(db.String(20), nullable=False)  # номер расширения
     employee = db.Column(db.String(200), nullable=False)  # имя сотрудника
+    # manual — введено вручную; sync — пришло из внешнего источника
+    origin_type = db.Column(db.String(20), nullable=False, default='manual')
+    external_ref = db.Column(db.String(120), nullable=True)
+    synced_at = db.Column(db.DateTime, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
     

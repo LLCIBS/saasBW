@@ -62,6 +62,7 @@ from database.models import (
     UserStationChatId,
     UserStationMaxChatId,
     UserEmployeeExtension,
+    UserEmployeeMappingSource,
     ReportSchedule,
     FinetuneSample,
     FinetuneJob,
@@ -241,6 +242,115 @@ def _get_or_create_user_config_record(actual_user):
     return cfg
 
 
+def _employee_mapping_source_defaults():
+    return deepcopy(default_config_template()['employee_mapping_source'])
+
+
+def _serialize_employee_mapping_source_row(row):
+    out = _employee_mapping_source_defaults()
+    if not row:
+        return out
+    out['mode'] = row.mode or 'manual'
+    out['provider_type'] = row.provider_type or 'generic_rest_json'
+    out['enabled'] = bool(row.enabled)
+    out['refresh_ttl_seconds'] = int(row.refresh_ttl_seconds or 300)
+    prev = dict(row.request_config or {})
+    req = {**out['request_config'], **prev}
+    req['auth_token'] = ''
+    req['auth_token_set'] = bool((prev.get('auth_token') or '').strip())
+    req['auth_password'] = ''
+    req['auth_password_set'] = bool((prev.get('auth_password') or '').strip())
+    req['auth_header_value'] = ''
+    req['auth_header_value_set'] = bool((prev.get('auth_header_value') or '').strip())
+    out['request_config'] = req
+    out['mapping_config'] = {**out['mapping_config'], **dict(row.mapping_config or {})}
+    out['normalize_config'] = {**out['normalize_config'], **dict(row.normalize_config or {})}
+    ls = getattr(row, 'last_success_at', None)
+    la = getattr(row, 'last_attempt_at', None)
+    out['last_success_at'] = ls.isoformat() if ls else None
+    out['last_attempt_at'] = la.isoformat() if la else None
+    out['last_sync_ok'] = getattr(row, 'last_sync_ok', None)
+    out['last_sync_error'] = getattr(row, 'last_sync_error', None)
+    out['last_records_count'] = getattr(row, 'last_records_count', None)
+    return out
+
+
+def _upsert_employee_mapping_source(actual_user, payload):
+    if not payload:
+        return
+    row = UserEmployeeMappingSource.query.filter_by(user_id=actual_user.id).first()
+    if not row:
+        row = UserEmployeeMappingSource(user_id=actual_user.id)
+        db.session.add(row)
+    prev = dict(row.request_config or {})
+    base_req = _employee_mapping_source_defaults()['request_config']
+    new_req = {**base_req, **(payload.get('request_config') or {})}
+    if not str(new_req.get('auth_token') or '').strip() and prev.get('auth_token'):
+        new_req['auth_token'] = prev['auth_token']
+    if not str(new_req.get('auth_password') or '').strip() and prev.get('auth_password'):
+        new_req['auth_password'] = prev['auth_password']
+    if not str(new_req.get('auth_header_value') or '').strip() and prev.get('auth_header_value'):
+        new_req['auth_header_value'] = prev['auth_header_value']
+    row.mode = (payload.get('mode') or 'manual').strip()[:40]
+    row.provider_type = (payload.get('provider_type') or 'generic_rest_json').strip()[:40]
+    row.enabled = bool(payload.get('enabled'))
+    try:
+        ttl = int(payload.get('refresh_ttl_seconds') or 300)
+    except (TypeError, ValueError):
+        ttl = 300
+    row.refresh_ttl_seconds = max(60, min(ttl, 86400))
+    row.request_config = new_req
+    row.mapping_config = {
+        **_employee_mapping_source_defaults()['mapping_config'],
+        **(payload.get('mapping_config') or {}),
+    }
+    row.normalize_config = {
+        **_employee_mapping_source_defaults()['normalize_config'],
+        **(payload.get('normalize_config') or {}),
+    }
+
+
+def _save_user_employee_extensions(actual_user, config_data):
+    """Сохраняет привязки с учётом режима источника (sync_replace/sync_only не трогаем из save_all)."""
+    src = UserEmployeeMappingSource.query.filter_by(user_id=actual_user.id).first()
+    mode = (src.mode if src else None) or 'manual'
+
+    if mode in ('sync_replace', 'sync_only'):
+        return
+
+    if mode == 'sync_merge_manual_priority':
+        manual_map = config_data.get('employee_manual_by_extension')
+        if manual_map is None:
+            manual_map = config_data.get('employee_by_extension') or {}
+        UserEmployeeExtension.query.filter_by(
+            user_id=actual_user.id, origin_type='manual'
+        ).delete()
+        for ext, emp in (manual_map or {}).items():
+            es = str(ext).strip()
+            em = str(emp).strip()
+            if es and em:
+                db.session.add(UserEmployeeExtension(
+                    user_id=actual_user.id,
+                    extension=es[:20],
+                    employee=em[:200],
+                    origin_type='manual',
+                ))
+        return
+
+    UserEmployeeExtension.query.filter_by(user_id=actual_user.id).delete()
+    employees = config_data.get('employee_by_extension') or {}
+    for ext, emp in employees.items():
+        es = str(ext).strip()
+        em = str(emp).strip()
+        if es and em:
+            db.session.add(UserEmployeeExtension(
+                user_id=actual_user.id,
+                extension=es[:20],
+                employee=em[:200],
+                origin_type='manual',
+            ))
+
+
 def get_user_config_data(user=None):
     """Загружает конфигурацию пользователя из нормализованных таблиц."""
     actual_user = _resolve_current_user(user)
@@ -354,10 +464,22 @@ def get_user_config_data(user=None):
     station_mapping = {}
     for row in UserStationMapping.query.filter_by(user_id=actual_user.id).all():
         station_mapping.setdefault(row.main_station_code, []).append(row.sub_station_code)
-    employee_by_extension = {
-        row.extension: row.employee
-        for row in UserEmployeeExtension.query.filter_by(user_id=actual_user.id).all()
-    }
+    emp_rows = UserEmployeeExtension.query.filter_by(user_id=actual_user.id).all()
+    employee_by_extension = {row.extension: row.employee for row in emp_rows}
+    config_data['employee_extensions_detail'] = [
+        {
+            'extension': row.extension,
+            'employee': row.employee,
+            'origin_type': getattr(row, 'origin_type', None) or 'manual',
+        }
+        for row in emp_rows
+    ]
+    src_row = None
+    try:
+        src_row = UserEmployeeMappingSource.query.filter_by(user_id=actual_user.id).first()
+    except Exception:
+        src_row = None
+    config_data['employee_mapping_source'] = _serialize_employee_mapping_source_row(src_row)
 
     config_data['stations'] = stations
     config_data['station_report_names'] = station_report_names
@@ -453,12 +575,19 @@ def save_user_config_data(config_data, user=None):
 
     db.session.add(cfg)
 
-    # Станции, chat_id, маппинги, сотрудники
+    if config_data.get('employee_mapping_source') is not None:
+        try:
+            _upsert_employee_mapping_source(
+                actual_user, config_data.get('employee_mapping_source') or {}
+            )
+        except Exception as exc:
+            logging.getLogger(__name__).warning('employee_mapping_source save: %s', exc)
+
+    # Станции, chat_id, маппинги, сотрудники (привязки — отдельно с учётом режима источника)
     UserStation.query.filter_by(user_id=actual_user.id).delete()
     UserStationChatId.query.filter_by(user_id=actual_user.id).delete()
     UserStationMaxChatId.query.filter_by(user_id=actual_user.id).delete()
     UserStationMapping.query.filter_by(user_id=actual_user.id).delete()
-    UserEmployeeExtension.query.filter_by(user_id=actual_user.id).delete()
 
     stations = config_data.get('stations') or {}
     station_order = list(config_data.get('station_order') or [])
@@ -520,10 +649,7 @@ def save_user_config_data(config_data, user=None):
             if sub_code:
                 db.session.add(UserStationMapping(user_id=actual_user.id, main_station_code=str(main_code), sub_station_code=str(sub_code)))
 
-    employees = config_data.get('employee_by_extension') or {}
-    for ext, emp in employees.items():
-        if ext and emp:
-            db.session.add(UserEmployeeExtension(user_id=actual_user.id, extension=str(ext), employee=str(emp)))
+    _save_user_employee_extensions(actual_user, config_data)
 
     db.session.commit()
     sync_classification_notify_from_user_config(actual_user, config_data)
@@ -6255,6 +6381,97 @@ def api_config_test():
         logging.error(f'?????? ???????? ????????????: {e}')
         return jsonify({'error': str(e)})
 
+
+@app.route('/api/config/employee_mapping/test', methods=['POST'])
+@login_required
+def api_employee_mapping_test():
+    """Проверка URL и разбора JSON без записи в таблицу привязок."""
+    try:
+        from common.employee_mapping_provider import fetch_generic_rest_json
+
+        data = request.get_json() or {}
+        payload = data.get('employee_mapping_source') or data
+        req = dict(payload.get('request_config') or {})
+        map_cfg = dict(payload.get('mapping_config') or {})
+        norm_cfg = dict(payload.get('normalize_config') or {})
+
+        src = UserEmployeeMappingSource.query.filter_by(user_id=current_user.id).first()
+        prev = dict(src.request_config or {}) if src else {}
+        base_req = _employee_mapping_source_defaults()['request_config']
+        merged_req = {**base_req, **prev, **req}
+        if not str(req.get('auth_token') or '').strip():
+            merged_req['auth_token'] = prev.get('auth_token') or ''
+        if not str(req.get('auth_password') or '').strip():
+            merged_req['auth_password'] = prev.get('auth_password') or ''
+        if not str(req.get('auth_header_value') or '').strip():
+            merged_req['auth_header_value'] = prev.get('auth_header_value') or ''
+
+        defaults = _employee_mapping_source_defaults()
+        map_full = {**defaults['mapping_config'], **map_cfg}
+        norm_full = {**defaults['normalize_config'], **norm_cfg}
+
+        rows, err = fetch_generic_rest_json(merged_req, map_full, norm_full)
+        if err:
+            return jsonify({'success': False, 'error': err, 'sample': [], 'total': 0})
+        return jsonify({
+            'success': True,
+            'sample': rows[:40],
+            'total': len(rows),
+        })
+    except Exception as e:
+        app.logger.error('employee_mapping test: %s', e, exc_info=True)
+        return jsonify({'success': False, 'error': str(e), 'sample': [], 'total': 0})
+
+
+@app.route('/api/config/employee_mapping/sync', methods=['POST'])
+@login_required
+def api_employee_mapping_sync():
+    """Запись результата запроса к источнику в таблицу привязок."""
+    try:
+        from common.employee_mapping_provider import fetch_generic_rest_json
+        from common.employee_mapping_sync_db import (
+            apply_employee_mapping_sync_rows,
+            update_mapping_source_status,
+        )
+
+        row = UserEmployeeMappingSource.query.filter_by(user_id=current_user.id).first()
+        if not row:
+            return jsonify({'success': False, 'message': 'Сначала сохраните настройки источника'}), 400
+        if not row.enabled:
+            return jsonify({'success': False, 'message': 'Синхронизация выключена'}), 400
+        mode = (row.mode or 'manual').strip()
+        if mode == 'manual':
+            return jsonify({'success': False, 'message': 'Режим «Только вручную»: синхронизация не применяется'}), 400
+        if mode not in ('sync_replace', 'sync_merge_manual_priority', 'sync_only'):
+            return jsonify({'success': False, 'message': 'Неподдерживаемый режим'}), 400
+
+        req = dict(row.request_config or {})
+        map_cfg = dict(row.mapping_config or {})
+        norm_cfg = dict(row.normalize_config or {})
+        rows, err = fetch_generic_rest_json(req, map_cfg, norm_cfg)
+
+        if err:
+            with db.engine.begin() as conn:
+                update_mapping_source_status(conn, current_user.id, False, err, None)
+            return jsonify({'success': False, 'message': err})
+
+        with db.engine.begin() as conn:
+            n = apply_employee_mapping_sync_rows(conn, current_user.id, mode, rows)
+            update_mapping_source_status(conn, current_user.id, True, None, n)
+
+        try:
+            request_reload(current_user.id)
+        except Exception:
+            pass
+        append_user_log(
+            f'Синхронизация привязки номеров: {n} записей', module='config'
+        )
+        return jsonify({'success': True, 'message': 'Синхронизация выполнена', 'count': n})
+    except Exception as e:
+        app.logger.error('employee_mapping sync: %s', e, exc_info=True)
+        return jsonify({'success': False, 'message': str(e)})
+
+
 @app.route('/api/config/save_all', methods=['POST'])
 @login_required
 def api_config_save_all():
@@ -6322,15 +6539,20 @@ def api_config_save_all():
 
         if 'employee_by_extension' in data:
             config_data['employee_by_extension'] = data['employee_by_extension']
+        if 'employee_manual_by_extension' in data:
+            config_data['employee_manual_by_extension'] = data['employee_manual_by_extension']
+        if 'employee_mapping_source' in data:
+            config_data['employee_mapping_source'] = data['employee_mapping_source']
 
         # Сохраняем всё сразу
         save_user_config_data(config_data)
         
         # Перезапуск воркера если нужно
-        if 'paths' in data:
+        if 'paths' in data or 'employee_mapping_source' in data:
             try:
                 request_reload(current_user.id)
-            except: pass
+            except Exception:
+                pass
             
         append_user_log('Сохранена полная конфигурация', module='config')
         return jsonify({'success': True, 'message': 'Все настройки сохранены'})

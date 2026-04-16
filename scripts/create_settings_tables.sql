@@ -76,12 +76,37 @@ CREATE TABLE IF NOT EXISTS user_employee_extensions (
     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     extension VARCHAR(20) NOT NULL,
     employee VARCHAR(200) NOT NULL,
+    origin_type VARCHAR(20) NOT NULL DEFAULT 'manual',
+    external_ref VARCHAR(120),
+    synced_at TIMESTAMP,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(user_id, extension)
 );
 
 CREATE INDEX IF NOT EXISTS idx_employee_user_ext ON user_employee_extensions(user_id, extension);
+
+-- Настройки внешнего REST/JSON-источника для привязки номеров (одна запись на пользователя)
+CREATE TABLE IF NOT EXISTS user_employee_mapping_sources (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+    mode VARCHAR(40) NOT NULL DEFAULT 'manual',
+    provider_type VARCHAR(40) NOT NULL DEFAULT 'generic_rest_json',
+    enabled BOOLEAN NOT NULL DEFAULT FALSE,
+    refresh_ttl_seconds INTEGER NOT NULL DEFAULT 300,
+    request_config JSONB,
+    mapping_config JSONB,
+    normalize_config JSONB,
+    last_success_at TIMESTAMP,
+    last_attempt_at TIMESTAMP,
+    last_sync_ok BOOLEAN,
+    last_sync_error VARCHAR(500),
+    last_records_count INTEGER,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_emp_map_src_user ON user_employee_mapping_sources(user_id);
 
 -- Таблица промптов пользователя
 CREATE TABLE IF NOT EXISTS user_prompts (
