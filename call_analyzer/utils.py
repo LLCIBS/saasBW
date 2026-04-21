@@ -9,10 +9,130 @@ import re
 import os
 import yaml
 from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
 
 import config
 
 logger = logging.getLogger(__name__)
+
+
+def _normalize_pattern_direction(pattern: Dict[str, Any]) -> str:
+    d = pattern.get('direction') or 'auto'
+    if isinstance(d, str):
+        d = d.strip().lower()
+    if d in ('incoming', 'outgoing', 'auto'):
+        return d
+    return 'auto'
+
+
+def _infer_direction_for_custom_pattern_disambiguation(file_name: str) -> str:
+    """
+    Входящий/исходящий без учёта пользовательских regex — те же эвристики, что раньше
+    использовались в get_call_format после блока с паттернами (STATION_NAMES, длина полей).
+    """
+    if re.match(config.FILENAME_PATTERNS['direction_pattern'], file_name, re.IGNORECASE):
+        return 'incoming'
+    if re.match(config.FILENAME_PATTERNS.get('phone_station_compact', ''), file_name, re.IGNORECASE):
+        return 'incoming'
+
+    parts = file_name.split("_")
+    if len(parts) < 3:
+        parts = file_name.split("-")
+        if len(parts) < 3:
+            return 'incoming'
+
+    first_id = parts[0]
+    second_id = parts[1]
+
+    if file_name.lower().startswith('out-'):
+        return 'outgoing'
+
+    if first_id in config.STATION_NAMES or first_id in config.STATION_MAPPING:
+        return 'outgoing'
+    if second_id in config.STATION_NAMES or second_id in config.STATION_MAPPING:
+        return 'incoming'
+    if len(first_id) == 4 and first_id.isdigit():
+        return 'outgoing'
+    return 'incoming'
+
+
+def resolve_custom_filename_pattern_match(
+    file_name: str, patterns: List[Dict[str, Any]]
+) -> Optional[Tuple[Dict[str, Any], re.Match]]:
+    """
+    Если несколько пользовательских regex подходят к одному имени файла, выбирает одно правило:
+    сначала по полю «Направление» (incoming/outgoing) и эвристике направления, затем правила с
+    направлением «авто», иначе первое совпадение в порядке списка.
+    """
+    matches: List[Tuple[Dict[str, Any], re.Match]] = []
+    for pattern in patterns or []:
+        regex = pattern.get('regex')
+        if not regex:
+            continue
+        m = re.match(regex, file_name, re.IGNORECASE)
+        if m:
+            matches.append((pattern, m))
+
+    if not matches:
+        return None
+    if len(matches) == 1:
+        return matches[0]
+
+    inferred = _infer_direction_for_custom_pattern_disambiguation(file_name)
+    explicit_ok = [
+        (p, m) for p, m in matches
+        if _normalize_pattern_direction(p) in ('incoming', 'outgoing')
+        and _normalize_pattern_direction(p) == inferred
+    ]
+    if len(explicit_ok) == 1:
+        logger.debug(
+            "filename: выбрано правило по направлению (inferred=%s): %s",
+            inferred, (explicit_ok[0][0].get('key') or '')
+        )
+        return explicit_ok[0]
+    if len(explicit_ok) > 1:
+        return explicit_ok[0]
+
+    auto_only = [(p, m) for p, m in matches if _normalize_pattern_direction(p) == 'auto']
+    if len(auto_only) == 1:
+        return auto_only[0]
+    if len(auto_only) > 1:
+        return auto_only[0]
+
+    logger.debug(
+        "filename: несколько regex, эвристика не согласуется с направлениями — первое правило: %s",
+        (matches[0][0].get('key') or '')
+    )
+    return matches[0]
+
+
+def _get_standard_call_format_without_custom(file_name: str) -> str:
+    """Бывшая логика get_call_format без блока пользовательских шаблонов."""
+    if re.match(config.FILENAME_PATTERNS['direction_pattern'], file_name, re.IGNORECASE):
+        return 'direction_format'
+
+    if re.match(config.FILENAME_PATTERNS.get('phone_station_compact', ''), file_name, re.IGNORECASE):
+        return 'incoming'
+
+    parts = file_name.split("_")
+    if len(parts) < 3:
+        parts = file_name.split("-")
+        if len(parts) < 3:
+            return 'incoming'
+
+    first_id = parts[0]
+    second_id = parts[1]
+
+    if file_name.lower().startswith('out-'):
+        return 'outgoing'
+
+    if first_id in config.STATION_NAMES or first_id in config.STATION_MAPPING:
+        return 'outgoing'
+    if second_id in config.STATION_NAMES or second_id in config.STATION_MAPPING:
+        return 'incoming'
+    if len(first_id) == 4 and first_id.isdigit():
+        return 'outgoing'
+    return 'incoming'
 
 
 def ensure_telegram_ready(action_description):
@@ -205,17 +325,17 @@ def _send_text_telegram(chat_id, text):
 
 def get_matched_pattern_config(file_name: str):
     """
-    Возвращает конфигурацию паттерна, который подошел под имя файла.
+    Возвращает конфигурацию паттерна, который подошел под имя файла
+    (с учётом направления при нескольких совпадениях).
     """
     try:
         filename_cfg = getattr(config, "PROFILE_SETTINGS", {}).get('filename') or {}
         if not filename_cfg.get('enabled'):
             return None
         patterns = filename_cfg.get('patterns') or []
-        for pattern in patterns:
-            regex = pattern.get('regex')
-            if regex and re.match(regex, file_name, re.IGNORECASE):
-                return pattern
+        resolved = resolve_custom_filename_pattern_match(file_name, patterns)
+        if resolved:
+            return resolved[0]
     except Exception:
         logger.debug("Ошибка при поиске подходящего паттерна для %s", file_name)
     return None
@@ -228,46 +348,35 @@ def parse_filename(file_name: str):
     Поддерживает форматы из конфигурации FILENAME_FORMATS.
     """
     def _try_custom_patterns():
-        """Пробуем пользовательские паттерны, если включены. Ожидается порядок групп: phone, station, datetime."""
+        """Пробуем пользовательские паттерны, если включены. Группы phone/station/datetime — именованные или 1–3."""
         try:
             filename_cfg = getattr(config, "PROFILE_SETTINGS", {}).get('filename') or {}
             if not filename_cfg.get('enabled'):
                 return None
             patterns = filename_cfg.get('patterns') or []
+            resolved = resolve_custom_filename_pattern_match(file_name, patterns)
+            if not resolved:
+                return None
+            pattern, match = resolved
             dt_default = config.FILENAME_PATTERNS.get('datetime_format')
-            for idx, pattern in enumerate(patterns):
-                regex = pattern.get('regex')
-                if not regex:
-                    continue
-                
-                # Если в сохраненном regex есть [^\\._-]+, он может обрезать дату на первом дефисе.
-                # Исправляем это на лету, если нужно, или просто используем как есть.
-                match = re.match(regex, file_name, re.IGNORECASE)
-                if not match:
-                    continue
-                
-                # Пробуем получить данные по именам групп (если они есть) или по порядку (1-3)
-                group_dict = match.groupdict()
-                phone = group_dict.get('phone') or (match.group(1) if match.lastindex and match.lastindex >= 1 else None)
-                station = group_dict.get('station') or (match.group(2) if match.lastindex and match.lastindex >= 2 else None)
-                dt_str = group_dict.get('datetime') or (match.group(3) if match.lastindex and match.lastindex >= 3 else None)
-                
-                phone = normalize_phone_number(phone) if phone else phone
-                call_time = None
-                dt_fmt = pattern.get('datetime_format') or dt_default
-                if dt_str and dt_fmt:
-                    try:
-                        # Удаляем лишние символы из строки даты, если они попали (например, расширение)
-                        # Но лучше полагаться на точный regex
-                        call_time = datetime.datetime.strptime(dt_str, dt_fmt)
-                    except Exception:
-                        # Попробуем отрезать всё после последнего разделителя, если формат не совпал
-                        # (иногда в группу попадает лишнее из-за жадного regex)
-                        logger.debug("Ошибка парсинга даты '%s' форматом '%s'", dt_str, dt_fmt)
-                        call_time = None
-                
-                if phone or station:
-                    return phone, station, call_time
+
+            group_dict = match.groupdict()
+            phone = group_dict.get('phone') or (match.group(1) if match.lastindex and match.lastindex >= 1 else None)
+            station = group_dict.get('station') or (match.group(2) if match.lastindex and match.lastindex >= 2 else None)
+            dt_str = group_dict.get('datetime') or (match.group(3) if match.lastindex and match.lastindex >= 3 else None)
+
+            phone = normalize_phone_number(phone) if phone else phone
+            call_time = None
+            dt_fmt = pattern.get('datetime_format') or dt_default
+            if dt_str and dt_fmt:
+                try:
+                    call_time = datetime.datetime.strptime(dt_str, dt_fmt)
+                except Exception:
+                    logger.debug("Ошибка парсинга даты '%s' форматом '%s'", dt_str, dt_fmt)
+                    call_time = None
+
+            if phone or station:
+                return phone, station, call_time
         except Exception:
             logger.debug("Не удалось применить пользовательские паттерны для %s", file_name, exc_info=True)
         return None
@@ -593,55 +702,18 @@ def get_call_format(file_name: str):
     Возвращает 'incoming' для входящих звонков, 'outgoing' для исходящих звонков,
     или 'direction_format' для нового формата с направлением.
     """
-    # 1. Проверяем пользовательские паттерны (наивысший приоритет)
     filename_cfg = getattr(config, "PROFILE_SETTINGS", {}).get('filename') or {}
     if filename_cfg.get('enabled'):
         patterns = filename_cfg.get('patterns') or []
-        for pattern in patterns:
-            regex = pattern.get('regex')
-            if regex and re.match(regex, file_name, re.IGNORECASE):
-                direction = pattern.get('direction', 'auto')
-                if direction in ['incoming', 'outgoing']:
-                    return direction
-                # Если 'auto', продолжаем к стандартной логике ниже
+        resolved = resolve_custom_filename_pattern_match(file_name, patterns)
+        if resolved:
+            pattern, _ = resolved
+            direction = _normalize_pattern_direction(pattern)
+            if direction in ('incoming', 'outgoing'):
+                return direction
+            return _get_standard_call_format_without_custom(file_name)
 
-    # 2. Проверяем новый формат с направлением
-    if re.match(config.FILENAME_PATTERNS['direction_pattern'], file_name, re.IGNORECASE):
-        return 'direction_format'
-
-    # 3. Формат телефон_станция_дата-время (телефон первым — входящий)
-    if re.match(config.FILENAME_PATTERNS.get('phone_station_compact', ''), file_name, re.IGNORECASE):
-        return 'incoming'
-    
-    parts = file_name.split("_")
-    if len(parts) < 3:
-        # Если не разделилось подчеркиванием, пробуем дефис (для out- форматов)
-        parts = file_name.split("-")
-        if len(parts) < 3:
-            return 'incoming'  # Fallback
-
-    first_id = parts[0]  # может быть либо телефон, либо станция
-    second_id = parts[1]  # может быть либо телефон, либо станция
-    
-    # Спец-обработка для префикса out-
-    if file_name.lower().startswith('out-'):
-        return 'outgoing'
-
-    # Проверяем, является ли first_id известным кодом станции
-    if first_id in config.STATION_NAMES or first_id in config.STATION_MAPPING:
-        # Формат: [station_code]_[phone_number]_[datetime]_... (исходящий)
-        return 'outgoing'
-    elif second_id in config.STATION_NAMES or second_id in config.STATION_MAPPING:
-        # Формат: [phone_number]_[station_code]_[datetime]_... (входящий)
-        return 'incoming'
-    else:
-        # Fallback: используем логику по длине
-        if len(first_id) == 4 and first_id.isdigit():
-            # Формат: [station_code]_[phone_number]_[datetime]_... (исходящий)
-            return 'outgoing'
-        else:
-            # Формат: [phone_number]_[station_code]_[datetime]_... (входящий)
-            return 'incoming'
+    return _get_standard_call_format_without_custom(file_name)
 
 
 def save_transcript_for_analytics(transcript_text: str, phone_number: str, station_code: str, call_time: datetime, original_filename: str = None) -> Path:
