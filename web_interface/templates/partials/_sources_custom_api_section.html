@@ -1,0 +1,142 @@
+<section id="sources-custom-api-block" class="sources-detail-section mt-5">
+    <div class="custom-api-panel mt-4" id="customApiPanel" style="display: none;">
+        <h5 class="mb-3" id="sources-custom-api"><i class="fas fa-plug me-2 text-primary"></i>Кастомный API — REST / JSON</h5>
+        <div class="alert alert-secondary mb-4">
+            <strong>Произвольный JSON.</strong> Укажите URL, путь к массиву (<code>items_path</code>) и имена полей записи, URL записи и внутреннего номера СК.
+            Имя файла на диске: <code>исходное_имя_НОМЕР.ext</code> (НОМЕР — только цифры из поля внутреннего номера)
+        </div>
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h6 class="mb-0">Подключения</h6>
+            <button type="button" class="btn btn-primary btn-sm" onclick="showCustomApiModal()"><i class="fas fa-plus me-1"></i>Добавить</button>
+        </div>
+        <div id="customApiConnectionsList"></div>
+        <div id="customApiEmpty" class="text-muted text-center py-4" style="display: none;">Нет подключений.</div>
+    </div>
+</section>
+
+<div class="modal fade" id="customApiModal" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Подключение Кастомный API</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="customApiConnId">
+                <div class="mb-3">
+                    <label class="form-label">Название</label>
+                    <input type="text" class="form-control" id="customApiName" value="Кастомный API">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">URL <span class="text-danger">*</span></label>
+                    <input type="text" class="form-control" id="customApiUrl" placeholder="https://example.com/api/calls">
+                </div>
+                <div class="row">
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Метод</label>
+                        <select class="form-select" id="customApiMethod">
+                            <option value="GET">GET</option>
+                            <option value="POST">POST</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Таймаут (сек)</label>
+                        <input type="number" class="form-control" id="customApiTimeout" min="5" max="120" value="30">
+                    </div>
+                    <div class="col-md-4 mb-3 d-flex align-items-end">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="customApiVerifySsl" checked>
+                            <label class="form-check-label" for="customApiVerifySsl">Проверять SSL</label>
+                        </div>
+                    </div>
+                </div>
+                <div class="mb-3 d-none" id="customApiJsonBodyRow">
+                    <label class="form-label">Тело POST (JSON)</label>
+                    <textarea class="form-control font-monospace small" id="customApiJsonBody" rows="3" placeholder="{}"></textarea>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Путь к массиву (items_path)</label>
+                    <input type="text" class="form-control" id="customApiItemsPath" placeholder="RESPONSE.DATA или data.items">
+                </div>
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Поле URL записи</label>
+                        <input type="text" class="form-control" id="customApiRecordField" value="record_url" placeholder="Recordingfile">
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Поле внутреннего номера (СК)</label>
+                        <input type="text" class="form-control" id="customApiStationField" value="station" placeholder="NumberA или NumberB">
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Префикс URL к файлу записи</label>
+                    <input type="text" class="form-control" id="customApiRecordingBaseUrl" placeholder="http://192.168.101.202/bw-cdr">
+                    <div class="form-text">Если в поле записи приходит только путь (например /2026/04/21/…), укажите базу: она склеится с путём. Полный http(s) в JSON не трогаем.</div>
+                </div>
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Поле исходного имени файла</label>
+                        <input type="text" class="form-control" id="customApiOrigField" value="filename">
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Поле внешнего ID (необязательно)</label>
+                        <input type="text" class="form-control" id="customApiExtIdField" placeholder="CALL_UUID">
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Поле времени звонка (необязательно)</label>
+                    <input type="text" class="form-control" id="customApiTsField" placeholder="TIMESTAMP">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Авторизация</label>
+                    <select class="form-select" id="customApiAuthType">
+                        <option value="none">Нет</option>
+                        <option value="bearer">Bearer</option>
+                        <option value="basic">Basic</option>
+                        <option value="header">Заголовок</option>
+                    </select>
+                </div>
+                <div id="customApiAuthBearer" class="mb-3 d-none">
+                    <label class="form-label">Токен</label>
+                    <input type="password" class="form-control" id="customApiAuthToken" autocomplete="new-password">
+                </div>
+                <div id="customApiAuthBasic" class="row d-none">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Пользователь</label>
+                        <input type="text" class="form-control" id="customApiAuthUser">
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Пароль</label>
+                        <input type="password" class="form-control" id="customApiAuthPass" autocomplete="new-password">
+                    </div>
+                </div>
+                <div id="customApiAuthHeader" class="row d-none">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Имя заголовка</label>
+                        <input type="text" class="form-control" id="customApiHdrName">
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Значение</label>
+                        <input type="password" class="form-control" id="customApiHdrVal" autocomplete="new-password">
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Собирать звонки с даты</label>
+                    <input type="datetime-local" class="form-control" id="customApiStartFrom">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Интервал синхронизации (минут)</label>
+                    <input type="number" class="form-control" id="customApiSyncInterval" min="0" max="1440" value="60">
+                </div>
+                <div class="form-check mb-3">
+                    <input class="form-check-input" type="checkbox" id="customApiActive" checked>
+                    <label class="form-check-label" for="customApiActive">Активно</label>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                <button type="button" class="btn btn-primary" onclick="saveCustomApiConnection()">Сохранить</button>
+            </div>
+        </div>
+    </div>
+</div>

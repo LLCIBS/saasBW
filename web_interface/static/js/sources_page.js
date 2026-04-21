@@ -87,6 +87,23 @@ function openStocrmSection() {
     scrollToSource('sources-stocrm');
 }
 
+function openCustomApiSection() {
+    const p = document.getElementById('customApiPanel');
+    if (p) {
+        p.style.display = 'block';
+        loadCustomApiConnections();
+    }
+    scrollToSource('sources-custom-api');
+}
+
+function toggleCustomApiPanel() {
+    const p = document.getElementById('customApiPanel');
+    if (!p) return;
+    const show = p.style.display === 'none';
+    p.style.display = show ? 'block' : 'none';
+    if (show) loadCustomApiConnections();
+}
+
 function toggleRostelecomPanel() {
     const p = document.getElementById('rostelecomPanel');
     if (!p) return;
@@ -107,14 +124,16 @@ async function refreshConnectedSummary() {
     const host = document.getElementById('connectedSourcesSummary');
     if (!host) return;
     try {
-        const [ftpR, rtR, stR] = await Promise.all([
+        const [ftpR, rtR, stR, caR] = await Promise.all([
             fetch('/api/ftp/connections').then((r) => r.json()),
             fetch('/api/ats/rostelecom/connections').then((r) => r.json()),
             fetch('/api/ats/stocrm/connections').then((r) => r.json()),
+            fetch('/api/ats/custom_api/connections').then((r) => r.json()),
         ]);
         const ftp = Array.isArray(ftpR) ? ftpR : [];
         const rt = Array.isArray(rtR) ? rtR : [];
         const st = Array.isArray(stR) ? stR : [];
+        const ca = Array.isArray(caR) ? caR : [];
         const parts = [];
         ftp.forEach((c) => {
             parts.push(
@@ -129,6 +148,12 @@ async function refreshConnectedSummary() {
         st.forEach((c) => {
             parts.push(
                 `<div class="connected-source-card"><div class="badge-type">StoCRM</div><strong>${escapeHtml(c.name)}</strong><div class="small text-muted">${escapeHtml(c.domain)}.stocrm.ru</div><div class="small">${c.last_sync ? formatDateUTC(c.last_sync) : 'Синхр.: —'}</div></div>`
+            );
+        });
+        ca.forEach((c) => {
+            const url = (c.request_config && c.request_config.url) || '';
+            parts.push(
+                `<div class="connected-source-card"><div class="badge-type">Кастомный API</div><strong>${escapeHtml(c.name)}</strong><div class="small text-muted">${escapeHtml(url)}</div><div class="small">${c.last_sync ? formatDateUTC(c.last_sync) : 'Синхр.: —'}</div></div>`
             );
         });
         if (!parts.length) {
@@ -158,6 +183,7 @@ document.addEventListener('DOMContentLoaded', function () {
     if (window.location.hash === '#sources-ftp') openFtpSection();
     if (window.location.hash === '#sources-rostelecom') openRostelecomSection();
     if (window.location.hash === '#sources-stocrm') openStocrmSection();
+    if (window.location.hash === '#sources-custom-api') openCustomApiSection();
 });
 
 async function loadConnections() {
@@ -833,3 +859,266 @@ function deleteStocrmConnection(id) {
             else alert('Ошибка удаления');
         });
 }
+
+// ——— Кастомный API ———
+
+function customApiGatherPayload() {
+    const method = (document.getElementById('customApiMethod') || {}).value || 'GET';
+    let jsonBody = null;
+    const jbRaw = (document.getElementById('customApiJsonBody') || {}).value;
+    if (method === 'POST' && jbRaw && String(jbRaw).trim()) {
+        try {
+            jsonBody = JSON.parse(String(jbRaw).trim());
+        } catch (e) {
+            jsonBody = null;
+        }
+    }
+    const request_config = {
+        url: (document.getElementById('customApiUrl') || {}).value.trim(),
+        method,
+        headers: {},
+        params: {},
+        json_body: jsonBody,
+        timeout_sec: parseInt(document.getElementById('customApiTimeout').value, 10) || 30,
+        verify_ssl: document.getElementById('customApiVerifySsl').checked,
+        auth_type: document.getElementById('customApiAuthType').value,
+        auth_token: (document.getElementById('customApiAuthToken') || {}).value,
+        auth_username: (document.getElementById('customApiAuthUser') || {}).value,
+        auth_password: (document.getElementById('customApiAuthPass') || {}).value,
+        auth_header_name: (document.getElementById('customApiHdrName') || {}).value.trim(),
+        auth_header_value: (document.getElementById('customApiHdrVal') || {}).value,
+    };
+    const mapping_config = {
+        items_path: (document.getElementById('customApiItemsPath') || {}).value.trim(),
+        record_url_field: (document.getElementById('customApiRecordField') || {}).value.trim() || 'record_url',
+        station_field: (document.getElementById('customApiStationField') || {}).value.trim() || 'station',
+        original_filename_field: (document.getElementById('customApiOrigField') || {}).value.trim() || 'filename',
+        external_id_field: (document.getElementById('customApiExtIdField') || {}).value.trim(),
+        timestamp_field: (document.getElementById('customApiTsField') || {}).value.trim(),
+        recording_base_url: (document.getElementById('customApiRecordingBaseUrl') || {}).value.trim(),
+    };
+    return {
+        name: (document.getElementById('customApiName') || {}).value,
+        is_active: document.getElementById('customApiActive').checked,
+        request_config,
+        mapping_config,
+        start_from: datetimeLocalValueToUtcIso((document.getElementById('customApiStartFrom') || {}).value),
+        sync_interval_minutes: parseInt(document.getElementById('customApiSyncInterval').value, 10) || 60,
+    };
+}
+
+function customApiUpdateAuthPanels() {
+    const t = document.getElementById('customApiAuthType').value;
+    document.getElementById('customApiAuthBearer').classList.toggle('d-none', t !== 'bearer');
+    document.getElementById('customApiAuthBasic').classList.toggle('d-none', t !== 'basic');
+    document.getElementById('customApiAuthHeader').classList.toggle('d-none', t !== 'header');
+}
+
+function loadCustomApiConnections() {
+    fetch('/api/ats/custom_api/connections')
+        .then((r) => r.json())
+        .then((data) => {
+            const list = document.getElementById('customApiConnectionsList');
+            const empty = document.getElementById('customApiEmpty');
+            if (!list) return;
+            list.innerHTML = '';
+            if (!Array.isArray(data) || !data.length) {
+                if (empty) empty.style.display = 'block';
+                refreshConnectedSummary();
+                return;
+            }
+            if (empty) empty.style.display = 'none';
+            data.forEach((c) => {
+                const card = document.createElement('div');
+                card.className = 'stocrm-conn-card';
+                const url = (c.request_config && c.request_config.url) || '';
+                const lastSyncStr = c.last_sync ? new Date(c.last_sync).toLocaleString('ru-RU') : '—';
+                card.innerHTML = `
+                    <div>
+                        <strong>${escapeHtml(c.name)}</strong> ${c.is_active ? '<span class="badge bg-success ms-1">Активно</span>' : '<span class="badge bg-secondary ms-1">Неактивно</span>'}
+                        <div class="small text-muted">${escapeHtml(url)}</div>
+                        <div class="small">Последняя синхр.: ${escapeHtml(lastSyncStr)}</div>
+                        <div class="small">Интервал: ${c.sync_interval_minutes || 60} мин</div>
+                        ${c.last_error ? '<div class="small text-danger">Ошибка: ' + escapeHtml(c.last_error) + '</div>' : ''}
+                    </div>
+                    <div class="btn-group">
+                        <button class="btn btn-sm btn-success" type="button" onclick="syncCustomApiConnection(${c.id})"><i class="fas fa-sync me-1"></i>Синхр.</button>
+                        <button class="btn btn-sm btn-outline-primary" type="button" onclick="testCustomApiConnection(${c.id})"><i class="fas fa-vial me-1"></i>Разбор JSON</button>
+                        <button class="btn btn-sm btn-outline-primary" type="button" onclick="editCustomApiConnection(${c.id})"><i class="fas fa-edit"></i></button>
+                        <button class="btn btn-sm btn-outline-danger" type="button" onclick="deleteCustomApiConnection(${c.id})"><i class="fas fa-trash"></i></button>
+                    </div>`;
+                list.appendChild(card);
+            });
+            refreshConnectedSummary();
+        })
+        .catch((e) => console.error(e));
+}
+
+function showCustomApiModal() {
+    document.getElementById('customApiConnId').value = '';
+    document.getElementById('customApiName').value = 'Кастомный API';
+    document.getElementById('customApiUrl').value = '';
+    document.getElementById('customApiMethod').value = 'GET';
+    document.getElementById('customApiJsonBody').value = '';
+    document.getElementById('customApiJsonBodyRow').classList.add('d-none');
+    document.getElementById('customApiTimeout').value = 30;
+    document.getElementById('customApiVerifySsl').checked = true;
+    document.getElementById('customApiItemsPath').value = '';
+    document.getElementById('customApiRecordField').value = 'record_url';
+    document.getElementById('customApiStationField').value = 'station';
+    document.getElementById('customApiOrigField').value = 'filename';
+    document.getElementById('customApiRecordingBaseUrl').value = '';
+    document.getElementById('customApiExtIdField').value = '';
+    document.getElementById('customApiTsField').value = '';
+    document.getElementById('customApiAuthType').value = 'none';
+    document.getElementById('customApiAuthToken').value = '';
+    document.getElementById('customApiAuthUser').value = '';
+    document.getElementById('customApiAuthPass').value = '';
+    document.getElementById('customApiHdrName').value = '';
+    document.getElementById('customApiHdrVal').value = '';
+    document.getElementById('customApiStartFrom').value = '';
+    document.getElementById('customApiSyncInterval').value = 60;
+    document.getElementById('customApiActive').checked = true;
+    customApiUpdateAuthPanels();
+    new bootstrap.Modal(document.getElementById('customApiModal')).show();
+}
+
+function editCustomApiConnection(id) {
+    fetch('/api/ats/custom_api/connections')
+        .then((r) => r.json())
+        .then((list) => {
+            if (!Array.isArray(list)) return;
+            const c = list.find((x) => x.id === parseInt(id, 10));
+            if (!c) {
+                if (typeof showToast === 'function') showToast('Подключение не найдено', 'danger');
+                return;
+            }
+            document.getElementById('customApiConnId').value = c.id;
+            document.getElementById('customApiName').value = c.name;
+            const req = c.request_config || {};
+            document.getElementById('customApiUrl').value = req.url || '';
+            document.getElementById('customApiMethod').value = (req.method || 'GET').toUpperCase() === 'POST' ? 'POST' : 'GET';
+            const jb = req.json_body;
+            document.getElementById('customApiJsonBody').value = jb ? (typeof jb === 'string' ? jb : JSON.stringify(jb, null, 0)) : '';
+            document.getElementById('customApiJsonBodyRow').classList.toggle('d-none', document.getElementById('customApiMethod').value !== 'POST');
+            document.getElementById('customApiTimeout').value = req.timeout_sec || 30;
+            document.getElementById('customApiVerifySsl').checked = req.verify_ssl !== false;
+            const map = c.mapping_config || {};
+            document.getElementById('customApiItemsPath').value = map.items_path || '';
+            document.getElementById('customApiRecordField').value = map.record_url_field || 'record_url';
+            document.getElementById('customApiStationField').value = map.station_field || 'station';
+            document.getElementById('customApiOrigField').value = map.original_filename_field || 'filename';
+            document.getElementById('customApiRecordingBaseUrl').value = map.recording_base_url || '';
+            document.getElementById('customApiExtIdField').value = map.external_id_field || '';
+            document.getElementById('customApiTsField').value = map.timestamp_field || '';
+            document.getElementById('customApiAuthType').value = req.auth_type || 'none';
+            document.getElementById('customApiAuthToken').value = '';
+            document.getElementById('customApiAuthUser').value = req.auth_username || '';
+            document.getElementById('customApiAuthPass').value = '';
+            document.getElementById('customApiHdrName').value = req.auth_header_name || '';
+            document.getElementById('customApiHdrVal').value = '';
+            document.getElementById('customApiStartFrom').value = formatDatetimeLocal(c.start_from);
+            document.getElementById('customApiSyncInterval').value = c.sync_interval_minutes || 60;
+            document.getElementById('customApiActive').checked = c.is_active;
+            customApiUpdateAuthPanels();
+            new bootstrap.Modal(document.getElementById('customApiModal')).show();
+        })
+        .catch((e) => console.error(e));
+}
+
+function saveCustomApiConnection() {
+    const id = document.getElementById('customApiConnId').value;
+    const payload = customApiGatherPayload();
+    if (!payload.request_config.url) {
+        alert('Укажите URL');
+        return;
+    }
+    const url = id ? `/api/ats/custom_api/connections/${id}` : '/api/ats/custom_api/connections';
+    const method = id ? 'PUT' : 'POST';
+    const body =
+        id
+            ? {
+                  ...payload,
+                  request_config: {
+                      ...payload.request_config,
+                      auth_token: document.getElementById('customApiAuthToken').value || undefined,
+                      auth_password: document.getElementById('customApiAuthPass').value || undefined,
+                      auth_header_value: document.getElementById('customApiHdrVal').value || undefined,
+                  },
+              }
+            : payload;
+    if (id) {
+        if (!String(body.request_config.auth_token || '').trim()) delete body.request_config.auth_token;
+        if (!String(body.request_config.auth_password || '').trim()) delete body.request_config.auth_password;
+        if (!String(body.request_config.auth_header_value || '').trim()) delete body.request_config.auth_header_value;
+    }
+    fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+    })
+        .then((r) => r.json())
+        .then((data) => {
+            if (data.success) {
+                bootstrap.Modal.getInstance(document.getElementById('customApiModal')).hide();
+                loadCustomApiConnections();
+                if (typeof showToast === 'function') showToast(data.message || 'Сохранено', 'success');
+            } else alert(data.message || 'Ошибка');
+        })
+        .catch((e) => alert('Ошибка: ' + e));
+}
+
+async function syncCustomApiConnection(id) {
+    try {
+        if (typeof showToast === 'function') showToast('Запуск синхронизации...', 'info');
+        const r = await fetch(`/api/ats/custom_api/connections/${id}/sync`, { method: 'POST' });
+        const data = await r.json();
+        if (data.success) {
+            if (typeof showToast === 'function') showToast(data.message || 'OK', 'success');
+            setTimeout(loadCustomApiConnections, 3000);
+        } else if (typeof showToast === 'function') showToast(data.message || 'Ошибка', 'danger');
+    } catch (e) {
+        alert(e);
+    }
+}
+
+async function testCustomApiConnection(id) {
+    try {
+        if (typeof showToast === 'function') showToast('Проверка разбора JSON...', 'info');
+        const r = await fetch(`/api/ats/custom_api/connections/${id}/test`, { method: 'POST' });
+        const data = await r.json();
+        const msg = data.message || (data.success ? `OK, записей: ${data.total}` : 'Ошибка');
+        if (typeof showToast === 'function') showToast(msg, data.success ? 'success' : 'danger');
+        else alert(msg);
+        if (data.success && data.sample) console.log('custom_api sample', data.sample);
+    } catch (e) {
+        alert(e);
+    }
+}
+
+function deleteCustomApiConnection(id) {
+    if (!confirm('Удалить это подключение Кастомный API?')) return;
+    fetch(`/api/ats/custom_api/connections/${id}`, { method: 'DELETE' })
+        .then((r) => r.json())
+        .then((data) => {
+            if (data.success) {
+                loadCustomApiConnections();
+                if (typeof showToast === 'function') showToast('Удалено', 'success');
+            } else alert(data.message || 'Ошибка');
+        })
+        .catch((e) => alert(e));
+}
+
+(function bindCustomApiModalHelpers() {
+    document.addEventListener('DOMContentLoaded', function () {
+        const m = document.getElementById('customApiMethod');
+        if (m) {
+            m.addEventListener('change', function () {
+                const row = document.getElementById('customApiJsonBodyRow');
+                if (row) row.classList.toggle('d-none', this.value !== 'POST');
+            });
+        }
+        const at = document.getElementById('customApiAuthType');
+        if (at) at.addEventListener('change', customApiUpdateAuthPanels);
+    });
+})();

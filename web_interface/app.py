@@ -53,6 +53,7 @@ from database.models import (
     FtpConnection,
     RostelecomAtsConnection,
     StocrmConnection,
+    CustomApiConnection,
     UserVocabulary,
     UserPrompt,
     UserScriptPrompt,
@@ -370,6 +371,7 @@ def get_user_config_data(user=None):
             'ftp_connection_id': cfg.ftp_connection_id,
             'rostelecom_ats_connection_id': getattr(cfg, 'rostelecom_ats_connection_id', None),
             'stocrm_connection_id': getattr(cfg, 'stocrm_connection_id', None),
+            'custom_api_connection_id': getattr(cfg, 'custom_api_connection_id', None),
             'script_prompt_file': cfg.script_prompt_file,
             'additional_vocab_file': cfg.additional_vocab_file,
         })
@@ -514,6 +516,7 @@ def save_user_config_data(config_data, user=None):
     cfg.ftp_connection_id = paths.get('ftp_connection_id')
     cfg.rostelecom_ats_connection_id = paths.get('rostelecom_ats_connection_id')
     cfg.stocrm_connection_id = paths.get('stocrm_connection_id')
+    cfg.custom_api_connection_id = paths.get('custom_api_connection_id')
     cfg.script_prompt_file = paths.get('script_prompt_file')
     cfg.additional_vocab_file = paths.get('additional_vocab_file')
 
@@ -1723,15 +1726,17 @@ def api_onboarding_status():
     has_ftp = FtpConnection.query.filter_by(user_id=uid).count() > 0
     has_rt = RostelecomAtsConnection.query.filter_by(user_id=uid).count() > 0
     has_sto = StocrmConnection.query.filter_by(user_id=uid).count() > 0
+    has_custom_api = CustomApiConnection.query.filter_by(user_id=uid).count() > 0
     linked = bool(
         uc
         and (
             uc.ftp_connection_id
             or uc.rostelecom_ats_connection_id
             or uc.stocrm_connection_id
+            or getattr(uc, 'custom_api_connection_id', None)
         )
     )
-    step2 = has_ftp or has_rt or has_sto or linked
+    step2 = has_ftp or has_rt or has_sto or has_custom_api or linked
 
     sp = UserScriptPrompt.query.filter_by(user_id=uid).first()
     checklist_ok = bool(
@@ -5957,6 +5962,191 @@ def api_stocrm_delete(conn_id):
         return jsonify({'error': 'Not found'}), 404
     UserConfig.query.filter_by(stocrm_connection_id=conn_id).update({
         'stocrm_connection_id': None,
+        'source_type': 'local',
+    })
+    db.session.delete(conn)
+    db.session.commit()
+    return jsonify({'success': True})
+
+
+def _serialize_custom_api_connection(conn: CustomApiConnection) -> dict:
+    from call_analyzer.custom_api_provider import DEFAULT_MAPPING_CONFIG, DEFAULT_REQUEST_CONFIG
+
+    req = dict(DEFAULT_REQUEST_CONFIG)
+    req.update(conn.request_config or {})
+    if req.get('auth_password'):
+        req['auth_password'] = ''
+    if req.get('auth_token'):
+        req['auth_token'] = ''
+    if req.get('auth_header_value'):
+        req['auth_header_value'] = ''
+    m = dict(DEFAULT_MAPPING_CONFIG)
+    m.update(conn.mapping_config or {})
+    return {
+        'id': conn.id,
+        'name': conn.name,
+        'is_active': conn.is_active,
+        'request_config': req,
+        'mapping_config': m,
+        'start_from': conn.start_from.isoformat() + 'Z' if conn.start_from else None,
+        'sync_interval_minutes': conn.sync_interval_minutes or 60,
+        'last_sync': conn.last_sync.isoformat() + 'Z' if conn.last_sync else None,
+        'last_error': conn.last_error,
+        'created_at': conn.created_at.isoformat() + 'Z' if conn.created_at else None,
+        'updated_at': conn.updated_at.isoformat() + 'Z' if conn.updated_at else None,
+    }
+
+
+@app.route('/api/ats/custom_api/connections', methods=['GET'])
+@login_required
+def api_custom_api_connections():
+    try:
+        conns = CustomApiConnection.query.filter_by(user_id=current_user.id).order_by(CustomApiConnection.id.asc()).all()
+        return jsonify([_serialize_custom_api_connection(c) for c in conns])
+    except Exception as e:
+        app.logger.error('custom_api connections: %s', e)
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/ats/custom_api/connections', methods=['POST'])
+@login_required
+def api_custom_api_create():
+    try:
+        data = request.get_json() or {}
+        name = (data.get('name') or 'Кастомный API').strip()
+        req_cfg = data.get('request_config') or {}
+        map_cfg = data.get('mapping_config') or {}
+        if not (req_cfg.get('url') or '').strip():
+            return jsonify({'success': False, 'message': 'Укажите URL в request_config'}), 400
+        start_from = _parse_datetime_field(data.get('start_from'))
+        sync_interval = max(0, int(data.get('sync_interval_minutes', 60)))
+        conn = CustomApiConnection(
+            user_id=current_user.id,
+            name=name,
+            is_active=data.get('is_active', True),
+            request_config=req_cfg,
+            mapping_config=map_cfg,
+            start_from=start_from,
+            sync_interval_minutes=sync_interval,
+        )
+        db.session.add(conn)
+        db.session.commit()
+        try:
+            from call_analyzer.custom_api_sync_manager import start_custom_api_sync
+            if conn.is_active and conn.sync_interval_minutes and conn.sync_interval_minutes > 0:
+                start_custom_api_sync(conn.id, user_id=current_user.id)
+        except Exception:
+            pass
+        return jsonify({'success': True, 'id': conn.id, 'message': 'Подключение создано'})
+    except Exception as e:
+        db.session.rollback()
+        app.logger.error('custom_api create: %s', e)
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+
+@app.route('/api/ats/custom_api/connections/<int:conn_id>', methods=['PUT'])
+@login_required
+def api_custom_api_update(conn_id):
+    conn = CustomApiConnection.query.filter_by(id=conn_id, user_id=current_user.id).first()
+    if not conn:
+        return jsonify({'error': 'Not found'}), 404
+    try:
+        data = request.get_json() or {}
+        if 'name' in data:
+            conn.name = (data.get('name') or 'Кастомный API').strip()
+        if 'request_config' in data and isinstance(data['request_config'], dict):
+            old_req = dict(conn.request_config or {})
+            new_req = dict(data['request_config'])
+            merged = {**old_req, **new_req}
+            if not str(new_req.get('auth_token') or '').strip():
+                merged['auth_token'] = old_req.get('auth_token', '')
+            if not str(new_req.get('auth_password') or '').strip():
+                merged['auth_password'] = old_req.get('auth_password', '')
+            if not str(new_req.get('auth_header_value') or '').strip():
+                merged['auth_header_value'] = old_req.get('auth_header_value', '')
+            conn.request_config = merged
+        if 'mapping_config' in data and isinstance(data['mapping_config'], dict):
+            conn.mapping_config = {**(conn.mapping_config or {}), **data['mapping_config']}
+        if 'is_active' in data:
+            conn.is_active = bool(data['is_active'])
+        if 'start_from' in data:
+            conn.start_from = _parse_datetime_field(data.get('start_from'))
+        if 'sync_interval_minutes' in data:
+            v = data['sync_interval_minutes']
+            conn.sync_interval_minutes = max(0, int(v)) if v is not None else 60
+        db.session.commit()
+        try:
+            from call_analyzer.custom_api_sync_manager import start_custom_api_sync, stop_custom_api_sync
+            if conn.is_active and conn.sync_interval_minutes and conn.sync_interval_minutes > 0:
+                start_custom_api_sync(conn_id, user_id=current_user.id)
+            else:
+                stop_custom_api_sync(conn_id, user_id=current_user.id)
+        except Exception:
+            pass
+        return jsonify({'success': True, 'message': 'Обновлено'})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+
+@app.route('/api/ats/custom_api/connections/<int:conn_id>/test', methods=['POST'])
+@login_required
+def api_custom_api_test(conn_id):
+    conn = CustomApiConnection.query.filter_by(id=conn_id, user_id=current_user.id).first()
+    if not conn:
+        return jsonify({'success': False, 'message': 'Подключение не найдено'}), 404
+    try:
+        from call_analyzer.custom_api_provider import fetch_custom_api_records, merge_mapping_config, merge_request_config
+
+        req = merge_request_config(conn.request_config or {})
+        m = merge_mapping_config(conn.mapping_config or {})
+        rows, err = fetch_custom_api_records(req, m)
+        if err:
+            return jsonify({'success': False, 'message': err, 'sample': [], 'total': 0}), 400
+        return jsonify({
+            'success': True,
+            'message': f'Разобрано записей: {len(rows)}',
+            'sample': rows[:20],
+            'total': len(rows),
+        })
+    except Exception as e:
+        app.logger.error('custom_api test %s: %s', conn_id, e, exc_info=True)
+        return jsonify({'success': False, 'message': str(e), 'sample': [], 'total': 0}), 500
+
+
+@app.route('/api/ats/custom_api/connections/<int:conn_id>/sync', methods=['POST'])
+@login_required
+def api_custom_api_sync(conn_id):
+    conn = CustomApiConnection.query.filter_by(id=conn_id, user_id=current_user.id).first()
+    if not conn:
+        return jsonify({'success': False, 'message': 'Подключение не найдено'}), 404
+    user_id = current_user.id
+
+    def _run():
+        with app.app_context():
+            try:
+                from call_analyzer.custom_api_sync_manager import sync_custom_api_connection
+                sync_custom_api_connection(conn_id, user_id=user_id)
+            except Exception as e:
+                app.logger.error('custom_api manual sync %s: %s', conn_id, e, exc_info=True)
+
+    threading.Thread(target=_run, daemon=True, name=f'CustomApi-manual-sync-{conn_id}').start()
+    return jsonify({'success': True, 'message': 'Синхронизация запущена'})
+
+
+@app.route('/api/ats/custom_api/connections/<int:conn_id>', methods=['DELETE'])
+@login_required
+def api_custom_api_delete(conn_id):
+    conn = CustomApiConnection.query.filter_by(id=conn_id, user_id=current_user.id).first()
+    if not conn:
+        return jsonify({'error': 'Not found'}), 404
+    try:
+        from call_analyzer.custom_api_sync_manager import stop_custom_api_sync
+        stop_custom_api_sync(conn_id, user_id=current_user.id)
+    except Exception:
+        pass
+    UserConfig.query.filter_by(custom_api_connection_id=conn_id).update({
+        'custom_api_connection_id': None,
         'source_type': 'local',
     })
     db.session.delete(conn)

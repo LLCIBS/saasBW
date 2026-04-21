@@ -47,6 +47,16 @@
                 </button>
             </div>
             <div class="ats-operator-card">
+                <div class="ats-operator-logo d-flex align-items-center justify-content-center bg-light rounded-circle mx-auto" style="width:80px;height:80px;">
+                    <i class="fas fa-code fa-2x text-primary"></i>
+                </div>
+                <h3 class="ats-operator-name">Кастомный API</h3>
+                <p class="ats-operator-desc">Свой REST JSON: разбор полей и загрузка записей в папку звонков</p>
+                <button type="button" class="btn btn-primary btn-sm" onclick="openCustomApiSection()">
+                    <i class="fas fa-cog me-1"></i>Настроить
+                </button>
+            </div>
+            <div class="ats-operator-card">
                 <img class="ats-operator-logo" src="{{ url_for('static', filename='images/ats/beeline.svg') }}" alt="Билайн">
                 <h3 class="ats-operator-name">Билайн Бизнес</h3>
                 <p class="ats-operator-desc">Облачная телефония Билайн</p>
@@ -68,6 +78,7 @@
 
         {% include 'partials/_sources_ftp_section.html' %}
         {% include 'partials/_sources_ats_section.html' %}
+        {% include 'partials/_sources_custom_api_section.html' %}
     </div>
 </main>
 {% endblock %}

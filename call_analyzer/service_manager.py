@@ -62,6 +62,7 @@ def load_active_profiles(engine):
 
             configs = fetch("""
                 SELECT user_id, source_type, prompts_file, base_records_path, ftp_connection_id,
+                       rostelecom_ats_connection_id, stocrm_connection_id, custom_api_connection_id,
                        script_prompt_file, additional_vocab_file,
                        thebai_url, thebai_model,
                        thebai_api_key, telegram_bot_token, speechmatics_api_key,
@@ -132,6 +133,9 @@ def load_active_profiles(engine):
                 'prompts_file': cfg_row.prompts_file,
                 'base_records_path': cfg_row.base_records_path,
                 'ftp_connection_id': cfg_row.ftp_connection_id,
+                'rostelecom_ats_connection_id': getattr(cfg_row, 'rostelecom_ats_connection_id', None),
+                'stocrm_connection_id': getattr(cfg_row, 'stocrm_connection_id', None),
+                'custom_api_connection_id': getattr(cfg_row, 'custom_api_connection_id', None),
                 'script_prompt_file': cfg_row.script_prompt_file,
                 'additional_vocab_file': cfg_row.additional_vocab_file,
             })

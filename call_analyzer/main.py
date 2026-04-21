@@ -243,6 +243,12 @@ def main():
             start_all_active_stocrm_syncs(user_id=ftp_user_id)
         except Exception as e:
             logger.error(f"[MAIN] Ошибка запуска StoCRM синхронизаций: {e}")
+        try:
+            from call_analyzer.custom_api_sync_manager import start_all_active_custom_api_syncs
+            logger.info("[MAIN] Запуск Кастомный API синхронизаций...")
+            start_all_active_custom_api_syncs(user_id=ftp_user_id)
+        except Exception as e:
+            logger.error(f"[MAIN] Ошибка запуска Custom API синхронизаций: {e}")
 
 
         # 3. Основной цикл

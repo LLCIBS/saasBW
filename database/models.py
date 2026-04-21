@@ -259,6 +259,63 @@ class StocrmConnection(db.Model):
         return f'<StocrmConnection {self.name} domain={self.domain} (user={self.user_id})>'
 
 
+class CustomApiConnection(db.Model):
+    """Подключение к произвольному REST API для списка записей звонков (JSON → скачивание файла)."""
+    __tablename__ = 'custom_api_connections'
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
+    name = db.Column(db.String(200), nullable=False, default='Кастомный API')
+    is_active = db.Column(db.Boolean, default=True, nullable=False)
+    # URL, method, headers, params, body, timeout, SSL, auth — как у employee_mapping
+    request_config = db.Column(JSONB, nullable=True)
+    # items_path, record_url_field, station_field, original_filename_field, external_id_field, timestamp_field
+    mapping_config = db.Column(JSONB, nullable=True)
+    start_from = db.Column(db.DateTime, nullable=True)
+    sync_interval_minutes = db.Column(db.Integer, default=60, nullable=False)
+    last_sync = db.Column(db.DateTime, nullable=True)
+    last_error = db.Column(Text, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    __table_args__ = (
+        Index('idx_custom_api_user_active', 'user_id', 'is_active'),
+    )
+
+    user = db.relationship('User', backref=db.backref('custom_api_connections', lazy='dynamic'))
+
+    def __repr__(self):
+        return f'<CustomApiConnection {self.name} (user={self.user_id})>'
+
+
+class CustomApiImportedCall(db.Model):
+    """Идемпотентность: уже скачанные записи по внешнему ключу."""
+    __tablename__ = 'custom_api_imported_calls'
+
+    id = db.Column(db.Integer, primary_key=True)
+    connection_id = db.Column(
+        db.Integer, db.ForeignKey('custom_api_connections.id', ondelete='CASCADE'), nullable=False, index=True
+    )
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
+    external_key = db.Column(db.String(128), nullable=False)
+    record_url = db.Column(Text, nullable=True)
+    saved_path = db.Column(db.String(2000), nullable=True)
+    raw_payload = db.Column(JSONB, nullable=True)
+    status = db.Column(db.String(20), nullable=False, default='ok')
+    error_message = db.Column(Text, nullable=True)
+    downloaded_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    __table_args__ = (
+        db.UniqueConstraint('connection_id', 'external_key', name='uq_custom_api_import_conn_ext'),
+        Index('idx_custom_api_import_user', 'user_id'),
+    )
+
+    connection = db.relationship('CustomApiConnection', backref=db.backref('imported_calls', lazy='dynamic'))
+
+    def __repr__(self):
+        return f'<CustomApiImportedCall conn={self.connection_id} key={self.external_key[:16]}...>'
+
+
 class SystemLog(db.Model):
     """�?�?�?��>? �?��?�'��?�?�<�: �>�?�?�?�?"""
     __tablename__ = 'system_logs'
@@ -389,12 +446,13 @@ class UserConfig(db.Model):
     business_profile = db.Column(db.String(50), default='autoservice', nullable=False)
     
     # Paths
-    source_type = db.Column(db.String(50), nullable=True)  # 'local', 'ftp', 'rostelecom' или 'stocrm'
+    source_type = db.Column(db.String(50), nullable=True)  # 'local', 'ftp', 'rostelecom', 'stocrm', 'custom_api'
     prompts_file = db.Column(db.String(1000), nullable=True)
     base_records_path = db.Column(db.String(1000), nullable=True)
     ftp_connection_id = db.Column(db.Integer, db.ForeignKey('ftp_connections.id'), nullable=True)
     rostelecom_ats_connection_id = db.Column(db.Integer, db.ForeignKey('rostelecom_ats_connections.id'), nullable=True)
     stocrm_connection_id = db.Column(db.Integer, db.ForeignKey('stocrm_connections.id'), nullable=True)
+    custom_api_connection_id = db.Column(db.Integer, db.ForeignKey('custom_api_connections.id'), nullable=True)
     script_prompt_file = db.Column(db.String(1000), nullable=True)
     additional_vocab_file = db.Column(db.String(1000), nullable=True)
     
@@ -454,6 +512,7 @@ class UserConfig(db.Model):
     ftp_connection = db.relationship('FtpConnection', foreign_keys=[ftp_connection_id])
     rostelecom_ats_connection = db.relationship('RostelecomAtsConnection', foreign_keys=[rostelecom_ats_connection_id])
     stocrm_connection = db.relationship('StocrmConnection', foreign_keys=[stocrm_connection_id])
+    custom_api_connection = db.relationship('CustomApiConnection', foreign_keys=[custom_api_connection_id])
     
     def __repr__(self):
         return f'<UserConfig user_id={self.user_id}>'
