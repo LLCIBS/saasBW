@@ -22,6 +22,7 @@ try:
         notify_on_error,
         make_request_with_retries,
         parse_filename,
+        is_station_in_config_list,
     )
 except ImportError:
     from utils import (
@@ -30,6 +31,7 @@ except ImportError:
         notify_on_error,
         make_request_with_retries,
         parse_filename,
+        is_station_in_config_list,
     )
 
 try:
@@ -225,18 +227,25 @@ def transcribe_and_analyze(file_path: Path, station_code: str, original_station_
 
     if checklist_allowed and is_target_call(analysis_text):
         logger.info("Звонок определен как ЦЕЛЕВОЙ/ПЕРВИЧНЫЙ. Запускаем расширенный разбор (чек-лист).")
-        if phone_number and call_time:
-            # Используем оригинальный код станции для определения оператора в Telegram сообщении
-            # Основной код станции будет использован для отправки в правильные чаты
-            run_exental_alert(
-                txt_path=str(result_filename),
-                station_code=station_code,  # Основная станция для отправки в чаты
-                phone_number=phone_number,
-                date_str=call_time.strftime("%Y-%m-%d-%H-%M-%S"),
-                operator_station_code=operator_station_code  # Оригинальная станция для определения оператора
-            )
-        else:
+        if not phone_number or not call_time:
             logger.warning("Слишком мало данных (phone_number/call_time), не можем вызвать exental_alert.")
+        else:
+            code_for_checklist = operator_station_code if operator_station_code else station_code
+            if not is_station_in_config_list(code_for_checklist):
+                logger.info(
+                    f"Расширенный разбор (чек-лист) пропущен: код {code_for_checklist!r} "
+                    f"отсутствует в STATION_NAMES и не является подстанцией в STATION_MAPPING."
+                )
+            else:
+                # Используем оригинальный код станции для определения оператора в Telegram сообщении
+                # Основной код станции будет использован для отправки в правильные чаты
+                run_exental_alert(
+                    txt_path=str(result_filename),
+                    station_code=station_code,  # Основная станция для отправки в чаты
+                    phone_number=phone_number,
+                    date_str=call_time.strftime("%Y-%m-%d-%H-%M-%S"),
+                    operator_station_code=operator_station_code  # Оригинальная станция для определения оператора
+                )
     else:
         logger.info(f"Звонок НЕ является целевым (анализ: {analysis_upper[:50]}...). Чек-лист пропущен.")
 

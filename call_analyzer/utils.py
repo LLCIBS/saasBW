@@ -601,6 +601,42 @@ def parse_call_metadata_from_basename(base_name: str):
     return None, None, None
 
 
+def is_station_in_config_list(
+    station_code, station_names=None, station_mapping=None
+) -> bool:
+    """
+    True, если код — основная станция из STATION_NAMES или подстанция
+    в одном из списков STATION_MAPPING. Коды только из привязки
+    сотрудников (без справочника СТО) — False.
+    """
+    if station_code is None:
+        return False
+    code = str(station_code).strip()
+    if not code or code == 'Неизвестно':
+        return False
+    station_names = station_names or getattr(config, 'STATION_NAMES', {}) or {}
+    station_mapping = station_mapping or getattr(config, 'STATION_MAPPING', {}) or {}
+    if code in station_names:
+        return True
+    for sub_codes in station_mapping.values():
+        if code in sub_codes:
+            return True
+    return False
+
+
+def station_code_from_report_analysis_filename(name) -> Optional[str]:
+    """
+    Код станции из значения колонки «Название файла» (строка *_analysis.txt)
+    в отчёте week_full.
+    """
+    try:
+        base = str(name).replace('_analysis.txt', '')
+        _, st, _ = parse_call_metadata_from_basename(base)
+        return st
+    except Exception:
+        return None
+
+
 def is_valid_call_filename(filename: str) -> bool:
     """
     Проверяет, является ли файл валидным файлом звонка.

@@ -24,9 +24,19 @@ import os
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 import config as main_config
 try:
-    from call_analyzer.utils import parse_filename, parse_call_metadata_from_basename  # type: ignore
+    from call_analyzer.utils import (  # type: ignore
+        parse_filename,
+        parse_call_metadata_from_basename,
+        is_station_in_config_list,
+        station_code_from_report_analysis_filename,
+    )
 except ImportError:
-    from utils import parse_filename, parse_call_metadata_from_basename
+    from utils import (
+        parse_filename,
+        parse_call_metadata_from_basename,
+        is_station_in_config_list,
+        station_code_from_report_analysis_filename,
+    )
 import config as cfg
 # Импортируем функции для извлечения имени оператора
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
@@ -851,6 +861,14 @@ def create_summary_report(output_file_path):
         excel_data['Название станции'].astype(str).str.strip() != 'Неизвестно'
     ]
 
+    # Сводка и «Общий % по станциям» — только по кодам из STATION_NAMES / подстанциям
+    # STATION_MAPPING. Звонки, попавшие в обработку только по EMPLOYEE_BY_EXTENSION, в сводки не входят.
+    def _in_cfg(row):
+        code = station_code_from_report_analysis_filename(row['Название файла'])
+        return is_station_in_config_list(code, station_names, station_mapping)
+
+    excel_data = excel_data[excel_data.apply(_in_cfg, axis=1)]
+
     # Заменяем числовые коды станций на полные названия
     # Объединяем основную станцию и подстанцию в одну группу
     station_groups_map = get_station_groups(station_names, station_mapping, employee_by_extension)
@@ -1048,6 +1066,8 @@ def compute_realtime_summary(
     Консультант берётся из EMPLOYEE_BY_EXTENSION по коду станции.
     Возвращает JSON-подобную структуру с агрегацией по станциям и консультантам.
     allowed_stations: список разрешенных кодов станций. Если None - все станции.
+    В выборку не попадают звонки, у которых кода нет в STATION_NAMES / STATION_MAPPING
+    (в т.ч. обработанные только по привязке внутренних номеров).
     """
     if not base_folder:
         base_folder = str(main_config.BASE_RECORDS_PATH)
@@ -1081,6 +1101,10 @@ def compute_realtime_summary(
                 station_code = st_parsed
             if dt_parsed:
                 date_time_obj = dt_parsed
+
+            # Онлайн-лидерборд и «показатели по консультантам» — только справочные станции/подстанции
+            if not is_station_in_config_list(station_code, station_names, station_mapping):
+                continue
 
             # Файл содержимого
             try:
