@@ -29,12 +29,7 @@ from database.models import (
 class SelfLearningSystem:
     """Система автоматического самообучения с подтверждениями"""
 
-    def __init__(
-        self,
-        user_id: Optional[int] = None,
-        training_db_path: Any = None,
-        rules_db_path: Any = None,
-    ) -> None:
+    def __init__(self, user_id: Optional[int] = None) -> None:
         uid = user_id
         if uid is None:
             env_uid = os.environ.get("CLASSIFICATION_USER_ID")
@@ -44,9 +39,6 @@ class SelfLearningSystem:
                 "SelfLearningSystem требует user_id=... или CLASSIFICATION_USER_ID"
             )
         self.user_id = int(uid)
-        # legacy пути к SQLite больше не используются
-        self.training_db_path = str(training_db_path or "")
-        self.rules_db_path = str(rules_db_path or "")
 
     def init_learning_tables(self) -> None:
         """Схема создаётся в PostgreSQL (db.create_all / миграции)."""

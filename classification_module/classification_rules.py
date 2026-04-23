@@ -48,11 +48,9 @@ class ClassificationRulesManager:
     def __init__(
         self,
         user_id: Optional[int] = None,
-        db_path: Any = None,
         classification_root: Any = None,
         **_: Any,
     ) -> None:
-        # db_path: только legacy — родитель .db имел смысл как classification_root; предпочтительно classification_root
         uid = user_id
         if uid is None:
             env_uid = os.environ.get("CLASSIFICATION_USER_ID")
@@ -62,7 +60,6 @@ class ClassificationRulesManager:
                 "ClassificationRulesManager требует user_id=... или переменную окружения CLASSIFICATION_USER_ID"
             )
         self.user_id = int(uid)
-        self.db_path: str = str(db_path) if db_path else ""
         self._classification_root: Optional[Path] = None
         if classification_root is not None:
             self._classification_root = Path(classification_root).resolve()
@@ -71,11 +68,9 @@ class ClassificationRulesManager:
 
     @property
     def classification_root(self) -> Path:
-        """Каталог .../classification для артефактов; из classification_root, иначе из legacy db_path (родитель .db)."""
+        """Каталог .../classification для логов и uploads (если задан в конструкторе)."""
         if self._classification_root is not None:
             return self._classification_root
-        if self.db_path and self.db_path.endswith(".db"):
-            return Path(self.db_path).resolve().parent
         return Path()
 
     def _ensure_notify_defaults(self) -> None:

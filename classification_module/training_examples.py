@@ -19,7 +19,6 @@ class TrainingExamplesManager:
     def __init__(
         self,
         user_id: Optional[int] = None,
-        db_path: Any = None,
         classification_root: Any = None,
         **_: Any,
     ) -> None:
@@ -32,12 +31,9 @@ class TrainingExamplesManager:
                 "TrainingExamplesManager требует user_id=... или CLASSIFICATION_USER_ID"
             )
         self.user_id = int(uid)
-        self.db_path = str(db_path) if db_path else ""
         self._classification_root: Optional[Path] = None
         if classification_root is not None:
             self._classification_root = Path(classification_root).resolve()
-        elif self.db_path and str(self.db_path).endswith(".db"):
-            self._classification_root = Path(self.db_path).resolve().parent
 
     def add_training_example(
         self,

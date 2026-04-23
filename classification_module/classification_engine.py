@@ -52,8 +52,6 @@ class CallClassificationEngine:
         model=None,
         user_id=None,
         classification_root=None,
-        training_db_path="training_examples.db",
-        rules_db_path="classification_rules.db",
         station_names=None,
         station_mapping=None,
         station_report_names=None,
@@ -64,9 +62,7 @@ class CallClassificationEngine:
 
         Параметры:
         - user_id: владелец данных в PostgreSQL (обязателен, иначе CLASSIFICATION_USER_ID)
-        - classification_root: каталог .../classification (лог, uploads, артефакты)
-        - training_db_path, rules_db_path: устарели; пути к .db оставлены для совместимости и
-          используются только как вспомогательный classification_root, если root не задан
+        - classification_root: каталог .../classification (лог, uploads, артефакты), обязателен
         - api_key: ключ доступа к LLM (если не передан, берётся из переменной окружения THEBAI_API_KEY)
         - base_url: базовый URL LLM (если не передан, берётся из THEBAI_URL или используется https://api.deepseek.com/v1)
         - model: имя модели (если не передано, берётся из THEBAI_MODEL или используется deepseek-chat)
@@ -86,10 +82,9 @@ class CallClassificationEngine:
             raise ValueError("CallClassificationEngine: укажите user_id= или CLASSIFICATION_USER_ID")
         self.user_id = int(uid)
 
-        if classification_root is not None:
-            root = Path(classification_root)
-        else:
-            root = Path(rules_db_path).resolve().parent
+        if classification_root is None:
+            raise ValueError("CallClassificationEngine: укажите classification_root= (каталог .../classification)")
+        root = Path(classification_root)
         self.classification_root = root
         self.debug_log_path = root / "classification_llm_debug.log"
         self.uploads_dir = root / "uploads"

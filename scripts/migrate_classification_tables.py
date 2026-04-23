@@ -1,15 +1,10 @@
 #!/usr/bin/env python3
 """
-Создаёт схему таблиц классификации в PostgreSQL (db.create_all) и
-напоминает о переносе из SQLite (если старые файлы ещё есть).
+Создаёт в PostgreSQL таблицы подсистемы классификации (через db.create_all).
 
-Старые per-user SQLite-файлы (classification_rules.db, training_examples.db) больше
-не заполняются рантаймом — данные в PostgreSQL.
-
-Перенос данных:
-    .\\venv\\Scripts\\python scripts\\migrate_sqlite_classification_to_postgres.py
-
-Или вручную: создать таблицы через init_db / db.create_all, затем скрипт переноса.
+Данные хранятся только в PostgreSQL. Удаление старых per-user *.db с диска (после бэкапа):
+    python scripts/remove_legacy_classification_sqlite_files.py
+    python scripts/remove_legacy_classification_sqlite_files.py --execute
 """
 
 from __future__ import annotations
@@ -28,9 +23,7 @@ from database.models import db
 def main() -> None:
     with app.app_context():
         db.create_all()
-    print("OK: database.models (включая таблицы классификации) применены через create_all().")
-    print("Если у пользователей остались старые SQLite, запустите:")
-    print("  python scripts/migrate_sqlite_classification_to_postgres.py")
+    print("OK: таблицы из database.models (в т.ч. классификация) применены через create_all().")
 
 
 if __name__ == "__main__":

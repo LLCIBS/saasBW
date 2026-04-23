@@ -814,7 +814,7 @@ class FinetuneJob(db.Model):
     user = db.relationship('User', backref=db.backref('finetune_jobs', lazy='dynamic', cascade='all, delete-orphan'))
 
 
-# --- LLM-классификация (ранее per-user SQLite classification_rules.db / training_examples.db) ---
+# --- LLM-классификация (данные в PostgreSQL; каталог classification/ — только артефакты) ---
 
 
 class UserClassificationSystemPrompt(db.Model):
