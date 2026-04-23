@@ -50,6 +50,8 @@ class CallClassificationEngine:
         api_key=None,
         base_url=None,
         model=None,
+        user_id=None,
+        classification_root=None,
         training_db_path="training_examples.db",
         rules_db_path="classification_rules.db",
         station_names=None,
@@ -61,6 +63,10 @@ class CallClassificationEngine:
         Инициализация движка классификации.
 
         Параметры:
+        - user_id: владелец данных в PostgreSQL (обязателен, иначе CLASSIFICATION_USER_ID)
+        - classification_root: каталог .../classification (лог, uploads, артефакты)
+        - training_db_path, rules_db_path: устарели; пути к .db оставлены для совместимости и
+          используются только как вспомогательный classification_root, если root не задан
         - api_key: ключ доступа к LLM (если не передан, берётся из переменной окружения THEBAI_API_KEY)
         - base_url: базовый URL LLM (если не передан, берётся из THEBAI_URL или используется https://api.deepseek.com/v1)
         - model: имя модели (если не передано, берётся из THEBAI_MODEL или используется deepseek-chat)
@@ -71,13 +77,24 @@ class CallClassificationEngine:
         self.model = model or os.getenv("THEBAI_MODEL", "deepseek-chat")
         self.api_key = api_key
         self.base_url = base_url
-        self.debug_log_path = Path(rules_db_path).resolve().parent / "classification_llm_debug.log"
-        
-        # Инициализируем менеджер обучения
-        self.training_manager = TrainingExamplesManager(db_path=training_db_path)
-        
-        # Инициализируем менеджер правил классификации
-        self.rules_manager = ClassificationRulesManager(db_path=rules_db_path)
+
+        uid = user_id
+        if uid is None:
+            env_uid = os.getenv("CLASSIFICATION_USER_ID")
+            uid = int(env_uid) if env_uid and str(env_uid).isdigit() else None
+        if uid is None or int(uid) <= 0:
+            raise ValueError("CallClassificationEngine: укажите user_id= или CLASSIFICATION_USER_ID")
+        self.user_id = int(uid)
+
+        if classification_root is not None:
+            root = Path(classification_root)
+        else:
+            root = Path(rules_db_path).resolve().parent
+        self.classification_root = root
+        self.debug_log_path = root / "classification_llm_debug.log"
+        self.uploads_dir = root / "uploads"
+        self.training_manager = TrainingExamplesManager(user_id=self.user_id, classification_root=root)
+        self.rules_manager = ClassificationRulesManager(user_id=self.user_id, classification_root=root)
         
         # Словарь для преобразования номеров станций в названия
         self.STATION_CODES = {
@@ -1153,7 +1170,7 @@ class CallClassificationEngine:
         external_history = []
         if context_days > 0:  # Если context_days = 0, не загружаем историю
             try:
-                uploads_dir = Path(self.rules_manager.db_path).resolve().parent / "uploads"
+                uploads_dir = self.uploads_dir
                 frames = []
                 if uploads_dir.exists():
                     for f in sorted(uploads_dir.glob("*.xlsx"), key=lambda p: p.stat().st_mtime, reverse=True):

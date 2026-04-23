@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import os
-import sqlite3
 import threading
 import time
 from io import BytesIO
@@ -31,7 +30,17 @@ from classification_module.classification_rules import ClassificationRulesManage
 from classification_module.max_notify import send_excel_report_to_max
 from classification_module.self_learning_system import SelfLearningSystem
 from classification_module.training_examples import TrainingExamplesManager
-from database.models import User, UserConfig, UserStation, UserStationMapping
+from database.models import (
+    User,
+    UserConfig,
+    UserClassificationMetric,
+    UserClassificationSuccessStat,
+    UserCorrectClassification,
+    UserCorrectionHistory,
+    UserStation,
+    UserStationMapping,
+    UserTrainingExample,
+)
 
 
 classification_bp = Blueprint("classification", __name__, url_prefix="/classification")
@@ -64,14 +73,6 @@ def _classification_root_for(user_id: int) -> Path:
     return root
 
 
-def _rules_db_path_for(user_id: int) -> Path:
-    return _classification_root_for(user_id) / "classification_rules.db"
-
-
-def _training_db_path_for(user_id: int) -> Path:
-    return _classification_root_for(user_id) / "training_examples.db"
-
-
 def _uploads_dir_for(user_id: int) -> Path:
     return _classification_root_for(user_id) / "uploads"
 
@@ -84,20 +85,14 @@ def _classification_root() -> Path:
     return _classification_root_for(int(current_user.id))
 
 
-def _rules_db_path() -> Path:
-    return _rules_db_path_for(int(current_user.id))
-
-
-def _training_db_path() -> Path:
-    return _training_db_path_for(int(current_user.id))
-
-
 def _uploads_dir() -> Path:
     return _uploads_dir_for(int(current_user.id))
 
 
 def _rules_manager() -> ClassificationRulesManager:
-    return ClassificationRulesManager(db_path=str(_rules_db_path()))
+    return ClassificationRulesManager(
+        user_id=int(current_user.id), classification_root=_classification_root()
+    )
 
 
 def _normalize_llm_base_url(raw_url: str) -> str:
@@ -497,30 +492,31 @@ def _station_engine_kwargs_for_user(user_id: int) -> Tuple[
     return station_names, station_mapping, station_report_names, station_report_order
 
 
-def _engine_for_user() -> Tuple[CallClassificationEngine, str]:
-    rules_db_path = str(_rules_db_path())
-    training_db_path = str(_training_db_path())
+def _engine_for_user() -> Tuple[CallClassificationEngine, Path]:
+    root = _classification_root()
 
     station_names, station_mapping, station_report_names, station_report_order = _station_engine_kwargs_for_user(
         current_user.id
     )
 
     cfg = UserConfig.query.filter_by(user_id=current_user.id).first()
-    _sync_filename_settings_to_rules(ClassificationRulesManager(db_path=rules_db_path), cfg)
+    _sync_filename_settings_to_rules(
+        ClassificationRulesManager(user_id=int(current_user.id), classification_root=root), cfg
+    )
     llm_api_key, llm_base_url, llm_model = _resolve_user_llm_settings(user=current_user)
 
     engine = CallClassificationEngine(
         api_key=llm_api_key,
         base_url=llm_base_url,
         model=llm_model,
-        training_db_path=training_db_path,
-        rules_db_path=rules_db_path,
+        user_id=int(current_user.id),
+        classification_root=root,
         station_names=station_names,
         station_mapping=station_mapping,
         station_report_names=station_report_names,
         station_report_order=station_report_order,
     )
-    return engine, training_db_path
+    return engine, root
 
 
 _NOTIFY_SETTING_KEYS = (
@@ -537,8 +533,8 @@ def _resolve_schedule_notify_telegram(
     rules_rm: ClassificationRulesManager, config_data: dict
 ) -> Tuple[bool, str, str]:
     """
-    Приоритет: настройки страницы «Расписания» (classification_rules.db),
-    иначе профиль ЛК (PostgreSQL).
+    Приоритет: настройки страницы «Расписания» (user_classification_settings),
+    иначе профиль ЛК (user_config).
     """
     te = (rules_rm.get_setting("telegram_enabled", "") or "").strip()
     tt = (rules_rm.get_setting("telegram_bot_token", "") or "").strip()
@@ -588,7 +584,7 @@ def _try_send_schedule_excel_notifications(
     Отправка Excel после успешного прогона по расписанию.
 
     Сначала используются настройки из блока «Отправка Excel после расписания»
-    (classification_rules.db → system_settings), при неполных данных — профиль ЛК (PostgreSQL).
+    (PostgreSQL user_classification_settings), при неполных данных — профиль ЛК.
     """
     path_str = str(output_path)
     if not os.path.isfile(path_str):
@@ -603,7 +599,9 @@ def _try_send_schedule_excel_notifications(
         if not user:
             return
         config_data = get_user_config_data(user=user)
-        rules_rm = ClassificationRulesManager(db_path=str(_rules_db_path_for(int(user_id))))
+        rules_rm = ClassificationRulesManager(
+            user_id=int(user_id), classification_root=_classification_root_for(int(user_id))
+        )
 
         send_tg, bot_token, chat_id = _resolve_schedule_notify_telegram(rules_rm, config_data)
         try:
@@ -640,8 +638,7 @@ def _run_classification_task(
     flask_app,
     task_id,
     user_id,
-    rules_db_path,
-    training_db_path,
+    classification_root,
     uploads_dir,
     input_folder,
     output_filename,
@@ -659,9 +656,10 @@ def _run_classification_task(
     rules = None
     schedule_rm = None
     try:
-        rules = ClassificationRulesManager(db_path=rules_db_path)
+        _cr = Path(classification_root)
+        rules = ClassificationRulesManager(user_id=int(user_id), classification_root=_cr)
         if schedule_id is not None:
-            schedule_rm = ClassificationRulesManager(db_path=rules_db_path)
+            schedule_rm = ClassificationRulesManager(user_id=int(user_id), classification_root=_cr)
         output_path = Path(uploads_dir) / output_filename
 
         with _tasks_lock:
@@ -697,8 +695,8 @@ def _run_classification_task(
             api_key=llm_api_key,
             base_url=llm_base_url,
             model=llm_model,
-            training_db_path=training_db_path,
-            rules_db_path=rules_db_path,
+            user_id=int(user_id),
+            classification_root=Path(classification_root),
             station_names=station_names or {},
             station_mapping=station_mapping or {},
             station_report_names=station_report_names or {},
@@ -776,11 +774,11 @@ def _enqueue_classification_task_for_user(
     app_obj=None,
 ) -> str:
     task_id = f"{int(user_id)}_{int(time.time() * 1000)}"
-    rules_db_path = str(_rules_db_path_for(user_id))
-    training_db_path = str(_training_db_path_for(user_id))
+    cr_path = _classification_root_for(user_id)
+    classification_root = str(cr_path)
     uploads_dir = str(_uploads_dir_for(user_id))
 
-    rules = ClassificationRulesManager(db_path=rules_db_path)
+    rules = ClassificationRulesManager(user_id=int(user_id), classification_root=cr_path)
     rules.add_classification_task(
         task_id=task_id,
         input_folder=str(input_path),
@@ -828,8 +826,7 @@ def _enqueue_classification_task_for_user(
             app_obj,
             task_id,
             int(user_id),
-            rules_db_path,
-            training_db_path,
+            classification_root,
             uploads_dir,
             str(input_path),
             output_filename,
@@ -883,8 +880,8 @@ def _process_due_schedules(flask_app):
         users = User.query.all()
         for user in users:
             user_id = int(user.id)
-            rules_path = str(_rules_db_path_for(user_id))
-            rm = ClassificationRulesManager(db_path=rules_path)
+            cr = _classification_root_for(user_id)
+            rm = ClassificationRulesManager(user_id=user_id, classification_root=cr)
             for schedule in rm.get_due_schedules():
                 schedule_id = int(schedule["id"])
                 schedule_key = _schedule_key(user_id, schedule_id)
@@ -1093,10 +1090,7 @@ def learning_analytics_page():
         "recommendations": [],
     }
     try:
-        self_learning = SelfLearningSystem(
-            training_db_path=str(_training_db_path()),
-            rules_db_path=str(_rules_db_path()),
-        )
+        self_learning = SelfLearningSystem(user_id=int(current_user.id))
         generated = self_learning.generate_enhanced_learning_report() or {}
         if isinstance(generated, dict):
             report.update(generated)
@@ -1401,122 +1395,48 @@ def api_schedule_run(schedule_id):
 @classification_bp.route("/api/learning/stats")
 @login_required
 def api_learning_stats():
-    TrainingExamplesManager(db_path=str(_training_db_path()))
-    db_path = _training_db_path()
-    conn = sqlite3.connect(str(db_path))
-    conn.row_factory = sqlite3.Row
-    cur = conn.cursor()
-
-    cur.execute(
-        """
-        CREATE TABLE IF NOT EXISTS training_examples (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            transcription_hash TEXT UNIQUE NOT NULL,
-            transcription TEXT NOT NULL,
-            correct_category TEXT NOT NULL,
-            correct_reasoning TEXT NOT NULL,
-            original_category TEXT,
-            original_reasoning TEXT,
-            operator_comment TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            used_count INTEGER DEFAULT 0,
-            is_active BOOLEAN DEFAULT 1
-        )
-        """
-    )
-    cur.execute(
-        """
-        CREATE TABLE IF NOT EXISTS classification_success_stats (
-            category TEXT PRIMARY KEY,
-            total_classified INTEGER DEFAULT 0,
-            confirmed_correct INTEGER DEFAULT 0,
-            corrections_count INTEGER DEFAULT 0,
-            success_rate REAL DEFAULT 0.0,
-            last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-        """
-    )
-    cur.execute(
-        """
-        CREATE TABLE IF NOT EXISTS classification_metrics (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            date DATE NOT NULL,
-            total_calls INTEGER DEFAULT 0,
-            correct_classifications INTEGER DEFAULT 0,
-            corrections_made INTEGER DEFAULT 0,
-            accuracy_rate REAL DEFAULT 0.0,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-        """
-    )
-    cur.execute(
-        """
-        CREATE TABLE IF NOT EXISTS correct_classifications (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            phone_number TEXT,
-            call_date TEXT,
-            call_time TEXT,
-            category TEXT NOT NULL,
-            reasoning TEXT,
-            transcription_hash TEXT,
-            confirmed_by TEXT,
-            confirmed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            confidence_level INTEGER DEFAULT 5,
-            comment TEXT
-        )
-        """
-    )
-    cur.execute(
-        """
-        CREATE TABLE IF NOT EXISTS correction_history (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            phone_number TEXT,
-            call_date TEXT,
-            call_time TEXT,
-            station TEXT,
-            original_category TEXT NOT NULL,
-            corrected_category TEXT NOT NULL,
-            original_reasoning TEXT,
-            corrected_reasoning TEXT,
-            operator_name TEXT,
-            correction_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-        """
-    )
-    conn.commit()
-
-    def _count(table: str) -> int:
-        cur.execute(f"SELECT COUNT(*) AS c FROM {table}")
-        return int(cur.fetchone()["c"])
-
+    uid = int(current_user.id)
     stats = {
-        "training_examples": _count("training_examples"),
-        "corrections": _count("correction_history"),
-        "correct_classifications": _count("correct_classifications"),
+        "training_examples": UserTrainingExample.query.filter_by(user_id=uid).count(),
+        "corrections": UserCorrectionHistory.query.filter_by(user_id=uid).count(),
+        "correct_classifications": UserCorrectClassification.query.filter_by(user_id=uid).count(),
     }
-
-    cur.execute(
-        """
-        SELECT category, total_classified, confirmed_correct, corrections_count, success_rate
-        FROM classification_success_stats
-        ORDER BY success_rate DESC, total_classified DESC
-        LIMIT 20
-        """
+    by_rows = (
+        UserClassificationSuccessStat.query.filter_by(user_id=uid)
+        .order_by(
+            UserClassificationSuccessStat.success_rate.desc(),
+            UserClassificationSuccessStat.total_classified.desc(),
+        )
+        .limit(20)
+        .all()
     )
-    by_category = [dict(row) for row in cur.fetchall()]
-
-    cur.execute(
-        """
-        SELECT date, total_calls, correct_classifications, corrections_made, accuracy_rate
-        FROM classification_metrics
-        ORDER BY date DESC
-        LIMIT 30
-        """
+    by_category = [
+        {
+            "category": r.category,
+            "total_classified": r.total_classified,
+            "confirmed_correct": r.confirmed_correct,
+            "corrections_count": r.corrections_count,
+            "success_rate": r.success_rate,
+        }
+        for r in by_rows
+    ]
+    mrows = (
+        UserClassificationMetric.query.filter_by(user_id=uid)
+        .order_by(UserClassificationMetric.metric_date.desc())
+        .limit(30)
+        .all()
     )
-    metrics = [dict(row) for row in cur.fetchall()]
-    metrics.reverse()
-
-    conn.close()
+    mrows = list(reversed(mrows))
+    metrics = [
+        {
+            "date": r.metric_date.isoformat() if r.metric_date else None,
+            "total_calls": r.total_calls,
+            "correct_classifications": r.correct_classifications,
+            "corrections_made": r.corrections_made,
+            "accuracy_rate": r.accuracy_rate,
+        }
+        for r in mrows
+    ]
     return jsonify({"success": True, "stats": stats, "by_category": by_category, "metrics": metrics})
 
 
@@ -1600,7 +1520,7 @@ def call_detail_page(call_id: int):
 @classification_bp.route("/training")
 @login_required
 def training_page():
-    manager = TrainingExamplesManager(db_path=str(_training_db_path()))
+    manager = TrainingExamplesManager(user_id=int(current_user.id))
     page = max(int(request.args.get("page", 1) or 1), 1)
     per_page = 30
     category_filter = str(request.args.get("category", "") or "").strip()
@@ -1643,7 +1563,7 @@ def training_page():
 @classification_bp.route("/training/add", methods=["GET", "POST"])
 @login_required
 def training_add_page():
-    manager = TrainingExamplesManager(db_path=str(_training_db_path()))
+    manager = TrainingExamplesManager(user_id=int(current_user.id))
     categories = _categories_from_dataframe(_load_all_results_df().fillna(""))
 
     if request.method == "POST":
@@ -1685,7 +1605,7 @@ def training_add_page():
 @classification_bp.route("/training/toggle/<int:example_id>")
 @login_required
 def training_toggle_example(example_id: int):
-    manager = TrainingExamplesManager(db_path=str(_training_db_path()))
+    manager = TrainingExamplesManager(user_id=int(current_user.id))
     if manager.toggle_example_status(example_id):
         flash("Статус примера обновлен", "success")
     else:
@@ -1696,7 +1616,7 @@ def training_toggle_example(example_id: int):
 @classification_bp.route("/training/delete/<int:example_id>")
 @login_required
 def training_delete_example(example_id: int):
-    manager = TrainingExamplesManager(db_path=str(_training_db_path()))
+    manager = TrainingExamplesManager(user_id=int(current_user.id))
     if manager.delete_example(example_id):
         flash("Пример удален", "success")
     else:
@@ -1743,7 +1663,7 @@ def api_reclassify_call():
             )
         history_context = "\n".join(history_lines)
 
-    manager = TrainingExamplesManager(db_path=str(_training_db_path()))
+    manager = TrainingExamplesManager(user_id=int(current_user.id))
     examples = manager.get_training_examples(limit=10)
     training_context = "\n".join(
         [
@@ -1824,11 +1744,11 @@ def api_save_reclassification():
     if auto_correction:
         source_df.at[file_index, "Автокоррекция"] = auto_correction
 
-    engine, training_db_path = _engine_for_user()
+    engine, _ = _engine_for_user()
     if not engine.safe_save_excel(source_df.to_dict("records"), str(target_path)):
         return jsonify({"success": False, "message": "Не удалось сохранить файл (возможно открыт в Excel)"}), 409
 
-    manager = TrainingExamplesManager(db_path=training_db_path)
+    manager = TrainingExamplesManager(user_id=int(current_user.id))
     manager.add_correction(
         phone_number=phone,
         call_date=call_date,
@@ -1870,10 +1790,7 @@ def api_mark_as_correct():
     if not transcription:
         return jsonify({"success": False, "message": "Транскрипция не найдена"}), 400
 
-    self_learning = SelfLearningSystem(
-        training_db_path=str(_training_db_path()),
-        rules_db_path=str(_rules_db_path()),
-    )
+    self_learning = SelfLearningSystem(user_id=int(current_user.id))
     success = self_learning.mark_as_correct(
         phone_number=str(call.get("Номер телефона", "") or ""),
         call_date=str(call.get("Дата", "") or ""),
@@ -1894,10 +1811,7 @@ def api_mark_as_correct():
 @login_required
 def api_success_stats():
     try:
-        self_learning = SelfLearningSystem(
-            training_db_path=str(_training_db_path()),
-            rules_db_path=str(_rules_db_path()),
-        )
+        self_learning = SelfLearningSystem(user_id=int(current_user.id))
         stats = self_learning.get_category_success_stats()
         progress = self_learning.analyze_learning_progress(days=30)
         return jsonify({"success": True, "stats": stats, "progress": progress})
@@ -1910,24 +1824,29 @@ def api_success_stats():
 def api_correct_classifications():
     limit = max(int(request.args.get("limit", 50) or 50), 1)
     categories = _categories_from_dataframe(_load_all_results_df().fillna(""))
-    conn = sqlite3.connect(str(_training_db_path()))
-    conn.row_factory = sqlite3.Row
-    cur = conn.cursor()
-    cur.execute(
-        """
-        SELECT id, phone_number, call_date, call_time, category, reasoning, confirmed_by,
-               confidence_level, comment, confirmed_at
-        FROM correct_classifications
-        ORDER BY confirmed_at DESC
-        LIMIT ?
-        """,
-        (limit,),
+    recs = (
+        UserCorrectClassification.query.filter_by(user_id=int(current_user.id))
+        .order_by(UserCorrectClassification.confirmed_at.desc())
+        .limit(limit)
+        .all()
     )
-    rows = [dict(row) for row in cur.fetchall()]
-    conn.close()
-    for row in rows:
-        code = str(row.get("category", "") or "")
-        row["category_name"] = categories.get(code, code)
+    rows = []
+    for r in recs:
+        d = {
+            "id": r.id,
+            "phone_number": r.phone_number,
+            "call_date": r.call_date,
+            "call_time": r.call_time,
+            "category": r.category,
+            "reasoning": r.reasoning,
+            "confirmed_by": r.confirmed_by,
+            "confidence_level": r.confidence_level,
+            "comment": r.comment,
+            "confirmed_at": r.confirmed_at.isoformat() if r.confirmed_at else None,
+        }
+        code = str(d.get("category", "") or "")
+        d["category_name"] = categories.get(code, code)
+        rows.append(d)
     return jsonify({"success": True, "data": rows, "count": len(rows)})
 
 
@@ -1935,10 +1854,7 @@ def api_correct_classifications():
 @login_required
 def api_export_learning_report():
     try:
-        self_learning = SelfLearningSystem(
-            training_db_path=str(_training_db_path()),
-            rules_db_path=str(_rules_db_path()),
-        )
+        self_learning = SelfLearningSystem(user_id=int(current_user.id))
         report = self_learning.generate_enhanced_learning_report()
         output = BytesIO()
         with pd.ExcelWriter(output, engine="openpyxl") as writer:
@@ -2046,12 +1962,12 @@ def api_schedule_status(schedule_id: int):
 def api_notify_settings():
     """
     Настройки отправки отчётов после классификации (Telegram и MAX).
-    Хранятся в classification_rules.db → system_settings.
+    Хранятся в PostgreSQL: user_classification_settings.
     """
     rules = _rules_manager()
     if request.method == "GET":
         data = {k: rules.get_setting(k, "") for k in _NOTIFY_SETTING_KEYS}
-        # флаги как строки '0'/'1' для совместимости с SQLite
+        # флаги как строки '0'/'1' для совместимости с API/фронтом
         return jsonify({"success": True, "settings": data})
 
     payload = request.get_json(silent=True) or {}

@@ -27,15 +27,21 @@ def run_daily_learning_cycle():
     print()
     
     try:
+        uid = int(os.environ.get("CLASSIFICATION_USER_ID", "0") or 0)
+        if uid <= 0:
+            print("Ошибка: укажите CLASSIFICATION_USER_ID (пользователь ЛК) для обращения к PostgreSQL.")
+            return
+        from web_interface.app import app
+
         # Инициализируем систему самообучения
         print("Инициализация системы самообучения...")
-        learning_system = IntegratedLearningSystem()
-        print("Система инициализирована.")
-        print()
-        
-        # Запускаем ежедневный цикл
-        print("Запуск ежедневного цикла самообучения...")
-        result = learning_system.daily_learning_cycle()
+        with app.app_context():
+            learning_system = IntegratedLearningSystem(user_id=uid)
+            print("Система инициализирована.")
+            print()
+            # Запускаем ежедневный цикл
+            print("Запуск ежедневного цикла самообучения...")
+            result = learning_system.daily_learning_cycle()
         print()
         
         # Выводим результаты

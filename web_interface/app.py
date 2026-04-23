@@ -660,33 +660,30 @@ def save_user_config_data(config_data, user=None):
 
 
 def sync_classification_notify_from_user_config(actual_user, config_data):
-    """Дублирует настройки уведомлений в classification_rules.db пользователя."""
+    """Дублирует настройки уведомлений в user_classification_settings (PostgreSQL)."""
     try:
-        from pathlib import Path
         from classification_module.classification_rules import ClassificationRulesManager
+        from pathlib import Path
 
-        base = (config_data.get('paths') or {}).get('base_records_path') or ''
-        base = str(base).strip()
-        if not base:
-            return
-        db_path = Path(base) / 'classification' / 'classification_rules.db'
-        if not db_path.is_file():
-            return
-        rules = ClassificationRulesManager(db_path=str(db_path))
-        telegram = config_data.get('telegram') or {}
-        max_c = config_data.get('max') or {}
-        api_keys = config_data.get('api_keys') or {}
-        rules.set_setting('telegram_enabled', '1' if telegram.get('notifications_enabled', True) else '0')
-        rules.set_setting('telegram_bot_token', api_keys.get('telegram_bot_token') or '')
-        rules.set_setting(
-            'telegram_chat_id',
-            (telegram.get('reports_chat_id') or telegram.get('alert_chat_id') or '').strip(),
+        base = (config_data.get("paths") or {}).get("base_records_path") or "."
+        rules = ClassificationRulesManager(
+            user_id=int(actual_user.id),
+            classification_root=Path(base) / "classification",
         )
-        rules.set_setting('max_enabled', '1' if max_c.get('notifications_enabled', True) else '0')
-        rules.set_setting('max_access_token', api_keys.get('max_access_token') or '')
+        telegram = config_data.get("telegram") or {}
+        max_c = config_data.get("max") or {}
+        api_keys = config_data.get("api_keys") or {}
+        rules.set_setting("telegram_enabled", "1" if telegram.get("notifications_enabled", True) else "0")
+        rules.set_setting("telegram_bot_token", api_keys.get("telegram_bot_token") or "")
         rules.set_setting(
-            'max_chat_id',
-            (max_c.get('reports_chat_id') or max_c.get('alert_chat_id') or '').strip(),
+            "telegram_chat_id",
+            (telegram.get("reports_chat_id") or telegram.get("alert_chat_id") or "").strip(),
+        )
+        rules.set_setting("max_enabled", "1" if max_c.get("notifications_enabled", True) else "0")
+        rules.set_setting("max_access_token", api_keys.get("max_access_token") or "")
+        rules.set_setting(
+            "max_chat_id",
+            (max_c.get("reports_chat_id") or max_c.get("alert_chat_id") or "").strip(),
         )
     except Exception:
         pass

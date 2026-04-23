@@ -18,16 +18,19 @@ except ImportError:
     from classification_engine import CallClassificationEngine
     from max_notify import send_excel_report_to_max
 import os
+from pathlib import Path
+
 import requests
 
 # Настройка логирования для планировщика
 logger = logging.getLogger(__name__)
 
 class ClassificationScheduler:
-    def __init__(self, rules_manager, classification_engine, upload_folder='uploads'):
+    def __init__(self, rules_manager, classification_engine, upload_folder="uploads", flask_app=None):
         self.rules_manager = rules_manager
         self.classification_engine = classification_engine
         self.upload_folder = upload_folder
+        self.flask_app = flask_app
         self.running = False
         self.scheduler_thread = None
         self.check_interval = 60  # Проверяем каждую минуту
@@ -56,7 +59,11 @@ class ClassificationScheduler:
         """Основной цикл планировщика"""
         while self.running:
             try:
-                self._check_and_run_schedules()
+                if self.flask_app is not None:
+                    with self.flask_app.app_context():
+                        self._check_and_run_schedules()
+                else:
+                    self._check_and_run_schedules()
                 time.sleep(self.check_interval)
             except Exception as e:
                 print(f"Ошибка в планировщике: {e}")
@@ -351,12 +358,33 @@ class ClassificationScheduler:
 scheduler_instance = None
 
 def get_scheduler():
-    """Получить глобальный экземпляр планировщика"""
+    """Получить глобальный экземпляр планировщика (нужны CLASSIFICATION_USER_ID и импорт Flask app)."""
     global scheduler_instance
     if scheduler_instance is None:
-        rules_manager = ClassificationRulesManager()
-        classification_engine = CallClassificationEngine()
-        scheduler_instance = ClassificationScheduler(rules_manager, classification_engine)
+        try:
+            from web_interface.app import app as flask_app
+        except Exception as exc:
+            raise RuntimeError(
+                "standalone-планировщик: не удалось импортировать web_interface.app; "
+                "для БД используйте планировщик, встроенный в веб-приложение."
+            ) from exc
+        uid = int(os.environ.get("CLASSIFICATION_USER_ID", "0") or 0)
+        if uid <= 0:
+            raise RuntimeError("Задайте CLASSIFICATION_USER_ID в окружении для standalone планировщика.")
+        root = Path(os.environ.get("CLASSIFICATION_ROOT", "classification")).resolve()
+        with flask_app.app_context():
+            rules_manager = ClassificationRulesManager(
+                user_id=uid, classification_root=root
+            )
+            classification_engine = CallClassificationEngine(
+                user_id=uid, classification_root=root
+            )
+        scheduler_instance = ClassificationScheduler(
+            rules_manager,
+            classification_engine,
+            upload_folder=str(root / "uploads"),
+            flask_app=flask_app,
+        )
     return scheduler_instance
 
 def start_scheduler():

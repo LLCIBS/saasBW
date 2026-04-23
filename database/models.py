@@ -8,7 +8,7 @@ from datetime import datetime
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import UserMixin
 from werkzeug.security import generate_password_hash, check_password_hash
-from sqlalchemy import Index, Text
+from sqlalchemy import Date, Index, Text
 from sqlalchemy.dialects.postgresql import JSONB
 
 
@@ -812,3 +812,323 @@ class FinetuneJob(db.Model):
     finished_at = db.Column(db.DateTime, nullable=True)
 
     user = db.relationship('User', backref=db.backref('finetune_jobs', lazy='dynamic', cascade='all, delete-orphan'))
+
+
+# --- LLM-классификация (ранее per-user SQLite classification_rules.db / training_examples.db) ---
+
+
+class UserClassificationSystemPrompt(db.Model):
+    """Системные промпты классификации (бывш. system_prompts)."""
+    __tablename__ = 'user_classification_system_prompts'
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
+    name = db.Column(db.String(200), nullable=False)
+    content = db.Column(Text, nullable=False)
+    is_active = db.Column(db.Boolean, default=True, nullable=False)
+    description = db.Column(Text, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    user = db.relationship('User', backref=db.backref('classification_system_prompts', lazy='dynamic', cascade='all, delete-orphan'))
+
+    __table_args__ = (
+        db.UniqueConstraint('user_id', 'name', name='uq_user_classification_prompt_name'),
+        Index('idx_ucsp_user', 'user_id'),
+    )
+
+
+class UserClassificationRule(db.Model):
+    """Правила классификации."""
+    __tablename__ = 'user_classification_rules'
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
+    category_id = db.Column(db.String(100), nullable=False)
+    category_name = db.Column(db.String(500), nullable=False)
+    rule_text = db.Column(Text, nullable=False)
+    priority = db.Column(db.Integer, default=0, nullable=False)
+    is_active = db.Column(db.Boolean, default=True, nullable=False)
+    examples = db.Column(Text, nullable=True)
+    conditions = db.Column(Text, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    user = db.relationship('User', backref=db.backref('classification_rules_rel', lazy='dynamic', cascade='all, delete-orphan'))
+
+    __table_args__ = (Index('idx_ucr_user_priority', 'user_id', 'priority'),)
+
+
+class UserClassificationCriticalRule(db.Model):
+    """Критические правила."""
+    __tablename__ = 'user_classification_critical_rules'
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
+    name = db.Column(db.String(500), nullable=False)
+    rule_text = db.Column(Text, nullable=False)
+    is_active = db.Column(db.Boolean, default=True, nullable=False)
+    description = db.Column(Text, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    user = db.relationship('User', backref=db.backref('classification_critical_rules', lazy='dynamic', cascade='all, delete-orphan'))
+
+
+class UserClassificationSetting(db.Model):
+    """Key/value настройки (бывш. system_settings)."""
+    __tablename__ = 'user_classification_settings'
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
+    setting_key = db.Column(db.String(200), nullable=False)
+    setting_value = db.Column(Text, nullable=False, default='')
+    description = db.Column(Text, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    user = db.relationship('User', backref=db.backref('classification_settings', lazy='dynamic', cascade='all, delete-orphan'))
+
+    __table_args__ = (
+        db.UniqueConstraint('user_id', 'setting_key', name='uq_user_classification_setting_key'),
+        Index('idx_ucset_user', 'user_id'),
+    )
+
+
+class UserClassificationHistory(db.Model):
+    """История задач классификации."""
+    __tablename__ = 'user_classification_history'
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
+    task_id = db.Column(db.String(120), nullable=False)
+    input_folder = db.Column(Text, nullable=False)
+    output_file = db.Column(db.String(1000), nullable=False)
+    context_days = db.Column(db.Integer, default=0, nullable=False)
+    status = db.Column(db.String(40), nullable=False, default='running')
+    total_files = db.Column(db.Integer, default=0, nullable=False)
+    processed_files = db.Column(db.Integer, default=0, nullable=False)
+    corrections_count = db.Column(db.Integer, default=0, nullable=False)
+    start_time = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    end_time = db.Column(db.DateTime, nullable=True)
+    duration = db.Column(db.String(120), nullable=True)
+    error_message = db.Column(Text, nullable=True)
+    operator_name = db.Column(db.String(200), nullable=True)
+
+    user = db.relationship('User', backref=db.backref('classification_history', lazy='dynamic', cascade='all, delete-orphan'))
+
+    __table_args__ = (
+        db.UniqueConstraint('user_id', 'task_id', name='uq_user_classification_history_task'),
+        Index('idx_uch_user_start', 'user_id', 'start_time'),
+    )
+
+
+class UserClassificationSchedule(db.Model):
+    """Расписания авто-классификации."""
+    __tablename__ = 'user_classification_schedules'
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
+    name = db.Column(db.String(500), nullable=False)
+    description = db.Column(Text, nullable=True)
+    input_folder = db.Column(Text, nullable=False)
+    context_days = db.Column(db.Integer, default=7, nullable=False)
+    schedule_type = db.Column(db.String(50), nullable=False, default='daily')
+    schedule_config = db.Column(JSONB, nullable=False)
+    is_active = db.Column(db.Boolean, default=True, nullable=False)
+    last_run = db.Column(db.DateTime, nullable=True)
+    next_run = db.Column(db.DateTime, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_by = db.Column(db.String(200), nullable=True)
+    run_count = db.Column(db.Integer, default=0, nullable=False)
+    success_count = db.Column(db.Integer, default=0, nullable=False)
+    error_count = db.Column(db.Integer, default=0, nullable=False)
+
+    user = db.relationship('User', backref=db.backref('classification_schedules_rel', lazy='dynamic', cascade='all, delete-orphan'))
+
+    __table_args__ = (Index('idx_ucsch_user_next', 'user_id', 'next_run'),)
+
+
+class UserAutoExtractedRule(db.Model):
+    """Автоправила самообучения."""
+    __tablename__ = 'user_auto_extracted_rules'
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
+    rule_text = db.Column(Text, nullable=False)
+    category_id = db.Column(db.String(100), nullable=False)
+    confidence = db.Column(db.Float, default=0.0, nullable=False)
+    source_type = db.Column(db.String(80), default='pattern_analysis', nullable=False)
+    example_count = db.Column(db.Integer, default=0, nullable=False)
+    is_active = db.Column(db.Boolean, default=True, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    last_verified = db.Column(db.DateTime, nullable=True)
+
+    user = db.relationship('User', backref=db.backref('auto_extracted_rules', lazy='dynamic', cascade='all, delete-orphan'))
+
+
+class UserTrainingExample(db.Model):
+    """Обучающие примеры."""
+    __tablename__ = 'user_training_examples'
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
+    transcription_hash = db.Column(db.String(64), nullable=False)
+    transcription = db.Column(Text, nullable=False)
+    correct_category = db.Column(db.String(200), nullable=False)
+    correct_reasoning = db.Column(Text, nullable=False)
+    original_category = db.Column(db.String(200), nullable=True)
+    original_reasoning = db.Column(Text, nullable=True)
+    operator_comment = db.Column(Text, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    used_count = db.Column(db.Integer, default=0, nullable=False)
+    is_active = db.Column(db.Boolean, default=True, nullable=False)
+
+    user = db.relationship('User', backref=db.backref('training_examples_rel', lazy='dynamic', cascade='all, delete-orphan'))
+
+    __table_args__ = (
+        db.UniqueConstraint('user_id', 'transcription_hash', name='uq_user_training_example_hash'),
+        Index('idx_ute_user_cat', 'user_id', 'correct_category'),
+    )
+
+
+class UserClassificationMetric(db.Model):
+    """Ежедневные метрики качества."""
+    __tablename__ = 'user_classification_metrics'
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
+    metric_date = db.Column(Date, nullable=False)
+    total_calls = db.Column(db.Integer, default=0, nullable=False)
+    correct_classifications = db.Column(db.Integer, default=0, nullable=False)
+    corrections_made = db.Column(db.Integer, default=0, nullable=False)
+    accuracy_rate = db.Column(db.Float, default=0.0, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    user = db.relationship('User', backref=db.backref('classification_metrics', lazy='dynamic', cascade='all, delete-orphan'))
+
+    __table_args__ = (
+        db.UniqueConstraint('user_id', 'metric_date', name='uq_user_classification_metric_date'),
+    )
+
+
+class UserCorrectionHistory(db.Model):
+    """История корректировок."""
+    __tablename__ = 'user_correction_history'
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
+    phone_number = db.Column(db.String(40), nullable=True)
+    call_date = db.Column(db.String(80), nullable=True)
+    call_time = db.Column(db.String(80), nullable=True)
+    station = db.Column(db.String(80), nullable=True)
+    original_category = db.Column(db.String(200), nullable=False)
+    corrected_category = db.Column(db.String(200), nullable=False)
+    original_reasoning = db.Column(Text, nullable=True)
+    corrected_reasoning = db.Column(Text, nullable=True)
+    operator_name = db.Column(db.String(200), nullable=True)
+    correction_date = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    user = db.relationship('User', backref=db.backref('correction_history', lazy='dynamic', cascade='all, delete-orphan'))
+
+
+class UserCorrectClassification(db.Model):
+    """Подтверждения правильных классификаций."""
+    __tablename__ = 'user_correct_classifications'
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
+    phone_number = db.Column(db.String(40), nullable=True)
+    call_date = db.Column(db.String(80), nullable=True)
+    call_time = db.Column(db.String(80), nullable=True)
+    category = db.Column(db.String(200), nullable=False)
+    reasoning = db.Column(Text, nullable=True)
+    transcription_hash = db.Column(db.String(64), nullable=True)
+    confirmed_by = db.Column(db.String(200), nullable=True)
+    confirmed_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    confidence_level = db.Column(db.Integer, default=5, nullable=False)
+    comment = db.Column(Text, nullable=True)
+
+    user = db.relationship('User', backref=db.backref('correct_classifications', lazy='dynamic', cascade='all, delete-orphan'))
+
+    __table_args__ = (
+        Index('idx_ucc_user_confirmed', 'user_id', 'confirmed_at'),
+    )
+
+
+class UserClassificationSuccessStat(db.Model):
+    """Статистика успешности по категориям."""
+    __tablename__ = 'user_classification_success_stats'
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
+    category = db.Column(db.String(200), nullable=False)
+    total_classified = db.Column(db.Integer, default=0, nullable=False)
+    confirmed_correct = db.Column(db.Integer, default=0, nullable=False)
+    corrections_count = db.Column(db.Integer, default=0, nullable=False)
+    success_rate = db.Column(db.Float, default=0.0, nullable=False)
+    last_updated = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    user = db.relationship('User', backref=db.backref('classification_success_stats', lazy='dynamic', cascade='all, delete-orphan'))
+
+    __table_args__ = (
+        db.UniqueConstraint('user_id', 'category', name='uq_user_class_success_category'),
+    )
+
+
+class UserErrorPattern(db.Model):
+    """Паттерны ошибок."""
+    __tablename__ = 'user_error_patterns'
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
+    pattern_text = db.Column(Text, nullable=False)
+    original_category = db.Column(db.String(200), nullable=False)
+    corrected_category = db.Column(db.String(200), nullable=False)
+    frequency = db.Column(db.Integer, default=1, nullable=False)
+    confidence_score = db.Column(db.Float, default=0.0, nullable=False)
+    is_active = db.Column(db.Boolean, default=True, nullable=False)
+    first_seen = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    last_seen = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    examples = db.Column(Text, nullable=True)
+
+    user = db.relationship('User', backref=db.backref('error_patterns', lazy='dynamic', cascade='all, delete-orphan'))
+
+
+class UserExampleEffectiveness(db.Model):
+    """Эффективность обучающих примеров."""
+    __tablename__ = 'user_example_effectiveness'
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
+    example_id = db.Column(db.Integer, db.ForeignKey('user_training_examples.id', ondelete='CASCADE'), nullable=False, index=True)
+    times_used = db.Column(db.Integer, default=0, nullable=False)
+    times_helped = db.Column(db.Integer, default=0, nullable=False)
+    times_misled = db.Column(db.Integer, default=0, nullable=False)
+    times_confirmed = db.Column(db.Integer, default=0, nullable=False)
+    success_rate = db.Column(db.Float, default=0.0, nullable=False)
+    last_used = db.Column(db.DateTime, nullable=True)
+
+    user = db.relationship('User', backref=db.backref('example_effectiveness', lazy='dynamic', cascade='all, delete-orphan'))
+    example = db.relationship('UserTrainingExample', backref=db.backref('effectiveness', uselist=False, cascade='all, delete-orphan'))
+
+    __table_args__ = (db.UniqueConstraint('user_id', 'example_id', name='uq_user_example_effectiveness'),)
+
+
+class UserSuccessPattern(db.Model):
+    """Паттерны успешных классификаций."""
+    __tablename__ = 'user_success_patterns'
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
+    category = db.Column(db.String(200), nullable=False)
+    common_keywords = db.Column(Text, nullable=True)
+    transcription_samples = db.Column(Text, nullable=True)
+    confirmation_count = db.Column(db.Integer, default=0, nullable=False)
+    success_rate = db.Column(db.Float, default=1.0, nullable=False)
+    is_active = db.Column(db.Boolean, default=True, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    last_confirmed = db.Column(db.DateTime, nullable=True)
+
+    user = db.relationship('User', backref=db.backref('success_patterns', lazy='dynamic', cascade='all, delete-orphan'))
