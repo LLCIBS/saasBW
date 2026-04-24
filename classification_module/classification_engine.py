@@ -41,6 +41,10 @@ FALLBACK_REPORT_STATIONS_ORDER = (
     "Рдн",
 )
 
+# Сколько последних Excel в uploads учитывать для «внешней истории» контекста.
+# Без ограничения при большом числе отчётов process_folder долго не вызывает progress_callback (0/0 в UI).
+MAX_CONTEXT_XLSX_FILES = 40
+
 
 class CallClassificationEngine:
     """Движок классификации звонков с дообучением"""
@@ -1161,6 +1165,27 @@ class CallClassificationEngine:
         results = []
         total_calls = 0
 
+        if not os.path.exists(input_folder):
+            raise FileNotFoundError(f"Папка {input_folder} не найдена")
+
+        text_files = [f for f in os.listdir(input_folder) if f.endswith(".txt")]
+        if not text_files:
+            raise ValueError(f"В папке {input_folder} не найдено .txt файлов")
+
+        def _sort_key_by_datetime(filename):
+            try:
+                _, call_date, call_time, _, _, _ = self.extract_file_info(filename)
+                dt = datetime.strptime(f"{call_date} {call_time}", "%d.%m.%Y %H:%M")
+                return (dt, filename)
+            except Exception:
+                return (datetime.min, filename)
+
+        text_files.sort(key=_sort_key_by_datetime)
+        n_txt = len(text_files)
+        print(f"Найдено {n_txt} файлов для обработки (после проверки папки)...")
+        if progress_callback:
+            progress_callback(0, n_txt, "Загрузка контекста из отчётов (uploads)...")
+
         # Загружаем историю звонков за указанный период только из папки uploads для контекста
         external_history = []
         if context_days > 0:  # Если context_days = 0, не загружаем историю
@@ -1168,10 +1193,13 @@ class CallClassificationEngine:
                 uploads_dir = self.uploads_dir
                 frames = []
                 if uploads_dir.exists():
-                    for f in sorted(uploads_dir.glob("*.xlsx"), key=lambda p: p.stat().st_mtime, reverse=True):
+                    xlsx_sorted = sorted(
+                        uploads_dir.glob("*.xlsx"), key=lambda p: p.stat().st_mtime, reverse=True
+                    )[:MAX_CONTEXT_XLSX_FILES]
+                    for f in xlsx_sorted:
                         try:
                             try:
-                                one_df = pd.read_excel(f, sheet_name='Детальные данные')
+                                one_df = pd.read_excel(f, sheet_name="Детальные данные")
                             except Exception:
                                 one_df = pd.read_excel(f)
                             if one_df is not None and not one_df.empty:
@@ -1224,29 +1252,6 @@ class CallClassificationEngine:
                     
             except Exception as e:
                 print(f"Ошибка загрузки истории: {e}")
-
-        # Получаем все текстовые файлы в папке
-        if not os.path.exists(input_folder):
-            raise FileNotFoundError(f"Папка {input_folder} не найдена")
-        
-        text_files = [f for f in os.listdir(input_folder) if f.endswith('.txt')]
-        
-        if not text_files:
-            raise ValueError(f"В папке {input_folder} не найдено .txt файлов")
-
-        # Сортируем файлы по дате и времени звонка, извлечённым из имени файла
-        def _sort_key_by_datetime(filename):
-            try:
-                _, call_date, call_time, _, _, _ = self.extract_file_info(filename)
-                dt = datetime.strptime(f"{call_date} {call_time}", "%d.%m.%Y %H:%M")
-                return (dt, filename)
-            except Exception:
-                # Если не удалось распознать дату/время — отправляем в начало, сортируем по имени
-                return (datetime.min, filename)
-
-        text_files.sort(key=_sort_key_by_datetime)
-
-        print(f"Найдено {len(text_files)} файлов для обработки...")
 
         for i, filename in enumerate(text_files, 1):
             if progress_callback:
