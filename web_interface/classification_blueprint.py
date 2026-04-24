@@ -655,6 +655,8 @@ def _run_classification_task(
 ):
     rules = None
     schedule_rm = None
+    app_ctx = flask_app.app_context()
+    app_ctx.push()
     try:
         _cr = Path(classification_root)
         rules = ClassificationRulesManager(user_id=int(user_id), classification_root=_cr)
@@ -755,9 +757,9 @@ def _run_classification_task(
             )
         if schedule_rm is not None and schedule_id is not None:
             schedule_rm.update_schedule_run_stats(int(schedule_id), success=False)
-        with flask_app.app_context():
-            flask_app.logger.exception("Classification task failed: %s", task_id)
+        flask_app.logger.exception("Classification task failed: %s", task_id)
     finally:
+        app_ctx.pop()
         if schedule_key:
             with _tasks_lock:
                 _running_schedule_keys.discard(schedule_key)
