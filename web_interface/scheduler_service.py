@@ -94,17 +94,13 @@ def _run_report_job(user_id: int, report_type: str):
                 f"period {start_str}..{end_str}"
             )
 
-            # Импортируем функции генерации отчетов
+            if report_type != 'week_full':
+                logger.info(f"[Scheduler] Report type {report_type} is no longer supported")
+                return
+
+            # Импортируем функцию генерации отчета
             try:
-                if report_type == 'week_full':
-                    from reports.week_full import run_week_full
-                elif report_type == 'rr_3':
-                    from reports.rr_3 import run_rr_3
-                elif report_type == 'rr_bad':
-                    from reports.rr_bad import run_rr_bad
-                else:
-                    logger.error(f"[Scheduler] Unknown report type: {report_type}")
-                    return
+                from reports.week_full import run_week_full
             except ImportError as e:
                 logger.error(f"[Scheduler] Failed to import report module {report_type}: {e}", exc_info=True)
                 return
@@ -120,31 +116,14 @@ def _run_report_job(user_id: int, report_type: str):
             # Запускаем генерацию отчета
             try:
                 with legacy_config_override(runtime_cfg):
-                    if report_type == 'week_full':
-                        start_dt = datetime.combine(start_date, dt_time.min) if start_date else None
-                        end_dt = datetime.combine(end_date, dt_time.max) if end_date else None
-                        try:
-                            result_path = run_week_full(start_date=start_dt, end_date=end_dt, base_folder=base_folder)
-                        except TypeError:
-                            # Если функция не принимает параметры, вызываем без них
-                            result_path = run_week_full(base_folder=base_folder)
-                        logger.info(f"[Scheduler] week_full completed: {result_path}")
-                    elif report_type == 'rr_3':
-                        date_from = datetime.combine(start_date, dt_time.min) if start_date else None
-                        date_to = datetime.combine(end_date, dt_time.max) if end_date else None
-                        try:
-                            run_rr_3(date_from=date_from, date_to=date_to)
-                        except TypeError:
-                            run_rr_3()
-                        logger.info(f"[Scheduler] rr_3 completed")
-                    elif report_type == 'rr_bad':
-                        date_from = datetime.combine(start_date, dt_time.min) if start_date else None
-                        date_to = datetime.combine(end_date, dt_time.max) if end_date else None
-                        try:
-                            run_rr_bad(date_from=date_from, date_to=date_to)
-                        except TypeError:
-                            run_rr_bad()
-                        logger.info(f"[Scheduler] rr_bad completed")
+                    start_dt = datetime.combine(start_date, dt_time.min) if start_date else None
+                    end_dt = datetime.combine(end_date, dt_time.max) if end_date else None
+                    try:
+                        result_path = run_week_full(start_date=start_dt, end_date=end_dt, base_folder=base_folder)
+                    except TypeError:
+                        # Если функция не принимает параметры, вызываем без них
+                        result_path = run_week_full(base_folder=base_folder)
+                    logger.info(f"[Scheduler] week_full completed: {result_path}")
             except Exception as e:
                 logger.error(f"[Scheduler] Error generating report {report_type} for user {user_id}: {e}", exc_info=True)
                 return
@@ -185,6 +164,13 @@ def _add_schedule_job(sched: BackgroundScheduler, schedule: ReportSchedule):
         logger.info(f"[Scheduler] Removed existing job {job_id}")
     except Exception:
         pass
+
+    if schedule.report_type != 'week_full':
+        logger.info(
+            f"[Scheduler] Report type {schedule.report_type} is no longer supported, "
+            f"skipping schedule {job_id}"
+        )
+        return
 
     if not schedule.enabled:
         logger.info(f"[Scheduler] Schedule {job_id} is disabled, skipping")
@@ -318,7 +304,7 @@ def load_all_schedules(app=None):
         app_to_use = app or current_app._get_current_object() if hasattr(current_app, '_get_current_object') else None
         if app_to_use:
             with app_to_use.app_context():
-                schedules = ReportSchedule.query.filter_by(enabled=True).all()
+                schedules = ReportSchedule.query.filter_by(enabled=True, report_type='week_full').all()
                 logger.info(f"[Scheduler] Loading {len(schedules)} schedules from database")
                 for s in schedules:
                     _add_schedule_job(scheduler, s)
@@ -326,7 +312,7 @@ def load_all_schedules(app=None):
         else:
             # Fallback: используем текущий контекст если доступен
             try:
-                schedules = ReportSchedule.query.filter_by(enabled=True).all()
+                schedules = ReportSchedule.query.filter_by(enabled=True, report_type='week_full').all()
                 logger.info(f"[Scheduler] Loading {len(schedules)} schedules from database")
                 for s in schedules:
                     _add_schedule_job(scheduler, s)

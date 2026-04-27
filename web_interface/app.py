@@ -4359,11 +4359,26 @@ def reports_page():
     """Страница отчетов"""
     return render_template('reports.html', active_page='reports')
 
-# Глобальная переменная для отслеживания статуса генерации отчетов
+# Статусы фоновой генерации храним по паре user_id/report_type, чтобы
+# одновременные запуски разных пользователей не перетирали друг друга.
 report_generation_status = {}
 
-# Глобальная переменная для отслеживания прогресса генерации отчетов
+# Прогресс фоновой генерации отчетов по паре user_id/report_type.
 report_generation_progress = {}
+
+
+def _report_generation_key(user_id: int, report_type: str) -> str:
+    return f"{int(user_id)}:{report_type}"
+
+
+def _current_user_report_generation_items(store: dict) -> dict:
+    """Вернуть статусы текущего пользователя в старом формате {report_type: data}."""
+    prefix = f"{int(current_user.id)}:"
+    return {
+        key[len(prefix):]: value
+        for key, value in store.items()
+        if isinstance(key, str) and key.startswith(prefix)
+    }
 
 @app.route('/api/reports/generate', methods=['POST'])
 @login_required
@@ -4372,6 +4387,8 @@ def api_reports_generate():
     try:
         data = request.get_json()
         report_type = data.get('type', 'week_full')
+        user_id = current_user.id
+        status_key = _report_generation_key(user_id, report_type)
         # Параметры интервала из UI
         start_date_str = data.get('start_date')
         end_date_str = data.get('end_date')
@@ -4379,21 +4396,17 @@ def api_reports_generate():
         # Логируем полученные даты для отладки
         app.logger.info(f"Генерация отчета {report_type}: start_date={start_date_str}, end_date={end_date_str}")
         
-        # Проверяем доступность модулей отчетов
+        if report_type != 'week_full':
+            return jsonify({'success': False, 'message': f'Неизвестный тип отчета: {report_type}'})
+
+        # Проверяем доступность модуля отчета
         try:
-            if report_type == 'week_full':
-                from reports.week_full import run_week_full
-            elif report_type == 'rr_3':
-                from reports.rr_3 import run_rr_3
-            elif report_type == 'rr_bad':
-                from reports.rr_bad import run_rr_bad
-            else:
-                return jsonify({'success': False, 'message': f'Неизвестный тип отчета: {report_type}'})
+            from reports.week_full import run_week_full
         except ImportError as e:
             return jsonify({'success': False, 'message': f'Модуль отчета не найден: {str(e)}'})
         
         # Инициализируем статус и прогресс генерации
-        report_generation_status[report_type] = {
+        report_generation_status[status_key] = {
             'status': 'running',
             'started_at': datetime.now().isoformat(),
             'message': 'Генерация отчета запущена',
@@ -4401,7 +4414,7 @@ def api_reports_generate():
             'current_step': 'Инициализация...'
         }
         
-        report_generation_progress[report_type] = {
+        report_generation_progress[status_key] = {
             'progress': 0,
             'current_step': 'Инициализация...',
             'total_steps': 5,
@@ -4414,118 +4427,86 @@ def api_reports_generate():
         def generate_report():
             try:
                 # Обновляем прогресс
-                report_generation_progress[report_type]['current_step'] = 'Загрузка модуля отчета...'
-                report_generation_progress[report_type]['progress'] = 10
-                report_generation_status[report_type]['progress'] = 10
-                report_generation_status[report_type]['current_step'] = 'Загрузка модуля отчета...'
+                report_generation_progress[status_key]['current_step'] = 'Загрузка модуля отчета...'
+                report_generation_progress[status_key]['progress'] = 10
+                report_generation_status[status_key]['progress'] = 10
+                report_generation_status[status_key]['current_step'] = 'Загрузка модуля отчета...'
                 
-                if report_type == 'week_full':
-                    report_generation_progress[report_type]['current_step'] = 'Анализ данных за неделю...'
-                    report_generation_progress[report_type]['progress'] = 30
-                    report_generation_status[report_type]['progress'] = 30
-                    report_generation_status[report_type]['current_step'] = 'Анализ данных за неделю...'
-                    # Подготовим даты
-                    start_dt = None
-                    end_dt = None
-                    if start_date_str:
-                        try:
-                            start_dt = datetime.strptime(start_date_str, '%Y-%m-%d')
-                        except ValueError as e:
-                            app.logger.error(f"Ошибка парсинга start_date '{start_date_str}': {e}")
-                    if end_date_str:
-                        try:
-                            end_dt = datetime.strptime(end_date_str, '%Y-%m-%d')
-                        except ValueError as e:
-                            app.logger.error(f"Ошибка парсинга end_date '{end_date_str}': {e}")
-                    
-                    app.logger.info(f"Запуск week_full с датами: start_dt={start_dt}, end_dt={end_dt}")
-                    
-                    # Получаем base_folder из runtime_cfg
-                    base_folder = runtime_cfg['paths']['base_records_path']
-                    app.logger.info(f"Используем base_folder: {base_folder}")
-                    
-                    # Запуск с интервалом
+                report_generation_progress[status_key]['current_step'] = 'Анализ данных за неделю...'
+                report_generation_progress[status_key]['progress'] = 30
+                report_generation_status[status_key]['progress'] = 30
+                report_generation_status[status_key]['current_step'] = 'Анализ данных за неделю...'
+                # Подготовим даты
+                start_dt = None
+                end_dt = None
+                if start_date_str:
                     try:
-                        with legacy_config_override(runtime_cfg):
-                            result_path = run_week_full(start_date=start_dt, end_date=end_dt, base_folder=base_folder)
-                    except TypeError:
-                        with legacy_config_override(runtime_cfg):
-                            result_path = run_week_full(base_folder=base_folder)
-                    
-                elif report_type == 'rr_3':
-                    report_generation_progress[report_type]['current_step'] = 'Анализ станций Ретрак...'
-                    report_generation_progress[report_type]['progress'] = 30
-                    report_generation_status[report_type]['progress'] = 30
-                    report_generation_status[report_type]['current_step'] = 'Анализ станций Ретрак...'
-                    # Подготовим даты
-                    date_from = datetime.strptime(start_date_str, '%Y-%m-%d') if start_date_str else None
-                    date_to = datetime.strptime(end_date_str, '%Y-%m-%d') if end_date_str else None
+                        start_dt = datetime.strptime(start_date_str, '%Y-%m-%d')
+                    except ValueError as e:
+                        app.logger.error(f"Ошибка парсинга start_date '{start_date_str}': {e}")
+                if end_date_str:
                     try:
-                        with legacy_config_override(runtime_cfg):
-                            run_rr_3(date_from=date_from, date_to=date_to)
-                    except TypeError:
-                        with legacy_config_override(runtime_cfg):
-                            run_rr_3()
-                    
-                elif report_type == 'rr_bad':
-                    report_generation_progress[report_type]['current_step'] = 'Анализ плохих звонков...'
-                    report_generation_progress[report_type]['progress'] = 30
-                    report_generation_status[report_type]['progress'] = 30
-                    report_generation_status[report_type]['current_step'] = 'Анализ плохих звонков...'
-                    # Подготовим даты
-                    date_from = datetime.strptime(start_date_str, '%Y-%m-%d') if start_date_str else None
-                    date_to = datetime.strptime(end_date_str, '%Y-%m-%d') if end_date_str else None
-                    try:
-                        with legacy_config_override(runtime_cfg):
-                            run_rr_bad(date_from=date_from, date_to=date_to)
-                    except TypeError:
-                        with legacy_config_override(runtime_cfg):
-                            run_rr_bad()
+                        end_dt = datetime.strptime(end_date_str, '%Y-%m-%d')
+                    except ValueError as e:
+                        app.logger.error(f"Ошибка парсинга end_date '{end_date_str}': {e}")
+                
+                app.logger.info(f"Запуск week_full с датами: start_dt={start_dt}, end_dt={end_dt}")
+                
+                # Получаем base_folder из runtime_cfg
+                base_folder = runtime_cfg['paths']['base_records_path']
+                app.logger.info(f"Используем base_folder: {base_folder}")
+                
+                # Запуск с интервалом
+                try:
+                    with legacy_config_override(runtime_cfg):
+                        result_path = run_week_full(start_date=start_dt, end_date=end_dt, base_folder=base_folder)
+                except TypeError:
+                    with legacy_config_override(runtime_cfg):
+                        result_path = run_week_full(base_folder=base_folder)
                 
                 # Обновляем прогресс на завершение
-                report_generation_progress[report_type]['current_step'] = 'Создание Excel файла...'
-                report_generation_progress[report_type]['progress'] = 80
-                report_generation_status[report_type]['progress'] = 80
-                report_generation_status[report_type]['current_step'] = 'Создание Excel файла...'
+                report_generation_progress[status_key]['current_step'] = 'Создание Excel файла...'
+                report_generation_progress[status_key]['progress'] = 80
+                report_generation_status[status_key]['progress'] = 80
+                report_generation_status[status_key]['current_step'] = 'Создание Excel файла...'
                 
-                # Проверяем результат для week_full
-                if report_type == 'week_full':
-                    if not result_path or not os.path.exists(result_path):
-                        report_generation_status[report_type] = {
-                            'status': 'error',
-                            'started_at': report_generation_status[report_type]['started_at'],
-                            'completed_at': datetime.now().isoformat(),
-                            'message': 'Не удалось создать отчет week_full. Проверьте наличие аудио и прав записи.',
-                            'progress': 0,
-                            'current_step': 'Ошибка'
-                        }
-                        report_generation_progress[report_type] = {
-                            'progress': 0,
-                            'current_step': 'Ошибка',
-                            'total_steps': 5,
-                            'completed_steps': 0
-                        }
-                        return
+                # Проверяем результат
+                if not result_path or not os.path.exists(result_path):
+                    report_generation_status[status_key] = {
+                        'status': 'error',
+                        'started_at': report_generation_status[status_key]['started_at'],
+                        'completed_at': datetime.now().isoformat(),
+                        'message': 'Не удалось создать отчет week_full. Проверьте наличие аудио и прав записи.',
+                        'progress': 0,
+                        'current_step': 'Ошибка'
+                    }
+                    report_generation_progress[status_key] = {
+                        'progress': 0,
+                        'current_step': 'Ошибка',
+                        'total_steps': 5,
+                        'completed_steps': 0
+                    }
+                    return
                 
                 # Финальное обновление
-                report_generation_progress[report_type]['current_step'] = 'Отправка в мессенджеры...'
-                report_generation_progress[report_type]['progress'] = 95
-                report_generation_status[report_type]['progress'] = 95
-                report_generation_status[report_type]['current_step'] = 'Отправка в мессенджеры...'
+                report_generation_progress[status_key]['current_step'] = 'Отправка в мессенджеры...'
+                report_generation_progress[status_key]['progress'] = 95
+                report_generation_status[status_key]['progress'] = 95
+                report_generation_status[status_key]['current_step'] = 'Отправка в мессенджеры...'
                 
                 time.sleep(1)
                 
                 # Обновляем статус на успешное завершение
-                report_generation_status[report_type] = {
+                report_generation_status[status_key] = {
                     'status': 'completed',
-                    'started_at': report_generation_status[report_type]['started_at'],
+                    'started_at': report_generation_status[status_key]['started_at'],
                     'completed_at': datetime.now().isoformat(),
                     'message': f'Отчет {report_type} успешно сгенерирован',
                     'progress': 100,
                     'current_step': 'Завершено'
                 }
                 
-                report_generation_progress[report_type] = {
+                report_generation_progress[status_key] = {
                     'progress': 100,
                     'current_step': 'Завершено',
                     'total_steps': 5,
@@ -4536,16 +4517,16 @@ def api_reports_generate():
                 
             except Exception as e:
                 # Обновляем статус на ошибку
-                report_generation_status[report_type] = {
+                report_generation_status[status_key] = {
                     'status': 'error',
-                    'started_at': report_generation_status[report_type]['started_at'],
+                    'started_at': report_generation_status[status_key]['started_at'],
                     'completed_at': datetime.now().isoformat(),
                     'message': f'Ошибка генерации отчета {report_type}: {str(e)}',
                     'progress': 0,
                     'current_step': 'Ошибка'
                 }
                 
-                report_generation_progress[report_type] = {
+                report_generation_progress[status_key] = {
                     'progress': 0,
                     'current_step': 'Ошибка',
                     'total_steps': 5,
@@ -4568,13 +4549,13 @@ def api_reports_generate():
 @login_required
 def api_reports_status():
     """API для получения статуса генерации отчетов"""
-    return jsonify(report_generation_status)
+    return jsonify(_current_user_report_generation_items(report_generation_status))
 
 @app.route('/api/reports/progress')
 @login_required
 def api_reports_progress():
     """API для получения прогресса генерации отчетов"""
-    return jsonify(report_generation_progress)
+    return jsonify(_current_user_report_generation_items(report_generation_progress))
 
 
 def _is_target_call_marker(analysis_text: str) -> bool:
@@ -4780,7 +4761,10 @@ def _schedule_to_dict(s: ReportSchedule):
 def api_get_report_schedules():
     """Получить все расписания пользователя"""
     try:
-        schedules = ReportSchedule.query.filter_by(user_id=current_user.id).all()
+        schedules = ReportSchedule.query.filter_by(
+            user_id=current_user.id,
+            report_type='week_full'
+        ).all()
         return jsonify({'success': True, 'items': [_schedule_to_dict(s) for s in schedules]})
     except Exception as e:
         app.logger.error(f"Ошибка получения расписаний: {e}", exc_info=True)
@@ -4794,7 +4778,10 @@ def api_debug_report_schedules():
         from web_interface.scheduler_service import scheduler
         
         # Данные из БД
-        db_schedules = ReportSchedule.query.filter_by(user_id=current_user.id).all()
+        db_schedules = ReportSchedule.query.filter_by(
+            user_id=current_user.id,
+            report_type='week_full'
+        ).all()
         db_info = []
         for s in db_schedules:
             db_info.append({
@@ -4840,7 +4827,7 @@ def api_save_report_schedule():
         data = request.get_json() or {}
         report_type = data.get('report_type')
         
-        if report_type not in ('week_full', 'rr_3', 'rr_bad'):
+        if report_type != 'week_full':
             return jsonify({'success': False, 'message': 'Неверный тип отчета'}), 400
 
         schedule = ReportSchedule.query.filter_by(

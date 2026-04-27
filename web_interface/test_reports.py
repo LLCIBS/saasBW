@@ -21,15 +21,13 @@ def test_report_generation():
     # Проверяем доступность модулей
     modules_to_test = [
         'reports.week_full',
-        'reports.rr_3', 
-        'reports.rr_bad',
     ]
     
     results = {}
     
     for module_name in modules_to_test:
         try:
-            module = __import__(module_name, fromlist=['run_week_full', 'run_rr_3', 'run_rr_bad'])
+            module = __import__(module_name, fromlist=['run_week_full'])
             results[module_name] = {
                 'status': 'available',
                 'message': 'Модуль доступен'

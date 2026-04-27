@@ -38,8 +38,6 @@ try:
     from call_analyzer.call_handler import CallHandler, get_current_folder, IngressHandler  # type: ignore
     from call_analyzer.utils import send_alert  # type: ignore
     from call_analyzer.reports.week_full import run_week_full  # type: ignore
-    from call_analyzer.reports.rr_3 import run_rr_3  # type: ignore
-    from call_analyzer.reports.rr_bad import run_rr_bad  # type: ignore
     from call_analyzer.transfer_recall.transfer import load_transfer_cases, check_transfer_deadlines, check_transfer_notifications  # type: ignore
     from call_analyzer.transfer_recall.recall import load_recall_cases, check_recall_notifications  # type: ignore
 except ImportError:
@@ -47,8 +45,6 @@ except ImportError:
     from call_handler import CallHandler, get_current_folder, IngressHandler
     from utils import send_alert
     from reports.week_full import run_week_full
-    from reports.rr_3 import run_rr_3
-    from reports.rr_bad import run_rr_bad
     from transfer_recall.transfer import load_transfer_cases, check_transfer_deadlines, check_transfer_notifications
     from transfer_recall.recall import load_recall_cases, check_recall_notifications
 
@@ -261,13 +257,6 @@ def main():
             # Запуск run_week_full() по понедельникам в 05:00
             if day_of_week == 6 and time_str == "20:10":
                 run_week_full()
-
-            # По понедельникам в 11:00 -> run_rr_3
-            if day_of_week == 6 and time_str == "20:02":
-                run_rr_3()
-
-            if day_of_week == 6 and time_str == "20:05":
-               run_rr_bad()          
 
             check_transfer_notifications()
             check_transfer_deadlines()
