@@ -76,7 +76,7 @@ def sync_ftp_connection(connection_id: int, user_id: Optional[int] = None):
                 
                 # Получаем путь для сохранения файлов из нормализованной таблицы user_config
                 user_config_sql = text("""
-                    SELECT base_records_path, source_type
+                    SELECT base_records_path
                     FROM user_config
                     WHERE user_id = :user_id
                 """)
@@ -95,17 +95,11 @@ def sync_ftp_connection(connection_id: int, user_id: Optional[int] = None):
                     pass
             raise
         
-        # Получаем base_records_path из настроек пользователя (user_config)
+        # Базовый путь: из user_config (как и для остальных интеграций, без отдельного «режима» в UI)
         user_base_path_str = ''
-        source_type = 'local'
         if user_row:
             user_base_path_str = (user_row.base_records_path or '').strip()
-            source_type = user_row.source_type or 'local'
-        # Если источник не FTP — прекращаем
-        if source_type != 'ftp':
-            logger.info(f"FTP {row.name}: источник не ftp для пользователя {row.user_id}, пропуск")
-            return
-        
+
         # Если путь не указан в настройках, используем дефолтный
         if not user_base_path_str:
             default_base = getattr(config, 'BASE_RECORDS_PATH', '/var/calls')
@@ -620,7 +614,12 @@ def start_ftp_sync(connection_id: int, user_id: Optional[int] = None):
                 if not row.is_active:
                     logger.info(f"start_ftp_sync: FTP подключение {row.name} неактивно в БД, отмена запуска")
                     return
-                
+                if (row.sync_interval or 0) <= 0:
+                    logger.info(
+                        f"start_ftp_sync: FTP {row.name}: sync_interval={row.sync_interval}, фоновая синхронизация отключена"
+                    )
+                    return
+
                 resolved_user_id = user_id or row.user_id
                 key_to_check = (resolved_user_id, connection_id)
                 if key_to_check in _sync_threads:
@@ -750,13 +749,13 @@ def start_all_active_ftp_syncs(user_id: Optional[int] = None):
             user_filter = ''
             if user_id is not None:
                 params['filter_user_id'] = user_id
-                user_filter = ' AND uc.user_id = :filter_user_id'
+                user_filter = ' AND fc.user_id = :filter_user_id'
             sql = text(f"""
-                SELECT uc.user_id, uc.ftp_connection_id, fc.id as conn_id, fc.name
-                FROM user_config uc
-                JOIN users u ON u.id = uc.user_id AND u.is_active = TRUE
-                JOIN ftp_connections fc ON fc.id = uc.ftp_connection_id AND fc.user_id = uc.user_id
-                WHERE uc.source_type = 'ftp' AND fc.is_active = TRUE{user_filter}
+                SELECT fc.id as conn_id, fc.user_id, fc.name
+                FROM ftp_connections fc
+                JOIN users u ON u.id = fc.user_id AND u.is_active = TRUE
+                WHERE fc.is_active = TRUE
+                  AND (fc.sync_interval IS NULL OR fc.sync_interval > 0){user_filter}
             """)
             result = connection.execute(sql, params)
             

@@ -35,9 +35,7 @@ def default_config_template():
             'prompts_file': '',
             'additional_vocab_file': '',
             'script_prompt_file': '',
-            'source_type': 'local',  # 'local', 'ftp', 'rostelecom', 'stocrm', 'custom_api'
-            'ftp_connection_id': None,  # ID FTP подключения, если source_type = 'ftp'
-            'rostelecom_ats_connection_id': None,  # ID подключения Ростелеком, если source_type = 'rostelecom'
+            'rostelecom_ats_connection_id': None,  # legacy user_config, источник данных — страница «Источники»
             'stocrm_connection_id': None,
             'custom_api_connection_id': None,  # Кастомный API
         },

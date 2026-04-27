@@ -212,10 +212,9 @@ def main():
         except Exception as e:
             logger.error(f"[MAIN] Ошибка при сканировании существующих файлов: {e}", exc_info=True)
 
-        # Запуск FTP синхронизации (всегда, независимо от режима)
-        # start_all_active_ftp_syncs() сама проверит активные подключения пользователей из БД
-        # и запустит только те, которые выбраны пользователями в их конфигурации
-        # start_ftp_sync() защищен от дубликатов - если поток уже запущен, просто вернется
+        # Запуск FTP/SFTP синхронизаций: все активные подключения из таблицы ftp_connections
+        # (как StoCRM/Ростелеком). Локальный корень — user_config.base_records_path.
+        # start_ftp_sync() защищен от дубликатов — если поток уже запущен, просто вернется
         try:
             from call_analyzer.ftp_sync_manager import start_all_active_ftp_syncs
             logger.info("[MAIN] Запуск FTP синхронизаций...")

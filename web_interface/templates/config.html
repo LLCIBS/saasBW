@@ -456,50 +456,16 @@
             <div class="form-card">
                 <div class="form-card-title">
                     <i class="fas fa-hdd"></i>
-                    <span>Источник файлов</span>
+                    <span>Папка с записями</span>
                 </div>
-                
-                <div class="mb-4">
-                    <label class="form-label mb-2">Источник звонков</label>
-                    <div class="btn-group" role="group" id="sourceTypeGroup">
-                        <input type="radio" class="btn-check" name="sourceType" id="sourceTypeLocal" value="local" checked>
-                        <label class="btn btn-outline-primary" for="sourceTypeLocal">
-                            <i class="fas fa-folder me-1"></i> Локальная папка
-                        </label>
-                        <input type="radio" class="btn-check" name="sourceType" id="sourceTypeFtp" value="ftp">
-                        <label class="btn btn-outline-primary" for="sourceTypeFtp">
-                            <i class="fas fa-server me-1"></i> FTP подключение
-                        </label>
-                    </div>
-                    <div class="form-text mt-2">Выберите откуда брать файлы звонков для обработки</div>
-                </div>
+                <p class="text-muted small mb-3">Локальный каталог, где воркер ищет аудио для обработки. Подкачка по FTP/SFTP настраивается в разделе <strong>Источники данных</strong> (активное подключение + интервал) и сохраняет файлы в эту папку.</p>
 
                 <form id="pathsConfigForm">
-                    <div class="input-wrapper mb-3" id="localPathGroup">
+                    <div class="input-wrapper mb-3">
                         <label for="baseRecordsPath">Базовый путь к записям</label>
                         <input type="text" class="form-control" id="baseRecordsPath" 
                                placeholder="/path/to/records">
-                        <div class="help-text">Локальный путь к папке с аудиозаписями</div>
-                    </div>
-
-                    <div class="row mb-3 d-none" id="ftpPathGroup">
-                        <div class="col-md-6">
-                            <div class="input-wrapper">
-                                <label for="ftpConnectionId">FTP подключение</label>
-                                <select class="form-select" id="ftpConnectionId">
-                                    <option value="">-- Выберите подключение --</option>
-                                </select>
-                                <div class="help-text">Выберите настроенное FTP-подключение</div>
-                            </div>
-                        </div>
-                        <div class="col-md-6">
-                            <div class="input-wrapper">
-                                <label for="baseRecordsPathFtp">Локальная папка для сохранения</label>
-                                <input type="text" class="form-control" id="baseRecordsPathFtp" 
-                                       placeholder="/path/to/records">
-                                <div class="help-text">Папка, куда будут скачиваться файлы с FTP</div>
-                            </div>
-                        </div>
+                        <div class="help-text">Корневой путь: интеграции (в т.ч. FTP) складывают сюда файлы в подкаталоги <code>ГГГГ/ММ/ДД</code></div>
                     </div>
                 </form>
             </div>
@@ -929,13 +895,6 @@ document.querySelectorAll('.config-tab').forEach(tab => {
     });
 });
 
-// Source type toggle
-document.querySelectorAll('input[name="sourceType"]').forEach(radio => {
-    radio.addEventListener('change', function() {
-        updateSourceTypeUI(this.value);
-    });
-});
-
 // Toggle password visibility
 function togglePassword(inputId, buttonId) {
     const input = document.getElementById(inputId);
@@ -952,47 +911,6 @@ function togglePassword(inputId, buttonId) {
         icon.classList.remove('fa-eye-slash');
         icon.classList.add('fa-eye');
         button.title = 'Показать пароль';
-    }
-}
-
-// Функция переключения UI между локальной папкой и FTP
-function updateSourceTypeUI(sourceType) {
-    const localGroup = document.getElementById('localPathGroup');
-    const ftpGroup = document.getElementById('ftpPathGroup');
-    
-    if (sourceType === 'local') {
-        localGroup.classList.remove('d-none');
-        ftpGroup.classList.add('d-none');
-    } else {
-        localGroup.classList.add('d-none');
-        ftpGroup.classList.remove('d-none');
-    }
-}
-
-// Загрузка списка FTP подключений
-async function loadFtpConnections() {
-    try {
-        const response = await fetch('/api/ftp/connections');
-        const connections = await response.json();
-        
-        const select = document.getElementById('ftpConnectionId');
-        // Сохраняем текущее значение
-        const currentValue = select.value;
-        
-        // Очищаем и заполняем список
-        select.innerHTML = '<option value="">-- Выберите подключение --</option>';
-        
-        connections.forEach(conn => {
-            const option = document.createElement('option');
-            option.value = conn.id;
-            option.textContent = `${conn.name} (${conn.host})`;
-            if (conn.id == currentValue) {
-                option.selected = true;
-            }
-            select.appendChild(option);
-        });
-    } catch (error) {
-        console.error('Ошибка загрузки FTP подключений:', error);
     }
 }
 
@@ -1032,25 +950,7 @@ document.addEventListener('DOMContentLoaded', async function() {
         document.getElementById('maxTgChannelNizh').value = configData.max?.tg_channel_nizh || '';
         document.getElementById('maxTgChannelOther').value = configData.max?.tg_channel_other || '';
         
-        // Источник звонков
-        const sourceType = configData.paths?.source_type || 'local';
-        document.getElementById('sourceTypeLocal').checked = (sourceType === 'local');
-        document.getElementById('sourceTypeFtp').checked = (sourceType === 'ftp');
-        
-        // Загружаем FTP подключения для выпадающего списка
-        await loadFtpConnections();
-        
-        // Устанавливаем выбранное FTP подключение
-        const ftpConnectionId = configData.paths?.ftp_connection_id;
-        if (ftpConnectionId) {
-            document.getElementById('ftpConnectionId').value = ftpConnectionId;
-        }
-        
-        // Обновляем UI после загрузки подключений
-        updateSourceTypeUI(sourceType);
-        
         document.getElementById('baseRecordsPath').value = configData.paths?.base_records_path || '';
-        document.getElementById('baseRecordsPathFtp').value = configData.paths?.base_records_path || '';
         const profileSelect = document.getElementById('businessProfile');
         if (profileSelect) {
             profileSelect.value = configData.business_profile || 'autoservice';
@@ -1660,10 +1560,7 @@ function removeFilenameExtension(ext) {
 // Save configuration
 async function saveAllConfig() {
     try {
-        const sourceType = document.querySelector('input[name="sourceType"]:checked').value;
-        const basePath = sourceType === 'ftp' 
-            ? document.getElementById('baseRecordsPathFtp').value 
-            : document.getElementById('baseRecordsPath').value;
+        const basePath = document.getElementById('baseRecordsPath').value;
 
         ensureFilenameConfig();
         configData.employee_mapping_source = gatherEmployeeMappingPayloadFromDom();
@@ -1707,9 +1604,7 @@ async function saveAllConfig() {
                 base_records_path: basePath,
                 prompts_file: document.getElementById('promptsFile').value,
                 additional_vocab_file: document.getElementById('additionalVocabFile').value,
-                script_prompt_file: document.getElementById('scriptPromptFile').value,
-                source_type: sourceType,
-                ftp_connection_id: sourceType === 'ftp' ? parseInt(document.getElementById('ftpConnectionId').value) || null : null
+                script_prompt_file: document.getElementById('scriptPromptFile').value
             },
             transcription: {
                 engine: (document.querySelector('input[name="transcriptionEngine"]:checked') || {}).value || 'internal',
