@@ -446,10 +446,8 @@ class UserConfig(db.Model):
     business_profile = db.Column(db.String(50), default='autoservice', nullable=False)
     
     # Paths
-    source_type = db.Column(db.String(50), nullable=True)  # 'local', 'ftp', 'rostelecom', 'stocrm', 'custom_api'
     prompts_file = db.Column(db.String(1000), nullable=True)
     base_records_path = db.Column(db.String(1000), nullable=True)
-    ftp_connection_id = db.Column(db.Integer, db.ForeignKey('ftp_connections.id'), nullable=True)
     rostelecom_ats_connection_id = db.Column(db.Integer, db.ForeignKey('rostelecom_ats_connections.id'), nullable=True)
     stocrm_connection_id = db.Column(db.Integer, db.ForeignKey('stocrm_connections.id'), nullable=True)
     custom_api_connection_id = db.Column(db.Integer, db.ForeignKey('custom_api_connections.id'), nullable=True)
@@ -509,7 +507,6 @@ class UserConfig(db.Model):
     )
     
     user = db.relationship('User', backref=db.backref('config', uselist=False, cascade='all, delete-orphan'))
-    ftp_connection = db.relationship('FtpConnection', foreign_keys=[ftp_connection_id])
     rostelecom_ats_connection = db.relationship('RostelecomAtsConnection', foreign_keys=[rostelecom_ats_connection_id])
     stocrm_connection = db.relationship('StocrmConnection', foreign_keys=[stocrm_connection_id])
     custom_api_connection = db.relationship('CustomApiConnection', foreign_keys=[custom_api_connection_id])

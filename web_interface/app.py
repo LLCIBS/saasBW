@@ -508,11 +508,6 @@ def save_user_config_data(config_data, user=None):
     max_cfg = config_data.get('max') or {}
     transcription_cfg = config_data.get('transcription') or {}
 
-    if 'source_type' in paths:
-        cfg.source_type = paths.get('source_type')
-    if 'ftp_connection_id' in paths:
-        _ftp_id = paths.get('ftp_connection_id')
-        cfg.ftp_connection_id = _ftp_id if _ftp_id else None
     cfg.prompts_file = paths.get('prompts_file')
     cfg.base_records_path = paths.get('base_records_path')
     cfg.rostelecom_ats_connection_id = paths.get('rostelecom_ats_connection_id')
@@ -5786,7 +5781,7 @@ def api_rostelecom_delete(conn_id):
     conn = RostelecomAtsConnection.query.filter_by(id=conn_id, user_id=current_user.id).first()
     if not conn:
         return jsonify({'error': 'Not found'}), 404
-    UserConfig.query.filter_by(rostelecom_ats_connection_id=conn_id).update({'rostelecom_ats_connection_id': None, 'source_type': 'local'})
+    UserConfig.query.filter_by(rostelecom_ats_connection_id=conn_id).update({'rostelecom_ats_connection_id': None})
     db.session.delete(conn)
     db.session.commit()
     return jsonify({'success': True})
@@ -5944,10 +5939,7 @@ def api_stocrm_delete(conn_id):
     conn = StocrmConnection.query.filter_by(id=conn_id, user_id=current_user.id).first()
     if not conn:
         return jsonify({'error': 'Not found'}), 404
-    UserConfig.query.filter_by(stocrm_connection_id=conn_id).update({
-        'stocrm_connection_id': None,
-        'source_type': 'local',
-    })
+    UserConfig.query.filter_by(stocrm_connection_id=conn_id).update({'stocrm_connection_id': None})
     db.session.delete(conn)
     db.session.commit()
     return jsonify({'success': True})
@@ -6129,10 +6121,7 @@ def api_custom_api_delete(conn_id):
         stop_custom_api_sync(conn_id, user_id=current_user.id)
     except Exception:
         pass
-    UserConfig.query.filter_by(custom_api_connection_id=conn_id).update({
-        'custom_api_connection_id': None,
-        'source_type': 'local',
-    })
+    UserConfig.query.filter_by(custom_api_connection_id=conn_id).update({'custom_api_connection_id': None})
     db.session.delete(conn)
     db.session.commit()
     return jsonify({'success': True})

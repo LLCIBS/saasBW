@@ -129,10 +129,8 @@ def migrate_all_settings_data():
                     # Paths
                     paths = config_data.get('paths', {})
                     if paths:
-                        user_config.source_type = paths.get('source_type')
                         user_config.prompts_file = paths.get('prompts_file')
                         user_config.base_records_path = paths.get('base_records_path')
-                        user_config.ftp_connection_id = paths.get('ftp_connection_id')
                         user_config.script_prompt_file = paths.get('script_prompt_file')
                         user_config.additional_vocab_file = paths.get('additional_vocab_file')
                     

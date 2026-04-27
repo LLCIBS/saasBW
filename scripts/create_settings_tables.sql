@@ -5,10 +5,8 @@
 CREATE TABLE IF NOT EXISTS user_config (
     id SERIAL PRIMARY KEY,
     user_id INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
-    source_type VARCHAR(50),
     prompts_file VARCHAR(1000),
     base_records_path VARCHAR(1000),
-    ftp_connection_id INTEGER REFERENCES ftp_connections(id),
     script_prompt_file VARCHAR(1000),
     additional_vocab_file VARCHAR(1000),
     thebai_api_key VARCHAR(255),

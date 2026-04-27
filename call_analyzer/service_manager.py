@@ -61,7 +61,7 @@ def load_active_profiles(engine):
                 return conn.execute(stmt, {"ids": user_ids}).fetchall()
 
             configs = fetch("""
-                SELECT user_id, source_type, prompts_file, base_records_path, ftp_connection_id,
+                SELECT user_id, prompts_file, base_records_path,
                        rostelecom_ats_connection_id, stocrm_connection_id, custom_api_connection_id,
                        script_prompt_file, additional_vocab_file,
                        thebai_url, thebai_model,
@@ -129,10 +129,8 @@ def load_active_profiles(engine):
         if cfg_row:
             paths = config_data.get('paths') or {}
             paths.update({
-                'source_type': cfg_row.source_type,
                 'prompts_file': cfg_row.prompts_file,
                 'base_records_path': cfg_row.base_records_path,
-                'ftp_connection_id': cfg_row.ftp_connection_id,
                 'rostelecom_ats_connection_id': getattr(cfg_row, 'rostelecom_ats_connection_id', None),
                 'stocrm_connection_id': getattr(cfg_row, 'stocrm_connection_id', None),
                 'custom_api_connection_id': getattr(cfg_row, 'custom_api_connection_id', None),
