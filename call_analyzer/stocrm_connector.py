@@ -18,11 +18,31 @@ import logging
 import re
 import time
 import requests
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional, Tuple, List, Dict, Any
+from zoneinfo import ZoneInfo
 
 logger = logging.getLogger(__name__)
+
+_MSK_TZ = ZoneInfo("Europe/Moscow")
+
+
+def moscow_datetime_from_unix(ts: int) -> datetime:
+    """
+    Unix epoch из StoCRM (UTC) → наивный datetime с компонентами часового пояса Europe/Moscow.
+    Используется для имён файлов и путей, чтобы в отчётах совпадало с московским временем.
+    """
+    return (
+        datetime.fromtimestamp(int(ts), tz=timezone.utc)
+        .astimezone(_MSK_TZ)
+        .replace(tzinfo=None)
+    )
+
+
+def moscow_now_naive() -> datetime:
+    """Текущее время по Москве без tzinfo (для fallback в имени файла)."""
+    return datetime.now(_MSK_TZ).replace(tzinfo=None)
 
 STOCRM_BASE_TPL = "https://{domain}.stocrm.ru"
 
@@ -62,16 +82,18 @@ def make_stocrm_filename(
     Формирует имя файла в формате:
       stocrm-{direction}-{phone}_{workstation_id}_{YYYYMMDD}-{HHMMSS}.mp3
 
+    Дата/время в имени — по Europe/Moscow (из Unix-времени StoCRM).
+
     Пример: stocrm-incoming-79161234567_6_20241215-143022.mp3
     """
     direction = _DCONTEXT_MAP.get(str(dcontext).upper(), "incoming")
     phone_clean = _norm_phone(phone)
     ws = re.sub(r"\W", "", str(workstation_id)) or "0"
     try:
-        dt = datetime.utcfromtimestamp(int(timestamp_unix))
+        dt = moscow_datetime_from_unix(int(timestamp_unix))
         ts_str = dt.strftime("%Y%m%d-%H%M%S")
     except Exception:
-        ts_str = datetime.utcnow().strftime("%Y%m%d-%H%M%S")
+        ts_str = moscow_now_naive().strftime("%Y%m%d-%H%M%S")
     return f"stocrm-{direction}-{phone_clean}_{ws}_{ts_str}.mp3"
 
 

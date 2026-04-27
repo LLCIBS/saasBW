@@ -61,7 +61,12 @@ def _process_stocrm_recording(
     Скачивает одну запись звонка из StoCRM и сохраняет в папку пользователя.
     Если файл уже существует — пропускает.
     """
-    from call_analyzer.stocrm_connector import get_record_and_save, make_stocrm_filename
+    from call_analyzer.stocrm_connector import (
+        get_record_and_save,
+        make_stocrm_filename,
+        moscow_datetime_from_unix,
+        moscow_now_naive,
+    )
     from config.settings import get_config
 
     try:
@@ -88,9 +93,9 @@ def _process_stocrm_recording(
         filename = make_stocrm_filename(phone, workstation_id, dcontext, timestamp_unix, call_uuid)
 
         try:
-            dt = datetime.utcfromtimestamp(int(timestamp_unix))
+            dt = moscow_datetime_from_unix(int(timestamp_unix))
         except Exception:
-            dt = datetime.utcnow()
+            dt = moscow_now_naive()
 
         target_dir = base_path / str(dt.year) / f"{dt.month:02d}" / f"{dt.day:02d}"
         target_dir.mkdir(parents=True, exist_ok=True)
