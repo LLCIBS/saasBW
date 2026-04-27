@@ -304,34 +304,28 @@
                     </div>
 
                     <div class="form-row-single mt-3">
-                        <div class="switch-wrapper">
-                            <label>Провайдер AI-аналитики звонков</label>
-                            <div class="btn-group" role="group" id="llmProviderGroup">
-                                <input type="radio" class="btn-check" name="llmProvider" id="llmProviderDeepseek" value="deepseek" checked>
-                                <label class="btn btn-outline-primary" for="llmProviderDeepseek">
-                                    <i class="fas fa-cloud me-1"></i> DeepSeek (облако)
-                                </label>
-                                <input type="radio" class="btn-check" name="llmProvider" id="llmProviderLocalGemma" value="local_gemma">
-                                <label class="btn btn-outline-primary" for="llmProviderLocalGemma">
-                                    <i class="fas fa-server me-1"></i> Локальная Gemma
-                                </label>
-                            </div>
+                        <div class="input-wrapper" style="max-width: 28rem;">
+                            <label for="llmProvider">Провайдер AI-аналитики звонков</label>
+                            <select class="form-select" id="llmProvider" name="llmProvider" autocomplete="off">
+                                <option value="deepseek">Дипсик (облако)</option>
+                                <option value="local_gemma">Гемма локальная</option>
+                            </select>
                         </div>
                     </div>
 
                     <div class="form-row">
                         <div class="input-wrapper">
                             <label for="thebaiUrl">URL сервиса анализа (LLM)</label>
-                            <input type="text" class="form-control" id="thebaiUrl"
-                                   placeholder="https://api.deepseek.com/v1/chat/completions">
-                            <div class="help-text">OpenAI-совместимый endpoint <code>/v1/chat/completions</code> (DeepSeek или локальная Gemma).</div>
+                            <input type="text" class="form-control bg-light" id="thebaiUrl" readonly
+                                   value="https://api.deepseek.com/v1/chat/completions"
+                                   title="Задаётся автоматически по выбранному провайдеру">
+                            <div class="help-text">OpenAI-совместимый endpoint <code>/v1/chat/completions</code>; подставляется автоматически для Дипсик или локальной Gemma.</div>
                         </div>
 
                         <div class="input-wrapper">
                             <label for="thebaiModel">Модель LLM</label>
-                            <input type="text" class="form-control" id="thebaiModel"
-                                   placeholder="deepseek-reasoner">
-                            <div class="help-text">Имя модели, например <code>deepseek-chat</code>, <code>deepseek-reasoner</code> или <code>gemma2:9b</code>.</div>
+                            <select class="form-select" id="thebaiModel" name="thebaiModel" autocomplete="off"></select>
+                            <div class="help-text">Список зависит от провайдера: для Gemma — <code>gemma2:9b</code>, <code>gemma2:2b</code>; для Дипсик — <code>deepseek-chat</code>, <code>deepseek-reasoner</code>.</div>
                         </div>
                     </div>
                 </form>
@@ -872,6 +866,55 @@
 <script>
 let configData = {};
 
+const LLM_PROVIDER_URLS = {
+    deepseek: 'https://api.deepseek.com/v1/chat/completions',
+    local_gemma: 'http://10.8.0.2:11434/v1/chat/completions'
+};
+
+const LLM_MODELS_BY_PROVIDER = {
+    deepseek: ['deepseek-chat', 'deepseek-reasoner'],
+    local_gemma: ['gemma2:9b', 'gemma2:2b']
+};
+
+function inferLlmProviderFromUrl(url) {
+    const u = (url || '').toLowerCase();
+    return u.includes('deepseek.com') ? 'deepseek' : 'local_gemma';
+}
+
+function fillLlmModelSelect(provider, preferredModel) {
+    const modelSelect = document.getElementById('thebaiModel');
+    const list = LLM_MODELS_BY_PROVIDER[provider] || LLM_MODELS_BY_PROVIDER.deepseek;
+    modelSelect.innerHTML = '';
+    list.forEach(function (name) {
+        const opt = document.createElement('option');
+        opt.value = name;
+        opt.textContent = name;
+        modelSelect.appendChild(opt);
+    });
+    if (preferredModel && list.indexOf(preferredModel) >= 0) {
+        modelSelect.value = preferredModel;
+    } else {
+        modelSelect.value = list[0];
+    }
+}
+
+function applyLlmProviderUi(provider, opts) {
+    opts = opts || {};
+    const urlInput = document.getElementById('thebaiUrl');
+    if (opts.syncUrl) {
+        urlInput.value = LLM_PROVIDER_URLS[provider] || LLM_PROVIDER_URLS.deepseek;
+    }
+    let pm = opts.preferredModel;
+    if (opts.resetModelIfNotInList && pm) {
+        const list = LLM_MODELS_BY_PROVIDER[provider] || [];
+        if (list.indexOf(pm) < 0) {
+            pm = undefined;
+        }
+    }
+    fillLlmModelSelect(provider, pm);
+    document.getElementById('llmProvider').value = provider;
+}
+
 // Tab Navigation
 document.querySelectorAll('.config-tab').forEach(tab => {
     tab.addEventListener('click', function() {
@@ -972,13 +1015,9 @@ document.addEventListener('DOMContentLoaded', async function() {
         const currentUrl = apiKeys.thebai_url || 'https://api.deepseek.com/v1/chat/completions';
         const currentModel = apiKeys.thebai_model || 'deepseek-reasoner';
 
-        document.getElementById('thebaiUrl').value = currentUrl;
-        document.getElementById('thebaiModel').value = currentModel;
-
-        // Определяем провайдера по URL (по умолчанию DeepSeek)
-        const provider = (currentUrl || '').includes('deepseek.com') ? 'deepseek' : 'local_gemma';
-        document.getElementById('llmProviderDeepseek').checked = (provider === 'deepseek');
-        document.getElementById('llmProviderLocalGemma').checked = (provider === 'local_gemma');
+        // Определяем провайдера по сохранённому URL (по умолчанию DeepSeek)
+        const provider = inferLlmProviderFromUrl(currentUrl);
+        applyLlmProviderUi(provider, { preferredModel: currentModel, syncUrl: true });
         
         document.getElementById('telegramNotificationsEnabled').checked = configData.telegram?.notifications_enabled !== false;
         document.getElementById('alertChatId').value = configData.telegram?.alert_chat_id || '';
@@ -1085,34 +1124,10 @@ function ensureFilenameConfig() {
     }
 }
 
-// Переключение провайдера LLM (DeepSeek / локальная Gemma)
-document.querySelectorAll('input[name="llmProvider"]').forEach(radio => {
-    radio.addEventListener('change', function() {
-        onLlmProviderChange(this.value);
-    });
+document.getElementById('llmProvider').addEventListener('change', function () {
+    const provider = this.value;
+    applyLlmProviderUi(provider, { preferredModel: null, syncUrl: true });
 });
-
-function onLlmProviderChange(provider) {
-    const urlInput = document.getElementById('thebaiUrl');
-    const modelInput = document.getElementById('thebaiModel');
-
-    if (provider === 'deepseek') {
-        if (!urlInput.value || !urlInput.value.startsWith('http')) {
-            urlInput.value = 'https://api.deepseek.com/v1/chat/completions';
-        }
-        if (!modelInput.value) {
-            modelInput.value = 'deepseek-reasoner';
-        }
-    } else if (provider === 'local_gemma') {
-        // Подставляем типичные значения для локальной Gemma, если поля не заданы явно
-        if (!urlInput.value || urlInput.value.includes('deepseek.com')) {
-            urlInput.value = 'http://10.8.0.2:11434/v1/chat/completions';
-        }
-        if (!modelInput.value || modelInput.value.startsWith('deepseek')) {
-            modelInput.value = 'gemma2:9b';
-        }
-    }
-}
 
 function loadStationCodes(codes) {
     const container = document.getElementById('stationCodesContainer');
