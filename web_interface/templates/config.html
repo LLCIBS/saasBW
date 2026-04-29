@@ -325,7 +325,7 @@
                         <div class="input-wrapper">
                             <label for="thebaiModel">Модель LLM</label>
                             <select class="form-select" id="thebaiModel" name="thebaiModel" autocomplete="off"></select>
-                            <div class="help-text">Список зависит от провайдера: для Gemma — <code>gemma2:9b</code>, <code>gemma2:2b</code>; для Дипсик — <code>deepseek-chat</code>, <code>deepseek-reasoner</code>.</div>
+                            <div class="help-text">Список зависит от провайдера: для локальной Ollama — <code>qwen3.5:9b-q8_0</code>, <code>gemma4:e4b</code>, <code>gemma2:9b</code>, <code>gemma2:2b</code> (имена должны совпадать с выводом <code>ollama list</code>); для Дипсик — <code>deepseek-chat</code>, <code>deepseek-reasoner</code>.</div>
                         </div>
                     </div>
                 </form>
@@ -839,7 +839,7 @@ const LLM_PROVIDER_URLS = {
 
 const LLM_MODELS_BY_PROVIDER = {
     deepseek: ['deepseek-chat', 'deepseek-reasoner'],
-    local_gemma: ['gemma2:9b', 'gemma2:2b']
+    local_gemma: ['qwen3.5:9b-q8_0', 'gemma4:e4b', 'gemma2:9b', 'gemma2:2b']
 };
 
 function inferLlmProviderFromUrl(url) {
@@ -849,7 +849,10 @@ function inferLlmProviderFromUrl(url) {
 
 function fillLlmModelSelect(provider, preferredModel) {
     const modelSelect = document.getElementById('thebaiModel');
-    const list = LLM_MODELS_BY_PROVIDER[provider] || LLM_MODELS_BY_PROVIDER.deepseek;
+    let list = (LLM_MODELS_BY_PROVIDER[provider] || LLM_MODELS_BY_PROVIDER.deepseek).slice();
+    if (preferredModel && list.indexOf(preferredModel) < 0) {
+        list.push(preferredModel);
+    }
     modelSelect.innerHTML = '';
     list.forEach(function (name) {
         const opt = document.createElement('option');

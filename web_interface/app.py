@@ -2882,7 +2882,7 @@ def api_regenerate_checklist_item_prompt():
         thebai_model = (api_keys.get('thebai_model') or '').strip()
         if not thebai_model:
             thebai_model = (
-                'deepseek-chat' if 'deepseek.com' in (thebai_url or '').lower() else 'gemma2:9b'
+                'deepseek-chat' if 'deepseek.com' in (thebai_url or '').lower() else 'qwen3.5:9b-q8_0'
             )
 
         if not thebai_api_key:
