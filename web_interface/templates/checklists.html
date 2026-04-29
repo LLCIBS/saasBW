@@ -242,6 +242,15 @@
     let checklistItems = [];
     let checklistPromptsData = null; // Данные промптов чек-листа для доработки
 
+    function escapeHtml(value) {
+        return String(value || '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+    }
+
     function setHtmlWithNewlines(el, text) {
         if (!text) {
             el.innerHTML = '';
@@ -431,7 +440,20 @@
                 
                 // Форматируем результат анализа
                 const formattedResult = formatAnchorResult(anchor.analysis);
-                anchorResult.innerHTML = formattedResult;
+                const parsed = anchor.parsed || {};
+                const diagnosticsHtml = `
+                    <div class="alert alert-light border mt-3 mb-0 small">
+                        <div class="fw-semibold mb-1">Диагностика распознавания</div>
+                        <div>Модель: <code>${escapeHtml(anchor.llm_model || 'не указана')}</code></div>
+                        <div>Провайдер: <code>${escapeHtml(anchor.llm_provider || '')}</code></div>
+                        <div>Станция: <code>${escapeHtml(anchor.station_code || '')}</code></div>
+                        <div>Тип: <code>${escapeHtml(parsed.call_type || 'не распознан')}</code>,
+                             класс: <code>${escapeHtml(parsed.class || 'не распознан')}</code>,
+                             результат: <code>${escapeHtml(parsed.result || 'не распознан')}</code></div>
+                        <div>Формат тегов: ${parsed.is_valid_format ? '<span class="text-success">OK</span>' : '<span class="text-danger">неполный</span>'}</div>
+                    </div>
+                `;
+                anchorResult.innerHTML = formattedResult + diagnosticsHtml;
                 
                 // Установка бейджа
                 if (anchor.is_target) {

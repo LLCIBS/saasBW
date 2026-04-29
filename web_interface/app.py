@@ -116,6 +116,103 @@ def _dedupe_checklist_qa_text(text_value: str) -> str:
         pass
     return text_value
 
+
+_ANCHOR_FIELD_RE = re.compile(r"\[\s*([А-ЯЁA-Z\s]+)\s*:\s*([^\]]+)\]", re.IGNORECASE)
+
+
+def _clean_generated_prompt(text_value: str) -> str:
+    """Приводит ответ LLM-генератора к чистому тексту без markdown-обёрток."""
+    text_value = (text_value or '').strip()
+    if not text_value:
+        return ''
+
+    if text_value.startswith("```"):
+        lines = text_value.splitlines()
+        if lines and lines[0].strip().startswith("```"):
+            lines = lines[1:]
+        if lines and lines[-1].strip().startswith("```"):
+            lines = lines[:-1]
+        text_value = "\n".join(lines).strip()
+
+    for prefix in ("yaml", "text", "txt"):
+        marker = f"```{prefix}"
+        if text_value.lower().startswith(marker):
+            text_value = text_value[len(marker):].strip()
+    text_value = text_value.replace("```", "").strip()
+
+    if (
+        len(text_value) >= 2
+        and text_value[0] == text_value[-1]
+        and text_value[0] in ('"', "'")
+    ):
+        text_value = text_value[1:-1].strip()
+    return text_value
+
+
+def _normalize_checklist_criterion(text_value: str) -> str:
+    """Делает критерий пункта чек-листа однотипным для локальных LLM."""
+    text_value = _clean_generated_prompt(text_value)
+    if not text_value:
+        return ''
+
+    # Убираем маркеры списков, которые LLM часто добавляет несмотря на запрет.
+    lines = []
+    for raw_line in text_value.splitlines():
+        line = re.sub(r"^\s*[-*•]\s*", "", raw_line).strip()
+        if line:
+            lines.append(line)
+    text_value = "\n".join(lines).strip()
+
+    upper = text_value.upper().replace("Ё", "Е")
+    has_yes = "ДА ЕСЛИ:" in upper
+    has_no = "НЕТ ЕСЛИ:" in upper
+    has_skip = "НЕ УЧИТЫВАТЬ:" in upper
+
+    if not has_yes and not has_no:
+        text_value = (
+            f"ДА ЕСЛИ: {text_value}\n"
+            "НЕТ ЕСЛИ: в диалоге нет явного подтверждения выполнения пункта.\n"
+            "НЕ УЧИТЫВАТЬ: нет"
+        )
+    elif not has_skip:
+        text_value = f"{text_value}\nНЕ УЧИТЫВАТЬ: нет"
+
+    return text_value.strip()
+
+
+def _normalize_anchor_field_key(value: str) -> str:
+    return re.sub(r"\s+", "", str(value or "").upper().replace("Ё", "Е"))
+
+
+def _normalize_anchor_field_value(value: str) -> str:
+    return re.sub(r"[\s_\-]+", "", str(value or "").upper().replace("Ё", "Е"))
+
+
+def _parse_anchor_fields(analysis_text: str) -> dict:
+    """Достаёт из сырого ответа якоря поля, которые затем видит парсер."""
+    parsed = {
+        'call_type': '',
+        'class': '',
+        'result': '',
+        'is_valid_format': False,
+    }
+    for key, value in _ANCHOR_FIELD_RE.findall(analysis_text or ''):
+        key_norm = _normalize_anchor_field_key(key)
+        value_norm = _normalize_anchor_field_value(value)
+        if key_norm in ('ТИПЗВОНКА', 'ТИП'):
+            parsed['call_type'] = value_norm
+        elif key_norm == 'КЛАСС':
+            parsed['class'] = value_norm
+        elif key_norm == 'РЕЗУЛЬТАТ':
+            parsed['result'] = value_norm
+    parsed['is_valid_format'] = bool(parsed['call_type'] and parsed['result'])
+    return parsed
+
+
+def _is_local_llm_url(url: str) -> bool:
+    url_l = (url or '').lower()
+    return bool(url_l and 'deepseek.com' not in url_l)
+
 # --- Нормализованный доступ к конфигурации пользователя ---
 def _get_or_create_user_config_record(actual_user):
     """Возвращает запись user_config, создаёт при необходимости."""
@@ -2433,7 +2530,7 @@ def api_script_prompt_save():
 @app.route('/api/generate-prompt', methods=['POST'])
 @login_required
 def api_generate_prompt():
-    """API для автогенерации промпта через DeepSeek"""
+    """API для автогенерации компактного критерия пункта чек-листа."""
     try:
         data = request.get_json()
         title = (data.get('title') or '').strip()
@@ -2442,11 +2539,20 @@ def api_generate_prompt():
         if not title:
             return jsonify({'success': False, 'message': 'Название пункта не может быть пустым'})
 
-        # Генерируем короткий промпт в формате двух предложений
-        context = f"""Сгенерируй КОРОТКИЙ текстовый промпт для пункта чек-листа: "{title}".
-Формат ответа ДОЛЖЕН быть строго таким (ровно одно-два предложения в одну строку, без переносов и списков):
-Считать [ОТВЕТ: ДА], если ... . Считать [ОТВЕТ: НЕТ], если ... .
-Опиши критерии простым языком, без лишних деталей и без кавычек вокруг всего текста. Не добавляй ничего кроме этих двух предложений."""
+        context = f"""Создай критерий для пункта чек-листа: "{title}".
+
+Верни ТОЛЬКО три строки, без markdown и пояснений:
+ДА ЕСЛИ: [одно короткое правило, по каким фразам/действиям менеджера пункт выполнен]
+НЕТ ЕСЛИ: [одно короткое правило, что должно отсутствовать или нарушаться]
+НЕ УЧИТЫВАТЬ: [когда пункт неприменим; если таких случаев нет — "нет"]
+
+Правила:
+- пиши простым русским языком;
+- не используй эмодзи и длинные примеры;
+- не добавляй цитаты, если пользователь не дал конкретные фразы;
+- критерий должен быть понятен локальной LLM и не длиннее 600 символов."""
+        if existing_prompt:
+            context += f"\n\nТекущий критерий, который можно улучшить или заменить:\n{existing_prompt}"
 
         import requests
         runtime_cfg = build_user_runtime_config()
@@ -2474,15 +2580,19 @@ def api_generate_prompt():
             "messages": [
                 {
                     "role": "system",
-                    "content": f"Ты эксперт по созданию инструкций для оценки качества телефонных звонков {profile_expert}. Твоя задача - создавать четкие, реалистичные и подробные критерии оценки. ВАЖНО: Верни ТОЛЬКО текст критерия. Не добавляй никаких вводных слов, пояснений или markdown-разметки.",
+                    "content": (
+                        f"Ты эксперт по созданию коротких критериев оценки звонков {profile_expert}. "
+                        "Пиши максимально однозначно для небольшой локальной LLM. "
+                        "Верни только критерий в заданном формате, без markdown."
+                    ),
                 },
                 {
                     "role": "user",
                     "content": context
                 },
             ],
-            "temperature": 0.3,
-            "max_tokens": 800,  # Увеличено для подробных промптов
+            "temperature": 0.1,
+            "max_tokens": 350,
         }
 
         # Retry логика для надежности
@@ -2512,25 +2622,21 @@ def api_generate_prompt():
                         app.logger.error("Пустой ответ от API")
                         return jsonify({'success': False, 'message': 'Пустой ответ от API'})
                     
-                    generated_prompt = (result.get('choices', [{}])[0]
-                                            .get('message', {})
-                                            .get('content', '')).strip()
+                    generated_prompt = _normalize_checklist_criterion(
+                        (result.get('choices', [{}])[0]
+                            .get('message', {})
+                            .get('content', ''))
+                    )
                     
                     if not generated_prompt:
                         app.logger.error("Пустой промпт в ответе")
                         return jsonify({'success': False, 'message': 'Пустой промпт в ответе'})
                     
-                    # Удаляем только внешние кавычки, если они есть
-                    if generated_prompt.startswith('"') and generated_prompt.endswith('"'):
-                        generated_prompt = generated_prompt[1:-1].strip()
-                    elif generated_prompt.startswith("'") and generated_prompt.endswith("'"):
-                        generated_prompt = generated_prompt[1:-1].strip()
-                    
                     app.logger.info(f"Сгенерирован промпт для '{title}': {generated_prompt}")
                     return jsonify({'success': True, 'prompt': generated_prompt})
                 
                 # Если статус не 200, логируем и пробуем снова (если не последняя попытка)
-                app.logger.warning(f"Попытка {attempt + 1}/{max_retries}: Ошибка DeepSeek API: {response.status_code} - {response.text}")
+                app.logger.warning(f"Попытка {attempt + 1}/{max_retries}: ошибка LLM API: {response.status_code} - {response.text}")
                 if attempt < max_retries - 1:
                     time.sleep(2)  # Небольшая задержка перед повтором
                     continue
@@ -2581,23 +2687,32 @@ def api_generate_anchor_prompt():
             'universal': 'в любой сфере услуг',
         }.get(profile, 'в любой сфере услуг')
 
-        # Системный промпт для генерации промпта
-        system_instruction = f"""Ты — эксперт по созданию системных промптов (инструкций) для AI-анализа телефонных разговоров {profile_expert}.
-Твоя задача: На основе описания пользователя создать подробный, структурированный и эффективный промпт, который будет использоваться другой нейросетью для анализа диалогов.
+        # Системный промпт для генерации компактного якоря.
+        system_instruction = f"""Ты создаёшь короткий системный промпт для AI-анализа телефонных звонков {profile_expert}.
+Промпт будет выполнять локальная LLM, поэтому он должен быть коротким, однозначным и без противоречий.
 
-Требования к генерируемому промпту:
-1. Он должен быть написан от лица инструктора к исполнителю (AI-аналитику).
-2. Он должен включать четкие критерии классификации звонков (Тип, Класс, Результат), основанные на пожеланиях пользователя.
-3. Он должен требовать СТРОГИЙ формат вывода с тегами, так как это используется для автоматического парсинга.
-4. Обязательная структура ответа (тегов), которую ты должен включить в генерируемый промпт:
-   - [ТИПЗВОНКА:ЦЕЛЕВОЙ] или [ТИПЗВОНКА:НЕЦЕЛЕВОЙ]
-   - [КЛАСС:A], [КЛАСС:B] и т.д. (если применимо)
-   - [РЕЗУЛЬТАТ:...] (например, ЗАПИСЬ, ОТКАЗ, ПЕРЕЗВОНИТЬ, КОНСУЛЬТАЦИЯ и т.д.)
-   - Краткое объяснение после тегов.
-5. ВАЖНО: Верни ТОЛЬКО текст сгенерированного промпта. Не добавляй никаких вводных слов, пояснений или markdown-разметки (никаких ```yaml или ```). Только чистый текст промпта.
+Верни ТОЛЬКО готовый промпт в такой структуре:
+ЗАДАЧА:
+ФОРМАТ ОТВЕТА:
+ЦЕЛЕВОЙ ЕСЛИ:
+НЕЦЕЛЕВОЙ ЕСЛИ:
+КЛАСС:
+РЕЗУЛЬТАТ:
+ИСКЛЮЧЕНИЯ:
+ПРИМЕРЫ:
 
-Контекст задачи пользователя:
-"""
+Обязательные требования к готовому промпту:
+1. Всегда требуй три тега в начале ответа:
+   [ТИПЗВОНКА:ЦЕЛЕВОЙ] или [ТИПЗВОНКА:НЕЦЕЛЕВОЙ]
+   [КЛАСС:А] или [КЛАСС:Б] или [КЛАСС:НЕТ]
+   [РЕЗУЛЬТАТ:ЗАПИСЬ] или [РЕЗУЛЬТАТ:НЕТ] или [РЕЗУЛЬТАТ:ПЕРЕЗВОНИТЬ] или [РЕЗУЛЬТАТ:ПЕРЕВОД] или [РЕЗУЛЬТАТ:МЕССЕНДЖЕР] или [РЕЗУЛЬТАТ:ОТКАЗ]
+2. Для нецелевого звонка обязательно требуй:
+   [ТИПЗВОНКА:НЕЦЕЛЕВОЙ]
+   [КЛАСС:НЕТ]
+   [РЕЗУЛЬТАТ:НЕТ]
+3. Не пиши "если нецелевой, анализ не нужен" и похожие фразы.
+4. Используй короткие правила и 2-3 примера, включая пример нецелевого.
+5. Не добавляй markdown и пояснения вне готового промпта."""
 
         import requests
         runtime_cfg = build_user_runtime_config()
@@ -2618,10 +2733,11 @@ def api_generate_anchor_prompt():
                 },
                 {
                     "role": "user",
-                    "content": f"Создай промпт для следующей задачи: {user_intent}"
+                    "content": f"Описание задачи пользователя:\n{user_intent}"
                 },
             ],
-            "temperature": 0.6, # Чуть выше для креативности в инструкциях
+            "temperature": 0.2,
+            "max_tokens": 1800,
         }
 
         # Retry логика для надежности
@@ -2660,20 +2776,11 @@ def api_generate_anchor_prompt():
             if not result.get('choices') or len(result['choices']) == 0:
                 return jsonify({'success': False, 'message': 'Пустой ответ от API'})
             
-            generated_prompt = (result.get('choices', [{}])[0]
-                                    .get('message', {})
-                                    .get('content', '')).strip()
-            
-            # Убираем markdown code blocks если они есть
-            if generated_prompt.startswith("```") and generated_prompt.endswith("```"):
-                lines = generated_prompt.split('\n')
-                if lines[0].startswith("```"):
-                    lines = lines[1:]
-                if lines[-1].startswith("```"):
-                    lines = lines[:-1]
-                generated_prompt = '\n'.join(lines)
-            elif generated_prompt.startswith("```"):
-                 generated_prompt = generated_prompt.replace("```yaml", "").replace("```", "")
+            generated_prompt = _clean_generated_prompt(
+                (result.get('choices', [{}])[0]
+                    .get('message', {})
+                    .get('content', ''))
+            )
             
             return jsonify({'success': True, 'prompt': generated_prompt.strip()})
 
@@ -2719,17 +2826,20 @@ def api_regenerate_anchor_prompt():
             'universal': 'в любой сфере услуг',
         }.get(profile, 'в любой сфере услуг')
 
-        # Системный промпт для доработки промпта
-        system_instruction = f"""Ты — эксперт по улучшению системных промптов (инструкций) для AI-анализа телефонных разговоров {profile_expert}.
-Твоя задача: Доработать существующий промпт, добавив в него новое условие или требование, указанное пользователем.
+        # Системный промпт для доработки промпта.
+        system_instruction = f"""Ты улучшаешь промпт для AI-анализа телефонных разговоров {profile_expert}.
+Промпт будет использоваться локальной LLM, поэтому он должен быть коротким, однозначным и пригодным для автоматического парсинга.
 
-Важные требования:
-1. Сохрани всю структуру и логику существующего промпта.
-2. Интегрируй новое условие естественным образом, не нарушая существующую логику.
-3. Если новое условие конфликтует со старым, приоритет отдай новому, но сохрани остальные части промпта.
-4. Промпт должен оставаться структурированным и четким.
-5. Обязательно сохрани формат вывода с тегами [ТИПЗВОНКА:...], [КЛАСС:...], [РЕЗУЛЬТАТ:...] если они были в оригинале.
-6. ВАЖНО: Верни ТОЛЬКО текст доработанного промпта. Не добавляй никаких вводных слов, пояснений или markdown-разметки (никаких ```yaml или ```). Только чистый текст промпта."""
+Требования:
+1. Интегрируй новое условие, но убери противоречия и лишнюю воду.
+2. Обязательно сохрани требование трёх тегов в начале ответа:
+   [ТИПЗВОНКА:ЦЕЛЕВОЙ] или [ТИПЗВОНКА:НЕЦЕЛЕВОЙ]
+   [КЛАСС:А] или [КЛАСС:Б] или [КЛАСС:НЕТ]
+   [РЕЗУЛЬТАТ:ЗАПИСЬ] или [РЕЗУЛЬТАТ:НЕТ] или [РЕЗУЛЬТАТ:ПЕРЕЗВОНИТЬ] или [РЕЗУЛЬТАТ:ПЕРЕВОД] или [РЕЗУЛЬТАТ:МЕССЕНДЖЕР] или [РЕЗУЛЬТАТ:ОТКАЗ]
+3. Для нецелевого звонка обязательно требуй [ТИПЗВОНКА:НЕЦЕЛЕВОЙ], [КЛАСС:НЕТ], [РЕЗУЛЬТАТ:НЕТ].
+4. Удали или замени фразы вида "если нецелевой, анализ не нужен".
+5. Сохрани 2-3 коротких примера, включая нецелевой.
+6. Верни только готовый промпт, без markdown и комментариев."""
 
         import requests
         runtime_cfg = build_user_runtime_config()
@@ -2800,20 +2910,11 @@ def api_regenerate_anchor_prompt():
             if not result.get('choices') or len(result['choices']) == 0:
                 return jsonify({'success': False, 'message': 'Пустой ответ от API'})
             
-            regenerated_prompt = (result.get('choices', [{}])[0]
-                                    .get('message', {})
-                                    .get('content', '')).strip()
-            
-            # Убираем markdown code blocks если они есть
-            if regenerated_prompt.startswith("```") and regenerated_prompt.endswith("```"):
-                lines = regenerated_prompt.split('\n')
-                if lines[0].startswith("```"):
-                    lines = lines[1:]
-                if lines[-1].startswith("```"):
-                    lines = lines[:-1]
-                regenerated_prompt = '\n'.join(lines)
-            elif regenerated_prompt.startswith("```"):
-                 regenerated_prompt = regenerated_prompt.replace("```yaml", "").replace("```", "")
+            regenerated_prompt = _clean_generated_prompt(
+                (result.get('choices', [{}])[0]
+                    .get('message', {})
+                    .get('content', ''))
+            )
             
             return jsonify({'success': True, 'prompt': regenerated_prompt.strip()})
 
@@ -2860,18 +2961,21 @@ def api_regenerate_checklist_item_prompt():
             'universal': 'в любой сфере услуг',
         }.get(profile, 'в любой сфере услуг')
 
-        # Системный промпт для доработки промпта пункта чек-листа
-        system_instruction = f"""Ты — эксперт по улучшению промптов для оценки телефонных разговоров {profile_expert} по чек-листам.
-Твоя задача: Доработать существующий промпт для конкретного пункта чек-листа, добавив в него новое условие или требование, указанное пользователем.
+        # Системный промпт для доработки пункта чек-листа.
+        system_instruction = f"""Ты улучшаешь критерий пункта чек-листа для оценки телефонных разговоров {profile_expert}.
+Пункт будет читать локальная LLM, поэтому итог должен быть коротким и однозначным.
 
-Важные требования:
-1. Сохрани всю структуру и логику существующего промпта.
-2. Интегрируй новое условие естественным образом, не нарушая существующую логику.
-3. Если новое условие конфликтует со старым, приоритет отдай новому, но сохрани остальные части промпта.
-4. Промпт должен оставаться четким и конкретным - это критерий оценки для одного пункта чек-листа.
-5. Промпт должен быть сфокусирован на проверке выполнения конкретного критерия.
-6. Сохрани формат и стиль оригинального промпта.
-7. ВАЖНО: Верни ТОЛЬКО текст доработанного промпта. Не добавляй никаких вводных слов, пояснений или markdown-разметки (никаких ```yaml или ```). Только чистый текст промпта."""
+Верни ТОЛЬКО критерий в формате:
+ДА ЕСЛИ: ...
+НЕТ ЕСЛИ: ...
+НЕ УЧИТЫВАТЬ: ...
+
+Требования:
+1. Интегрируй новое условие.
+2. Убери длинные примеры, эмодзи, повторяющиеся пояснения и markdown.
+3. "ДА ЕСЛИ" и "НЕТ ЕСЛИ" должны быть проверяемыми по транскрипту.
+4. Если пункт неприменим, укажи это в "НЕ УЧИТЫВАТЬ"; если неприменимости нет, напиши "нет".
+5. Итоговый критерий должен быть не длиннее 900 символов."""
 
         import requests
         runtime_cfg = build_user_runtime_config()
@@ -2888,13 +2992,16 @@ def api_regenerate_checklist_item_prompt():
         if not thebai_api_key:
             return jsonify({'success': False, 'message': 'Укажите DeepSeek/TheB.ai API key в настройках профиля'}), 400
         
-        user_message = f"""Текущий промпт для пункта чек-листа:
+        user_message = f"""Название пункта:
+{item_title or 'Не указано'}
+
+Текущий промпт для пункта чек-листа:
 {current_prompt}
 
 Новое условие или требование, которое нужно добавить:
 {additional_condition}
 
-Доработай промпт, интегрировав новое условие в существующую структуру."""
+Доработай критерий и верни его в заданном формате."""
 
         prompt_request = {
             "model": thebai_model,
@@ -2947,20 +3054,11 @@ def api_regenerate_checklist_item_prompt():
             if not result.get('choices') or len(result['choices']) == 0:
                 return jsonify({'success': False, 'message': 'Пустой ответ от API'})
             
-            regenerated_prompt = (result.get('choices', [{}])[0]
-                                    .get('message', {})
-                                    .get('content', '')).strip()
-            
-            # Убираем markdown code blocks если они есть
-            if regenerated_prompt.startswith("```") and regenerated_prompt.endswith("```"):
-                lines = regenerated_prompt.split('\n')
-                if lines[0].startswith("```"):
-                    lines = lines[1:]
-                if lines[-1].startswith("```"):
-                    lines = lines[:-1]
-                regenerated_prompt = '\n'.join(lines)
-            elif regenerated_prompt.startswith("```"):
-                 regenerated_prompt = regenerated_prompt.replace("```yaml", "").replace("```", "")
+            regenerated_prompt = _normalize_checklist_criterion(
+                (result.get('choices', [{}])[0]
+                    .get('message', {})
+                    .get('content', ''))
+            )
             
             return jsonify({'success': True, 'prompt': regenerated_prompt.strip()})
 
@@ -3387,6 +3485,10 @@ def api_checklists_test():
             except Exception as exc:
                 app.logger.error("Ошибка при разборе чек-листа: %s", exc, exc_info=True)
 
+            parsed_anchor = _parse_anchor_fields(analysis_text)
+            llm_url = (runtime_cfg.get('api_keys') or {}).get('thebai_url', '')
+            llm_model = (runtime_cfg.get('api_keys') or {}).get('thebai_model', '')
+
             return jsonify({
                 'success': True,
                 'message': 'Файл обработан. Результаты сохранены в тестовую папку.',
@@ -3402,7 +3504,12 @@ def api_checklists_test():
                     'prompt': prompt_text,
                     'anchor_name': anchor_name,
                     'station_code': station_code,
-                    'is_target': is_target
+                    'is_target': is_target,
+                    'parsed': parsed_anchor,
+                    'llm_model': llm_model,
+                    'llm_url': llm_url,
+                    'llm_provider': 'local' if _is_local_llm_url(llm_url) else 'deepseek',
+                    'checklist_ran': bool(checklist_payload),
                 },
                 'transcript_text': transcript_text  # Для последующего анализа
             })
@@ -3421,8 +3528,8 @@ def api_checklists_analyze():
     if not transcript_text or not qa_text:
         return jsonify({'success': False, 'message': 'Не переданы данные транскрипта или чек-листа.'}), 400
     
-    # Формируем промпт для детального анализа каждого пункта
-    analysis_prompt = f"""Ты — эксперт по анализу клиентских звонков. Перед тобой транскрипт звонка и результат разбора по чек-листу.
+    # Формируем компактный промпт для детального анализа каждого пункта.
+    analysis_prompt = f"""Ты проверяешь разбор звонка по чек-листу.
 
 ТРАНСКРИПТ ЗВОНКА:
 {transcript_text}
@@ -3430,22 +3537,13 @@ def api_checklists_analyze():
 РЕЗУЛЬТАТ РАЗБОРА ПО ЧЕК-ЛИСТУ:
 {qa_text}
 
-Твоя задача: для КАЖДОГО пункта чек-листа написать детальное обоснование, ПОЧЕМУ этот пункт был оценен именно так (ДА или НЕТ).
+Задача: для каждого пункта кратко объяснить, почему оценка ДА или НЕТ.
 
-В обосновании укажи:
-- Цитаты или парафразы из транскрипта, которые подтверждают или опровергают выполнение пункта
-- Краткое объяснение логики оценки
-- Если пункт НЕ выполнен — что именно отсутствовало
+Формат ответа строго по строкам:
+1. [1-2 факта из диалога; если НЕТ — что отсутствовало]
+2. [1-2 факта из диалога; если НЕТ — что отсутствовало]
 
-Формат ответа — строго для каждого пункта по порядку. Каждый пункт — ОТДЕЛЬНАЯ строка, начинающаяся с «N. » (цифра, точка, пробел), без символов # и ** в начале строки:
-
-1. [Детальное обоснование для пункта 1]
-
-2. [Детальное обоснование для пункта 2]
-
-...
-
-Обоснования должны быть конкретными и ссылаться на реальные фрагменты диалога."""
+Не используй markdown, таблицы и длинный пересказ."""
 
     try:
         runtime_cfg = build_user_runtime_config()
@@ -3462,7 +3560,7 @@ def api_checklists_analyze():
                 {"role": "system", "content": "Ты эксперт по анализу клиентских звонков."},
                 {"role": "user", "content": analysis_prompt}
             ],
-            "temperature": 0.3,
+            "temperature": 0.1,
         }
         
         response = requests.post(
@@ -3560,7 +3658,7 @@ def api_anchors_analyze():
     if not transcript_text or not analysis_text or not prompt_text:
         return jsonify({'success': False, 'message': 'Не переданы данные транскрипта, анализа или промпта.'}), 400
     
-    analysis_prompt = f"""Ты — эксперт по анализу клиентских звонков. Перед тобой транскрипт звонка и результат его классификации.
+    analysis_prompt = f"""Ты объясняешь результат классификации звонка.
 
 ТРАНСКРИПТ ЗВОНКА:
 {transcript_text}
@@ -3571,16 +3669,13 @@ def api_anchors_analyze():
 РЕЗУЛЬТАТ КЛАССИФИКАЦИИ:
 {analysis_text}
 
-Твоя задача: написать КРАТКОЕ обоснование (2-4 предложения), ПОЧЕМУ звонок получил такую оценку.
+Задача: написать краткое обоснование, почему звонок получил такую оценку.
 
-ФОРМАТ ОТВЕТА (строго соблюдай):
-✓ [Статус: Целевой/Нецелевой]
-✓ Объяснение: [1-2 ключевых факта из разговора, которые определили статус]
+Формат:
+Статус: Целевой или Нецелевой
+Объяснение: 1-2 ключевых факта из разговора.
 
-ВАЖНО: 
-- Ответ должен быть КРАТКИМ (максимум 3-4 строки)
-- Без подробного пересказа всего разговора
-- Только главные факты, определившие статус"""
+Не используй markdown и не пересказывай весь разговор."""
 
     try:
         runtime_cfg = build_user_runtime_config()
@@ -4559,8 +4654,13 @@ def _is_target_call_marker(analysis_text: str) -> bool:
         return is_target_call(analysis_text)
     if not analysis_text:
         return False
-    upper_text = analysis_text.upper().replace(' ', '')
-    return '[ТИПЗВОНКА:ЦЕЛЕВОЙ]' in upper_text or 'ПЕРВИЧНЫЙ' in upper_text
+    parsed = _parse_anchor_fields(analysis_text)
+    call_type = parsed.get('call_type') or ''
+    if call_type.startswith('НЕЦЕЛЕВОЙ'):
+        return False
+    if call_type in ('ЦЕЛЕВОЙ', 'ПЕРВИЧНЫЙ'):
+        return True
+    return 'ПЕРВИЧНЫЙ' in analysis_text.upper()
 
 
 def _checklist_score_percent_from_analysis(text: str):
