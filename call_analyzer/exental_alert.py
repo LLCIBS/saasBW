@@ -17,6 +17,26 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
+
+def _thebai_checklist_http_timeout() -> float:
+    """
+    Секунды ожидания ответа LLM для разбора чек-листа (длиннее промпт, чем у якоря).
+    Env: THEBAI_CHECKLIST_HTTP_TIMEOUT; если не задан — THEBAI_HTTP_TIMEOUT; иначе 300.
+    Диапазон 30–7200.
+    """
+    fallback = 300.0
+    raw = os.getenv("THEBAI_CHECKLIST_HTTP_TIMEOUT")
+    if raw is None or not str(raw).strip():
+        raw = os.getenv("THEBAI_HTTP_TIMEOUT")
+    if raw is None or not str(raw).strip():
+        return fallback
+    try:
+        v = float(str(raw).strip())
+        return max(30.0, min(v, 7200.0))
+    except (TypeError, ValueError):
+        return fallback
+
+
 # Лимиты подписи: Telegram sendAudio — 1024 символа; MAX поле text — 4000 (common/max_messenger).
 TELEGRAM_AUDIO_CAPTION_LIMIT = 1024
 MAX_MESSAGE_TEXT_LIMIT = 4000
@@ -636,8 +656,11 @@ def call_theb_ai(dialog_text: str, script_prompt: str) -> str:
         "temperature": 0,  # Детерминированный разбор по чек-листу при одинаковой транскрипции
         #"stream": False
     }
+    timeout_sec = _thebai_checklist_http_timeout()
     try:
-        resp = requests.post(config.THEBAI_URL, headers=headers, json=payload, timeout=60)
+        resp = requests.post(
+            config.THEBAI_URL, headers=headers, json=payload, timeout=timeout_sec
+        )
         if resp.status_code == 200:
             data = resp.json()
             return data["choices"][0]["message"]["content"]

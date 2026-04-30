@@ -800,6 +800,20 @@ def _build_strict_anchor_prompt(prompt: str) -> str:
     return f"{prompt.rstrip()}\n{strict_suffix}"
 
 
+def _thebai_anchor_http_timeout() -> float:
+    """
+    Секунды ожидания ответа от LLM (якорь / repair Chat Completions API).
+    Env: THEBAI_HTTP_TIMEOUT (по умолчанию 240). Допустимый диапазон 30–7200.
+    """
+    default = 240.0
+    try:
+        raw = (os.getenv("THEBAI_HTTP_TIMEOUT") or str(int(default))).strip()
+        v = float(raw)
+        return max(30.0, min(v, 7200.0))
+    except (TypeError, ValueError):
+        return default
+
+
 def _post_thebai(messages, temperature=None):
     payload = {
         "model": config.THEBAI_MODEL,
@@ -812,8 +826,15 @@ def _post_thebai(messages, temperature=None):
         "Content-Type": "application/json"
     }
 
+    timeout_sec = _thebai_anchor_http_timeout()
+
     def _request():
-        return requests.post(config.THEBAI_URL, headers=headers, json=payload, timeout=90)
+        return requests.post(
+            config.THEBAI_URL,
+            headers=headers,
+            json=payload,
+            timeout=timeout_sec,
+        )
 
     resp = make_request_with_retries(_request, max_retries=3, delay=10)
     if not resp or resp.status_code != 200:
