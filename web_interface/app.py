@@ -18,7 +18,7 @@ import requests
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from collections import OrderedDict
-from flask import Flask, render_template, request, jsonify, redirect, url_for, flash
+from flask import Flask, render_template, request, jsonify, redirect, url_for, flash, send_from_directory
 from werkzeug.utils import secure_filename
 from dotenv import load_dotenv
 from flask_login import current_user, login_required
@@ -1435,7 +1435,37 @@ login_manager.init_app(app)
 app.register_blueprint(auth_bp)
 app.register_blueprint(classification_bp)
 
-AUTH_EXEMPT_ENDPOINTS = {'static', 'api_rostelecom_webhook'}
+AUTH_EXEMPT_ENDPOINTS = {'static', 'api_rostelecom_webhook', 'public_landing'}
+
+
+def _landing_vite_entry_assets():
+    """URL-ы JS/CSS лендинга из Vite manifest (файлы в static/landing/)."""
+    landing_dir = Path(app.static_folder) / 'landing'
+    if not landing_dir.is_dir():
+        return None
+    manifest_path = landing_dir / '.vite' / 'manifest.json'
+    if not manifest_path.is_file():
+        manifest_path = landing_dir / 'manifest.json'
+    if not manifest_path.is_file():
+        return None
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
+    except (OSError, json.JSONDecodeError, ValueError):
+        return None
+    entry = manifest.get('index.html')
+    if not entry:
+        for chunk in manifest.values():
+            if isinstance(chunk, dict) and chunk.get('isEntry') and chunk.get('file'):
+                entry = chunk
+                break
+    if not entry or not entry.get('file'):
+        return None
+    js_file = entry['file']
+    css_files = entry.get('css') or []
+    return {
+        'landing_js': url_for('static', filename=f'landing/{js_file}'),
+        'landing_css': [url_for('static', filename=f'landing/{c}') for c in css_files],
+    }
 
 
 @app.before_request
@@ -1784,9 +1814,27 @@ def get_service_status():
     return service_status
 
 @app.route('/')
+def public_landing():
+    """Публичный лендинг (без авторизации)."""
+    assets_ctx = _landing_vite_entry_assets()
+    if assets_ctx:
+        return render_template('public/landing.html', **assets_ctx)
+    index_html = Path(app.static_folder) / 'landing' / 'index.html'
+    if index_html.is_file():
+        return send_from_directory(app.static_folder, 'landing/index.html')
+    return (
+        '<!DOCTYPE html><html lang="ru"><head><meta charset="utf-8"><title>Лендинг</title></head>'
+        '<body><p>Лендинг не собран. В каталоге <code>easycall-landing</code> выполните: '
+        '<code>npm install</code> и <code>npm run build</code>.</p></body></html>',
+        503,
+        {'Content-Type': 'text/html; charset=utf-8'},
+    )
+
+
+@app.route('/dashboard')
 @login_required
-def index():
-    """Главная страница"""
+def dashboard():
+    """Панель управления (требует авторизации)."""
     status = get_service_status()
     return render_template('index.html', status=status, active_page='dashboard')
 

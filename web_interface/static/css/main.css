@@ -2,28 +2,31 @@
 
 /* ===== CSS Variables - Enhanced Design System ===== */
 :root {
-    /* Primary Gradients */
-    --primary-gradient: linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #a855f7 100%);
-    --primary-gradient-hover: linear-gradient(135deg, #4f46e5 0%, #7c3aed 50%, #9333ea 100%);
-    --primary-color: #6366f1;
-    --primary-light: #818cf8;
-    --primary-dark: #4f46e5;
+    /* Палитра как на публичном лендинге: синий primary + оранжевый accent */
+    --primary-gradient: linear-gradient(135deg, #1e3a8a 0%, #2563eb 55%, #1d4ed8 100%);
+    --primary-gradient-hover: linear-gradient(135deg, #172554 0%, #1d4ed8 50%, #1e40af 100%);
+    --primary-color: #1e3a8a;
+    --primary-light: #2563eb;
+    --primary-dark: #1e2d5b;
+
+    --accent-color: #f97316;
+    --accent-hover: #ea580c;
+    --accent-gradient: linear-gradient(135deg, #f97316 0%, #ea580c 100%);
+    --focus-ring: rgba(37, 99, 235, 0.22);
     
     /* Secondary Gradients */
     --secondary-gradient: linear-gradient(135deg, #0ea5e9 0%, #06b6d4 100%);
     --success-gradient: linear-gradient(135deg, #10b981 0%, #34d399 100%);
-    --warning-gradient: linear-gradient(135deg, #f59e0b 0%, #fbbf24 100%);
+    --warning-gradient: linear-gradient(135deg, #f97316 0%, #fb923c 100%);
     --danger-gradient: linear-gradient(135deg, #ef4444 0%, #f87171 100%);
-    --info-gradient: linear-gradient(135deg, #3b82f6 0%, #60a5fa 100%);
-    
+    --info-gradient: linear-gradient(135deg, #2563eb 0%, #3b82f6 100%);
+
     /* Solid Colors */
-    --secondary-color: #8b5cf6;
+    --secondary-color: #2563eb;
     --success-color: #10b981;
     --danger-color: #ef4444;
-    --warning-color: #f59e0b;
-    --info-color: #3b82f6;
-    
-    /* Text Colors */
+    --warning-color: #f97316;
+    --info-color: #2563eb;
     --text-primary: #0f172a;
     --text-secondary: #475569;
     --text-tertiary: #94a3b8;
@@ -34,7 +37,7 @@
     --bg-secondary: #f8fafc;
     --bg-tertiary: #f1f5f9;
     --bg-dark: #0f172a;
-    --bg-sidebar: linear-gradient(180deg, #1e1b4b 0%, #312e81 100%);
+    --bg-sidebar: linear-gradient(180deg, #172554 0%, #1e3a8a 45%, #1e2d5b 100%);
     
     /* Border Colors */
     --border-light: #e2e8f0;
@@ -195,7 +198,7 @@ a {
 }
 
 a:hover {
-    color: var(--primary-dark);
+    color: var(--accent-color);
 }
 
 /* ===== Container ===== */
@@ -227,7 +230,7 @@ a:hover {
     font-size: 0.9375rem;
     font-weight: 600;
     line-height: 1;
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-lg);
     border: none;
     cursor: pointer;
     transition: all var(--transition-base);
@@ -306,7 +309,7 @@ a:hover {
 }
 
 .btn-warning {
-    background: var(--warning-gradient);
+    background: var(--accent-gradient);
     color: var(--text-inverse);
     box-shadow: var(--shadow-sm);
 }
@@ -314,7 +317,7 @@ a:hover {
 .btn-warning:hover:not(:disabled) {
     transform: translateY(-2px);
     box-shadow: var(--shadow-md);
-    filter: brightness(1.1);
+    filter: brightness(1.05);
     color: var(--text-inverse);
 }
 
@@ -404,8 +407,8 @@ a:hover {
 
 .form-control:focus, .form-select:focus {
     outline: none;
-    border-color: var(--primary-color);
-    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+    border-color: var(--primary-light);
+    box-shadow: 0 0 0 3px var(--focus-ring);
     background-color: var(--bg-primary);
 }
 
@@ -454,8 +457,8 @@ a:hover {
 }
 
 .form-check-input:focus {
-    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
-    border-color: var(--primary-color);
+    box-shadow: 0 0 0 3px var(--focus-ring);
+    border-color: var(--primary-light);
 }
 
 .form-check-label {
@@ -483,16 +486,42 @@ a:hover {
 .card {
     background: var(--bg-primary);
     border: 1px solid var(--border-light);
-    border-radius: var(--radius-xl);
+    border-radius: var(--radius-2xl);
     box-shadow: var(--shadow-sm);
-    transition: all var(--transition-base);
+    transition: box-shadow var(--transition-base), border-color var(--transition-base), transform var(--transition-base);
     overflow: hidden;
     height: 100%;
 }
 
 .card:hover {
+    box-shadow: var(--shadow-md);
+    transform: translateY(-1px);
+    border-color: rgba(30, 58, 138, 0.12);
+}
+
+/* Карточки с плотным контентом (таблицы) — без смещения при наведении */
+.card:has(.table-responsive):hover,
+.card.table-card:hover {
+    transform: none;
+}
+
+/* Hero-статус и тяжёлые карточки — без «прыжка» от базового .card:hover */
+.card.status-card:hover {
+    transform: none;
+    border-color: transparent;
     box-shadow: var(--shadow-lg);
-    transform: translateY(-2px);
+}
+
+/* Быстрый старт: визуально как блок на лендинге */
+.onboarding-landing-card {
+    background: linear-gradient(135deg, rgba(30, 58, 138, 0.06) 0%, rgba(37, 99, 235, 0.08) 100%);
+    border: 1px solid rgba(30, 58, 138, 0.14) !important;
+    border-radius: var(--radius-2xl);
+    box-shadow: var(--shadow-sm);
+}
+
+.onboarding-landing-card .list-group-numbered .list-group-item {
+    background: transparent;
 }
 
 .card-header {

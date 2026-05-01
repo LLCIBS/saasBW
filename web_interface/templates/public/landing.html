@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='landing/favicon.svg') }}" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <title>Easy Call — AI-аналитика звонков</title>
+    <meta name="description" content="AI анализирует звонки и помогает повысить качество коммуникаций. Автоматическая аналитика для бизнеса." />
+    {% for href in landing_css %}
+    <link rel="stylesheet" crossorigin href="{{ href }}" />
+    {% endfor %}
+</head>
+<body>
+    <div id="root"></div>
+    <script type="module" crossorigin src="{{ landing_js }}"></script>
+</body>
+</html>

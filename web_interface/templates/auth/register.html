@@ -25,7 +25,7 @@
         
         body {
             font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 55%, #1e2d5b 100%);
             min-height: 100vh;
             display: flex;
             align-items: center;
@@ -75,6 +75,24 @@
             }
         }
         
+        .back-to-site {
+            text-align: center;
+            margin-bottom: 1.25rem;
+        }
+        .back-to-site a {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.35rem;
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: #2563eb;
+            text-decoration: none;
+        }
+        .back-to-site a:hover {
+            color: #ea580c;
+        }
+        
         .register-header {
             text-align: center;
             margin-bottom: 2rem;
@@ -83,13 +101,13 @@
         .logo-icon {
             width: 80px;
             height: 80px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 55%, #1e2d5b 100%);
             border-radius: 20px;
             display: flex;
             align-items: center;
             justify-content: center;
             margin: 0 auto 1.5rem;
-            box-shadow: 0 10px 30px rgba(102, 126, 234, 0.3);
+            box-shadow: 0 10px 30px rgba(30, 58, 138, 0.35);
             animation: pulse 2s infinite;
         }
         
@@ -156,9 +174,9 @@
         input[type="text"]:focus,
         input[type="email"]:focus,
         input[type="password"]:focus {
-            border-color: #667eea;
+            border-color: #2563eb;
             background: white;
-            box-shadow: 0 0 0 4px rgba(102, 126, 234, 0.1);
+            box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.15);
             outline: none;
         }
         
@@ -167,7 +185,7 @@
         }
         
         .input-group input:focus {
-            border-color: #667eea;
+            border-color: #2563eb;
         }
         
         .alert {
@@ -199,7 +217,7 @@
         .register-button {
             width: 100%;
             padding: 1rem;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #f97316 0%, #ea580c 100%);
             color: white;
             border: none;
             border-radius: 12px;
@@ -207,7 +225,7 @@
             font-weight: 700;
             cursor: pointer;
             transition: all 0.3s ease;
-            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+            box-shadow: 0 4px 15px rgba(249, 115, 22, 0.45);
             display: flex;
             align-items: center;
             justify-content: center;
@@ -217,7 +235,7 @@
         
         .register-button:hover {
             transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.5);
+            box-shadow: 0 6px 20px rgba(249, 115, 22, 0.55);
         }
         
         .register-button:active {
@@ -232,14 +250,14 @@
         }
         
         .login-link a {
-            color: #667eea;
+            color: #1e3a8a;
             text-decoration: none;
             font-weight: 600;
             transition: all 0.3s ease;
         }
         
         .login-link a:hover {
-            color: #764ba2;
+            color: #ea580c;
             text-decoration: underline;
         }
         
@@ -276,6 +294,9 @@
 </head>
 <body>
     <div class="register-container">
+        <div class="back-to-site">
+            <a href="/"><i class="fas fa-arrow-left"></i>На сайт</a>
+        </div>
         <div class="register-header">
             <div class="logo-icon">
                 <i class="fas fa-user-plus"></i>

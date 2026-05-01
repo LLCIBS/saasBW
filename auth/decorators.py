@@ -17,7 +17,7 @@ def admin_required(f):
             return redirect(url_for('auth.login'))
         if current_user.role != 'admin':
             flash('Доступ запрещен. Требуются права администратора', 'error')
-            return redirect(url_for('index'))
+            return redirect(url_for('dashboard'))
         return f(*args, **kwargs)
     return decorated_function
 
@@ -32,7 +32,7 @@ def role_required(*roles):
                 return redirect(url_for('auth.login'))
             if current_user.role not in roles:
                 flash('Доступ запрещен', 'error')
-                return redirect(url_for('index'))
+                return redirect(url_for('dashboard'))
             return f(*args, **kwargs)
         return decorated_function
     return decorator

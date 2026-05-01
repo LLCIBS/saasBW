@@ -45,7 +45,7 @@
 
 .sidebar h4 i {
     font-size: 1.5rem;
-    background: linear-gradient(135deg, #818cf8 0%, #c084fc 100%);
+    background: linear-gradient(135deg, #f97316 0%, #fb923c 100%);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
@@ -104,7 +104,7 @@
     top: 0;
     bottom: 0;
     width: 3px;
-    background: linear-gradient(180deg, #818cf8 0%, #c084fc 100%);
+    background: linear-gradient(180deg, #f97316 0%, #ea580c 100%);
     transform: scaleY(0);
     transition: transform var(--transition-base);
 }
@@ -241,12 +241,12 @@
 }
 
 .status-running {
-    background: var(--success-gradient);
+    background: var(--primary-gradient);
     color: white;
 }
 
 .status-stopped {
-    background: var(--warning-gradient);
+    background: var(--accent-gradient);
     color: white;
 }
 
@@ -692,8 +692,8 @@
 }
 
 .station-sortable-card.drag-over {
-    border-color: var(--primary, #6366f1);
-    box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.25);
+    border-color: var(--primary-light);
+    box-shadow: 0 0 0 2px var(--focus-ring);
 }
 
 .station-sortable-card .drag-handle {
@@ -943,9 +943,9 @@
 .login-container input[type="password"]:focus,
 .register-container input[type="text"]:focus,
 .register-container input[type="password"]:focus {
-    border-color: var(--primary-color);
+    border-color: var(--primary-light);
     background: var(--bg-primary);
-    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+    box-shadow: 0 0 0 3px var(--focus-ring);
     outline: none;
 }
 

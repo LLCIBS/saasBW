@@ -5,6 +5,7 @@
 
 from flask import Blueprint, render_template, request, redirect, url_for, flash, current_app
 from flask_login import login_user, logout_user, login_required, current_user
+from sqlalchemy.exc import OperationalError
 from database.models import db, User, UserSettings, UserConfig, BUSINESS_PROFILES
 from datetime import datetime
 from pathlib import Path
@@ -116,7 +117,7 @@ def initialize_user_profile_assets(user: User, business_profile: str = 'autoserv
 def login():
     """Страница входа"""
     if current_user.is_authenticated:
-        return redirect(url_for('index'))
+        return redirect(url_for('dashboard'))
     
     if request.method == 'POST':
         username = request.form.get('username')
@@ -126,8 +127,13 @@ def login():
         if not username or not password:
             flash('Пожалуйста, введите имя пользователя и пароль', 'error')
             return render_template('auth/login.html')
-        
-        user = User.query.filter_by(username=username).first()
+
+        try:
+            user = User.query.filter_by(username=username).first()
+        except OperationalError:
+            current_app.logger.exception('БД недоступна при поиске пользователя (вход)')
+            flash(_DB_UNAVAILABLE_MSG, 'error')
+            return render_template('auth/login.html')
         
         if user and user.check_password(password):
             if not user.is_active:
@@ -151,7 +157,14 @@ def login():
             user.last_login = datetime.utcnow()
             if not user.settings:
                 db.session.add(UserSettings(user_id=user.id, data={}))
-            db.session.commit()
+            try:
+                db.session.commit()
+            except OperationalError:
+                db.session.rollback()
+                logout_user()
+                current_app.logger.exception('БД недоступна при сохранении сессии входа')
+                flash(_DB_UNAVAILABLE_MSG, 'error')
+                return render_template('auth/login.html')
             
             # Проверяем сессию
             current_app.logger.info(f"Session ID: {session.get('_id', 'не установлен')}")
@@ -172,7 +185,7 @@ def login():
                 current_app.logger.info(f"Редирект на: {next_page}")
                 return redirect(next_page)
             current_app.logger.info("Редирект на главную страницу")
-            return redirect(url_for('index'))
+            return redirect(url_for('dashboard'))
         else:
             flash('Неверное имя пользователя или пароль', 'error')
     
@@ -204,8 +217,13 @@ def register():
             flash('Имя пользователя и пароль обязательны.', 'error')
             return render_template('auth/register.html', business_profiles=BUSINESS_PROFILES)
 
-        if User.query.filter_by(username=username).first():
-            flash('Такой пользователь уже существует.', 'error')
+        try:
+            if User.query.filter_by(username=username).first():
+                flash('Такой пользователь уже существует.', 'error')
+                return render_template('auth/register.html', business_profiles=BUSINESS_PROFILES)
+        except OperationalError:
+            current_app.logger.exception('БД недоступна при проверке имени пользователя (регистрация)')
+            flash(_DB_UNAVAILABLE_MSG, 'error')
             return render_template('auth/register.html', business_profiles=BUSINESS_PROFILES)
 
         user = User(username=username, email=email or None, role=role)
@@ -214,7 +232,13 @@ def register():
         try:
             db.session.add(user)
             db.session.commit()
+        except OperationalError:
+            db.session.rollback()
+            current_app.logger.exception('БД недоступна при создании пользователя (регистрация)')
+            flash(_DB_UNAVAILABLE_MSG, 'error')
+            return render_template('auth/register.html', business_profiles=BUSINESS_PROFILES)
 
+        try:
             # Создание структуры папок после успешного создания пользователя
             try:
                 user_folder = _get_user_workspace_root(user.id)
@@ -247,12 +271,17 @@ def register():
 
             login_user(user)
             flash('Регистрация прошла успешно, вы вошли в систему.', 'success')
-            return redirect(url_for('index'))
+            return redirect(url_for('dashboard'))
         except Exception as e:
-            db.session.rollback()
-            flash(f'Ошибка при создании пользователя: {str(e)}', 'error')
+            current_app.logger.exception('Ошибка после создания пользователя (регистрация)')
+            flash(
+                f'Аккаунт создан, но при настройке профиля произошла ошибка. Попробуйте войти вручную. Детали: {str(e)}',
+                'error',
+            )
+            return render_template('auth/register.html', business_profiles=BUSINESS_PROFILES)
 
     return render_template('auth/register.html', business_profiles=BUSINESS_PROFILES)
+
 
 @auth_bp.route('/users')
 @login_required
@@ -260,7 +289,7 @@ def users_list():
     """Список пользователей (только для админов)"""
     if current_user.role != 'admin':
         flash('Доступ запрещен', 'error')
-        return redirect(url_for('index'))
+        return redirect(url_for('dashboard'))
     
     users = User.query.order_by(User.created_at.desc()).all()
     return render_template('auth/users_list.html', users=users)
